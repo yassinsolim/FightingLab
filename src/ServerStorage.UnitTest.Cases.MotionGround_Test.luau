@@ -624,6 +624,54 @@ return function(t)
 		end
 	end)
 
+	t.test("a support leg crossing its reach limit never flips its planted foot onto the toes (slow pelvis lift, all six, stance and walk)", function()
+		-- Round 4 (Sierra's teep kick at Width .85, max range: a 0.223-stud foot snap on lock release). A planted foot whose
+		-- straight leg missed the flat foot by a hair rose onto its ball by the full tiptoe limit (60 degrees) even where
+		-- rising did not lift its ankle (a bare foot with the ankle over the toes), the reach net slid its anchor, and the
+		-- next frame it slapped flat again. Raising the pelvis slowly (RATE studs a frame, up to TOP above the clip) through
+		-- the reach limit and back down, no foot turns more than MAX_STEP degrees in one frame.
+		local MAX_STEP, RATE, TOP, LEADF = 30, 0.005, 0.25, 20
+		local up = math.floor(TOP / RATE + 0.5)
+		local worst, where = 0, "-"
+		for _, id in Roster.order do
+			local clone, rig, root = stage(id, 0)
+			for _, state in { "Idle", "Walk" } do
+				MotionPlayer.reset(SWEEP_SLOT)
+				MotionPlayer.resetRig(rig)
+				local v = view(state, { guard = "Stand", characterId = id, rootHeight = rig.rootHeight, legLength = rig.legLength })
+				local base = Vector3.new(0, FLOOR_Y, 300)
+				local prev: { [string]: CFrame } = {}
+				for i = 1, LEADF + 2 * up + 20 do
+					if state == "Walk" then
+						v.pos = Vector3.new(i * 0.04, 0, 0)
+						v.walkPhase = i * 0.04
+					end
+					local ctx = { now = i / 60, dt = 1 / 60, hitstop = 0, phase = "Fight", winner = 0, fighters = { v, { pos = Vector3.new(30, 0, 0), facing = -Vector3.xAxis } } }
+					local pose = MotionPlayer.sample(Config, v :: any, ctx :: any, SWEEP_SLOT)
+					local k = i - LEADF
+					local lift = if k <= 0 then 0 elseif k <= up then k * RATE elseif k <= 2 * up then (2 * up - k) * RATE else 0
+					pose.rootOffset += Vector3.new(0, lift, 0)
+					root.CFrame = rootCFrame(v.pos, v.facing, rig.rootHeight, pose.rootOffset, base)
+					MotionPlayer.apply(rig, pose, FLOOR_Y)
+					for _, foot in FEET do
+						local cf = rig.tips[foot] :: CFrame
+						local p = prev[foot]
+						if p and i > LEADF + 1 then
+							local _, angle = p:ToObjectSpace(cf):ToAxisAngle()
+							local deg = math.deg(math.abs(angle))
+							if deg > worst then worst, where = deg, string.format("%s %s %s lift %.3f", id, state, foot, lift) end
+						end
+						prev[foot] = cf
+					end
+				end
+			end
+			clone:Destroy()
+		end
+		MotionPlayer.reset(SWEEP_SLOT)
+		print(string.format("[MotionGround] reach-limit pelvis lift: worst foot turn %.1f deg/frame (%s)", worst, where))
+		t.expect.truthy(worst <= MAX_STEP, string.format("a foot turned %.1f degrees in one frame at the reach limit (%s)", worst, where))
+	end)
+
 	t.test("a step-in held back at Separation does not step in place (every step-in clip, close range)", function()
 		-- At close range keepApart cancels a step-in's `advance`: the body stays while the clip steps. A released foot the
 		-- clip keeps near the floor (own sole <= 0.12 leg lengths) lifts only the applied / designed share of its clip
