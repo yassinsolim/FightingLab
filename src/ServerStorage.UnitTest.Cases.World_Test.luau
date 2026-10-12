@@ -1,8 +1,10 @@
 --!strict
 -- World_Test: the lobby world built at server start (ServerScriptService.FightingLabWorldBoot) meets the OV6 world
--- contract: names and attributes, a compact layout (every pad a short walk from the spawn, measured with
--- PathfindingService), a visible edge at the fight radius on every stage, a flat fight floor with nothing but the
--- edge barrier near it, camera-occluder tags, no terrain under the hardscape, part budget and build time.
+-- contract: names and attributes, a compact layout (every pad a short walk from every spawn, measured with
+-- PathfindingService: worst <= 40 and median <= 30 studs of path), an Arrival marker per arena, a visible edge at the
+-- fight radius on every stage, a flat fight floor with nothing but the edge barrier near it, no other arena near the
+-- middle of a fight camera's frame (the real CameraDirector framing), camera-occluder tags, no overlapping pieces, no
+-- terrain under the hardscape, part budget and build time.
 -- Run in Play on the server (the world exists only at runtime).
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
@@ -12,8 +14,15 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local WorldModules = ServerStorage.FightingLab.World
 local Layout = require(WorldModules.Layout)
+local CameraDirector = require(ReplicatedStorage.FightingLab.Client.CameraDirector) :: any
 
 local STAGE_IDS = { MidnightRooftop = true, HarborDusk = true, JungleRuins = true, SnowSummit = true, TrainingBay = true }
+-- the world's part count before the round-5 compact layout (main @ 64e1496, measured in Play); it may not grow past it
+local PART_CEILING = 3944
+-- walking bounds from every spawn to every pad (studs of PathfindingService path); fixed here, not read from Layout,
+-- so an older (wider) layout fails them
+local WALK_WORST = 40
+local WALK_MEDIAN = 30
 
 local function world(): Instance?
 	return workspace:FindFirstChild("FightingLabWorld")
@@ -52,6 +61,18 @@ end
 local function topY(part: BasePart): number
 	local _, ey = extents(part)
 	return part.Position.Y + ey
+end
+
+-- Like orientedFlatDistance, but exact for upright cylinders (podium and floor discs) and balls.
+local function shapeFlatDistance(part: BasePart, p: Vector3): number
+	if part:IsA("Part") then
+		local shape = (part :: Part).Shape
+		if shape == Enum.PartType.Ball or (shape == Enum.PartType.Cylinder and math.abs(part.CFrame.RightVector.Y) > 0.99) then
+			local radius = if shape == Enum.PartType.Ball then part.Size.X / 2 else math.min(part.Size.Y, part.Size.Z) / 2
+			return math.max(0, flat(part.Position - p).Magnitude - radius)
+		end
+	end
+	return orientedFlatDistance(part, p)
 end
 
 local function bottomY(part: BasePart): number
@@ -131,6 +152,34 @@ local function walkDistance(from: Vector3, to: Vector3): number?
 	return total
 end
 
+-- Every spawn -> pad walk measured so far (filled by the per-arena walk tests, completed by the median test).
+local walks: { [string]: number } = {}
+
+local function walkKey(spawnIndex: number, arenaId: string, padName: string): string
+	return string.format("%d|%s|%s", spawnIndex, arenaId, padName)
+end
+
+local function median(values: { number }): number
+	local sorted = table.clone(values)
+	table.sort(sorted)
+	local n = #sorted
+	if n == 0 then
+		return 0
+	end
+	return if n % 2 == 1 then sorted[(n + 1) // 2] else (sorted[n // 2] + sorted[n // 2 + 1]) / 2
+end
+
+-- The real fight camera (CameraDirector._plan) for a fight at `def` with both fighters on their start marks and the
+-- fight line turned `theta` degrees from world X (0 / 90 / 180 / 270 = the four fight-line orientations).
+local function fightCamera(def: Layout.ArenaDef, theta: number): (CFrame, number)
+	local th = math.rad(theta)
+	local dir = Vector3.new(math.cos(th), 0, math.sin(th))
+	local side = Vector3.new(dir.Z, 0, -dir.X)
+	local a, b = -dir * 3.5, dir * 3.5
+	local plan = CameraDirector._plan(a, b, "Fight", 0, 1 / 60, side, 0, false, nil)
+	return CFrame.lookAt(def.origin + plan.position, def.origin + plan.focus), plan.fov
+end
+
 return function(t)
 	local expect = t.expect
 
@@ -148,10 +197,11 @@ return function(t)
 		expect.equal(workspace.StreamingEnabled, false, "streaming stays off")
 	end)
 
-	t.test("lobby has spawns facing the district, fighter kiosk prompt, leaderboard and a signpost", function()
+	t.test("lobby has spawns facing the plaza head, fighter kiosk prompt, leaderboard and a signpost", function()
 		local lobby = (world() :: Instance):FindFirstChild("Lobby") :: Model
 		local list = spawns()
 		expect.truthy(#list >= 1, "at least one LobbySpawn")
+		local facing = Layout.bearingDir(Layout.SPAWN_FACING)
 		for _, s in list do
 			expect.truthy(s:IsA("SpawnLocation"), "LobbySpawn is a SpawnLocation")
 			local sp = s :: SpawnLocation
@@ -159,8 +209,8 @@ return function(t)
 			expect.equal(sp.Duration, 0, "no forcefield")
 			expect.truthy(sp.Anchored and sp.CanCollide, "spawn anchored and solid")
 			expect.truthy(math.abs(topY(sp) - 0.15) < 0.2, "spawn sits on the plaza floor")
-			expect.truthy(sp.CFrame.LookVector:Dot(Vector3.new(0, 0, -1)) > 0.98, "spawn faces north into the district")
-			expect.truthy(flat(sp.Position).Magnitude < 20, "spawn near the plaza centre")
+			expect.truthy(sp.CFrame.LookVector:Dot(facing) > 0.98, "spawn faces the plaza head")
+			expect.truthy(flat(sp.Position).Magnitude < 10, "spawn on the plaza centre")
 		end
 		local kiosk = lobby:FindFirstChild("FighterKiosk")
 		expect.truthy(kiosk and kiosk:IsA("Model"), "FighterKiosk model")
@@ -182,13 +232,13 @@ return function(t)
 		local b = board :: BasePart
 		expect.near(b.Size.X * gui.PixelsPerStud, 800, 1, "leaderboard canvas width")
 		expect.near(b.Size.Y * gui.PixelsPerStud, 600, 1, "leaderboard canvas height")
-		-- kiosk and Hall of Champions are a few steps from the spawn court
+		-- kiosk and Hall of Champions stand at the head of the plaza, a short walk from the spawn court
 		local court = Vector3.zero
 		for _, s in list do
 			court += flat(s.Position) / #list
 		end
-		expect.truthy((flat((promptPart :: BasePart).Position) - court).Magnitude < 25, "kiosk console near the spawns")
-		expect.truthy((flat(b.Position) - court).Magnitude < 25, "leaderboard near the spawns")
+		expect.truthy((flat((promptPart :: BasePart).Position) - court).Magnitude < 40, "kiosk console near the spawns")
+		expect.truthy((flat(b.Position) - court).Magnitude < 40, "leaderboard near the spawns")
 		local post = lobby:FindFirstChild("Signpost")
 		expect.truthy(post, "central signpost")
 		for _, def in Layout.ARENAS do
@@ -239,7 +289,7 @@ return function(t)
 		end
 	end)
 
-	t.test("pads sit 27 studs from FightOrigin at the front of the stage, outside the edge, top flush with floor + 0.2", function()
+	t.test("pads stand on the plaza in front of each stage, outside the ring, barrier and podium, top = plaza + 0.25", function()
 		for _, def in Layout.ARENAS do
 			local model = arenaModel(def.id) :: Model
 			local origin = (model:FindFirstChild("FightOrigin") :: BasePart).Position
@@ -249,12 +299,12 @@ return function(t)
 				local pad = model:FindFirstChild(name) :: BasePart
 				expect.truthy(pad and pad:IsA("BasePart"), def.id .. "." .. name)
 				local offset = flat(pad.Position - origin)
-				expect.near(offset.Magnitude, Layout.PAD_OFFSET, 0.6, name .. " 27 studs from FightOrigin")
 				expect.truthy(offset.Magnitude - Layout.PAD_RADIUS > Layout.RAIL_RADIUS + 0.4, name .. " clear of the edge barrier")
+				expect.truthy(offset.Magnitude - Layout.PAD_RADIUS >= Layout.STAGE_RADIUS + 0.2, name .. " stands off the podium, on the plaza")
 				local angle = math.deg(math.acos(math.clamp(offset.Unit:Dot(toPlaza), -1, 1)))
-				expect.truthy(angle < 70, name .. " at the front of the stage (" .. math.floor(angle) .. " deg)")
+				expect.truthy(angle < 30, name .. " in front of the stage (" .. math.floor(angle) .. " deg)")
 				expect.truthy((offset:Dot(right) < 0) == (i == 1), name .. " on the expected side (slot 1 left, slot 2 right)")
-				expect.near(topY(pad) - origin.Y, 0.2, 0.03, name .. " top = floor + 0.2")
+				expect.near(topY(pad), Layout.PAD_TOP, 0.03, name .. " top = plaza + 0.25")
 				expect.truthy(pad.Shape == Enum.PartType.Cylinder, name .. " is a cylinder")
 				expect.near(pad:GetAttribute("PadRadius") :: number, 3.5, 0.6, name .. " PadRadius")
 				expect.truthy(pad.Anchored and pad.CanCollide, name .. " solid")
@@ -266,10 +316,24 @@ return function(t)
 				local hit = worldRay(pad.Position + Vector3.new(0, 4, 0), Vector3.new(0, -8, 0))
 				expect.truthy(hit and hit.Instance == pad, name .. " is the walkable surface at its centre")
 			end
+			-- the two pads of an arena and their neighbours' never touch
+			local a, b = model:FindFirstChild(padNames(def)[1]) :: BasePart, model:FindFirstChild(padNames(def)[2]) :: BasePart
+			expect.truthy(flat(a.Position - b.Position).Magnitude > Layout.PAD_RADIUS * 2 + 3, def.id .. " pads apart")
+		end
+		local all: { BasePart } = {}
+		for _, def in Layout.ARENAS do
+			for _, name in padNames(def) do
+				table.insert(all, (arenaModel(def.id) :: Model):FindFirstChild(name) :: BasePart)
+			end
+		end
+		for i = 1, #all do
+			for j = i + 1, #all do
+				expect.truthy(flat(all[i].Position - all[j].Position).Magnitude > Layout.PAD_RADIUS * 2 + 1.5, "pads apart: " .. all[i]:GetFullName() .. " / " .. all[j]:GetFullName())
+			end
 		end
 	end)
 
-	t.test("exits sit beside their pads on the stage floor, facing the arena", function()
+	t.test("exits sit beside their pads on the plaza floor, facing the arena", function()
 		for _, def in Layout.ARENAS do
 			local model = arenaModel(def.id) :: Model
 			local origin = (model:FindFirstChild("FightOrigin") :: BasePart).Position
@@ -282,13 +346,71 @@ return function(t)
 				local pad = model:FindFirstChild(pads[i]) :: BasePart
 				local gap = flat(exit.Position - pad.Position).Magnitude
 				expect.truthy(gap > 4.5 and gap < 8, name .. " next to its pad (" .. string.format("%.1f", gap) .. ")")
+				expect.truthy(math.abs(exit.Position.Y) < 0.05, name .. " on the plaza floor top")
 				local offset = exit.Position - origin
-				expect.near(offset.Y, 0, 0.05, name .. " on the floor top")
-				expect.truthy(flat(offset).Magnitude > Layout.RAIL_RADIUS + 1, name .. " outside the fight edge")
+				expect.truthy(flat(offset).Magnitude > Layout.STAGE_RADIUS + 1, name .. " outside the stage")
 				expect.truthy(exit.CFrame.LookVector:Dot(flat(-offset).Unit) > 0.98, name .. " faces the arena")
 				local hit = worldRay(exit.Position + Vector3.new(0, 4, 0), Vector3.new(0, -8, 0))
-				expect.truthy(hit and math.abs(hit.Position.Y - origin.Y) < 0.1 and hit.Instance.CanCollide, name .. " stands on walkable floor")
+				expect.truthy(hit and math.abs(hit.Position.Y) < 0.3 and hit.Instance.CanCollide, name .. " stands on walkable floor")
 			end
+		end
+	end)
+
+	t.test("every arena has an Arrival marker on the floor outside the ring, facing it, clear and reachable", function()
+		local barriers: { Instance } = {}
+		for _, def in Layout.ARENAS do
+			table.insert(barriers, (arenaModel(def.id) :: Model):FindFirstChild("Barrier") :: Instance)
+		end
+		local from = spawns()[1].Position + Vector3.new(0, 3, 0)
+		for _, def in Layout.ARENAS do
+			local model = arenaModel(def.id) :: Model
+			local origin = (model:FindFirstChild("FightOrigin") :: BasePart).Position
+			local arrival = model:FindFirstChild("Arrival")
+			expect.truthy(arrival and arrival:IsA("BasePart"), def.id .. ".Arrival is a BasePart")
+			local a = arrival :: BasePart
+			expect.truthy(a.Anchored, "Arrival anchored")
+			expect.falsy(a.CanCollide, "Arrival does not collide")
+			expect.falsy(a.CanTouch, "Arrival fires no touches")
+			expect.truthy(a.Transparency >= 0.99, "Arrival is invisible")
+			local offset = flat(a.Position - origin)
+			expect.truthy(offset.Magnitude > Layout.RAIL_RADIUS + 1, def.id .. " Arrival outside the ring and its barrier")
+			-- upright and facing the ring
+			expect.truthy(a.CFrame.UpVector.Y > 0.99, "Arrival upright")
+			expect.truthy(a.CFrame.LookVector:Dot(-offset.Unit) > 0.98, def.id .. " Arrival faces the ring")
+			-- its bottom face rests on walkable floor
+			local bottom = a.Position.Y - a.Size.Y / 2
+			local hit = worldRay(a.Position + Vector3.new(0, 4, 0), Vector3.new(0, -10, 0))
+			expect.truthy(hit and hit.Instance.CanCollide and math.abs(hit.Position.Y - bottom) < 0.25, def.id .. " Arrival on the floor")
+			-- not inside or against any barrier, and nothing solid where a player stands
+			for _, barrier in barriers do
+				for _, p in barrier:GetDescendants() do
+					if p:IsA("BasePart") then
+						expect.truthy(orientedFlatDistance(p, a.Position) > 2, def.id .. " Arrival clear of " .. p:GetFullName())
+					end
+				end
+			end
+			local params = OverlapParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { world() :: Instance }
+			params.RespectCanCollide = true
+			local standing = workspace:GetPartBoundsInBox(CFrame.new(a.Position + Vector3.new(0, 3.2, 0)), Vector3.new(3, 5.6, 3), params)
+			local blockers = {}
+			for _, p in standing do
+				table.insert(blockers, p:GetFullName())
+			end
+			expect.equal(#blockers, 0, def.id .. " standing room at the Arrival: " .. table.concat(blockers, ", "))
+			-- both pads are a few steps away, and players can walk there from the spawn
+			for _, name in padNames(def) do
+				local pad = model:FindFirstChild(name) :: BasePart
+				expect.truthy(flat(pad.Position - a.Position).Magnitude < 15, def.id .. " Arrival near " .. name)
+			end
+			local path = PathfindingService:CreatePath({ AgentRadius = 1.5, AgentHeight = 5, AgentCanJump = false, WaypointSpacing = 4 })
+			local ok = pcall(function()
+				path:ComputeAsync(from, a.Position + Vector3.new(0, 3, 0))
+			end)
+			expect.truthy(ok and path.Status == Enum.PathStatus.Success, def.id .. " Arrival reachable on foot")
+			local points = path:GetWaypoints()
+			expect.truthy(#points > 0 and flat(points[#points].Position - a.Position).Magnitude < 2.5, def.id .. " path ends at the Arrival")
 		end
 	end)
 
@@ -353,7 +475,7 @@ return function(t)
 			end
 			for _, p in parts do
 				if p.Name ~= "FightOrigin" and p.Transparency < 0.99 then
-					local dist = orientedFlatDistance(p, origin)
+					local dist = shapeFlatDistance(p, origin)
 					if dist < Layout.FLOOR_CLEAR_RADIUS then
 						local top, bottom = topY(p), bottomY(p)
 						local rises = top > origin.Y + 0.3 and bottom < origin.Y + 12
@@ -384,14 +506,14 @@ return function(t)
 	end)
 
 	t.test("nothing taller than a lamp from the lobby stands between a fight camera and its fighters", function()
-		-- lobby and grounds pieces are not faded by the fight camera, so they keep out of the camera orbit (r 36)
+		-- lobby and grounds pieces are not faded by the fight camera, so they keep out of the camera orbit
 		local w = world() :: Instance
 		for _, section in { "Lobby", "Walkways" } do
 			for _, p in (w:FindFirstChild(section) :: Instance):GetDescendants() do
 				if p:IsA("BasePart") and p.Transparency < 0.99 then
 					for _, def in Layout.ARENAS do
 						if topY(p) > def.origin.Y + Layout.OCCLUDER_HEIGHT then
-							expect.truthy(orientedFlatDistance(p, def.origin) >= 36, def.id .. ": lobby piece inside the camera orbit: " .. p:GetFullName())
+							expect.truthy(orientedFlatDistance(p, def.origin) >= Layout.CAMERA_ORBIT, def.id .. ": lobby piece inside the camera orbit: " .. p:GetFullName())
 						end
 					end
 				end
@@ -399,24 +521,114 @@ return function(t)
 		end
 	end)
 
+	t.test("no other arena's pieces rise inside a fight camera's orbit (stages stay apart)", function()
+		-- a fight only fades its own arena's pieces, so the neighbours' barriers, lights and scenery keep their distance
+		local list = {}
+		for _, def in Layout.ARENAS do
+			for _, other in Layout.ARENAS do
+				if other.id ~= def.id then
+					for _, p in (arenaModel(other.id) :: Model):GetDescendants() do
+						if p:IsA("BasePart") and p.Transparency < 0.99 and p.Name ~= "FightOrigin" and topY(p) > def.origin.Y + Layout.OCCLUDER_HEIGHT then
+							local d = shapeFlatDistance(p, def.origin)
+							if d < Layout.NEIGHBOUR_CLEARANCE then
+								table.insert(list, string.format("%s %.1f from %s", p:GetFullName(), d, def.id))
+							end
+						end
+					end
+				end
+			end
+		end
+		expect.equal(#list, 0, "neighbour pieces near a fight: " .. table.concat(list, "; "))
+		-- and the stages themselves stand well apart
+		for i, a in Layout.ARENAS do
+			for j, b in Layout.ARENAS do
+				if j > i then
+					expect.truthy(flat(a.origin - b.origin).Magnitude >= 58, a.id .. " / " .. b.id .. " apart")
+				end
+			end
+		end
+	end)
+
+	t.test("no other arena sits near the middle of a fight camera's frame (real CameraDirector framing)", function()
+		-- for each fight-line orientation: another arena's ring centre (floor and chest height) inside the central 60 %
+		-- of a 16:9 fight frame and within 60 studs of the lens must be hidden behind solid scenery
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { world() :: Instance }
+		local nearest = math.huge
+		local bad = {}
+		for _, def in Layout.ARENAS do
+			for _, theta in { 0, 90, 180, 270 } do
+				local cam, fov = fightCamera(def, theta)
+				for _, other in Layout.ARENAS do
+					if other.id ~= def.id then
+						for _, h in { 0, 3 } do
+							local target = other.origin + Vector3.new(0, h, 0)
+							local v = CameraDirector._normalizedViewportPoint(cam, fov, 16 / 9, target)
+							local range = (target - cam.Position).Magnitude
+							if v and v.X >= 0.2 and v.X <= 0.8 and v.Y >= 0.2 and v.Y <= 0.8 then
+								nearest = math.min(nearest, range)
+								if range <= 60 then
+									local hit = workspace:Raycast(cam.Position, (target - cam.Position) * 0.97, params)
+									if not (hit and hit.Instance.Transparency < 0.5) then
+										table.insert(bad, string.format("%s %d: %s at %.1f studs (%.2f, %.2f)", def.id, theta, other.id, range, v.X, v.Y))
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		local w = world() :: Instance
+		w:SetAttribute("NearestCentralArena", if nearest == math.huge then -1 else math.floor(nearest * 10 + 0.5) / 10)
+		expect.equal(#bad, 0, "other arenas in the fight frame: " .. table.concat(bad, "; "))
+	end)
+
 	for _, def in Layout.ARENAS do
 		t.test("pads of " .. def.id .. " are a short walk from every spawn", function()
 			local model = arenaModel(def.id) :: Model
 			local list = spawns()
 			local worst = 0
+			local mine = {}
 			for _, name in padNames(def) do
 				local pad = model:FindFirstChild(name) :: BasePart
-				for _, k in { 1, math.ceil(#list / 2), #list } do
-					local from = list[k].Position + Vector3.new(0, 3, 0)
-					local d = walkDistance(from, pad.Position + Vector3.new(0, 3, 0))
+				for k, s in list do
+					local d = walkDistance(s.Position + Vector3.new(0, 3, 0), pad.Position + Vector3.new(0, 3, 0))
 					expect.truthy(d, string.format("%s: no walking path from spawn %d to %s", def.id, k, name))
+					walks[walkKey(k, def.id, name)] = d :: number
+					table.insert(mine, d :: number)
 					worst = math.max(worst, d :: number)
-					expect.truthy((d :: number) <= Layout.WALK_BUDGET, string.format("%s: spawn %d -> %s is %.1f studs of path", def.id, k, name, d :: number))
+					expect.truthy((d :: number) <= WALK_WORST, string.format("%s: spawn %d -> %s is %.1f studs of path", def.id, k, name, d :: number))
 				end
 			end
 			model:SetAttribute("WorstWalk", math.floor(worst * 10 + 0.5) / 10)
+			model:SetAttribute("MedianWalk", math.floor(median(mine) * 10 + 0.5) / 10)
 		end)
 	end
+
+	t.test("the median walk from a spawn to a pad is at most 30 studs", function()
+		local all = {}
+		local list = spawns()
+		for _, def in Layout.ARENAS do
+			local model = arenaModel(def.id) :: Model
+			for _, name in padNames(def) do
+				for k, s in list do
+					local key = walkKey(k, def.id, name)
+					if walks[key] == nil then
+						local pad = model:FindFirstChild(name) :: BasePart
+						walks[key] = walkDistance(s.Position + Vector3.new(0, 3, 0), pad.Position + Vector3.new(0, 3, 0)) or math.huge
+					end
+					table.insert(all, walks[key])
+				end
+			end
+		end
+		local m = median(all)
+		local w = world() :: Instance
+		w:SetAttribute("MedianWalk", math.floor(m * 10 + 0.5) / 10)
+		expect.truthy(#all == #list * 10, "every spawn -> pad pair measured")
+		expect.truthy(m <= WALK_MEDIAN, string.format("median walk %.1f studs over %d spawn -> pad pairs", m, #all))
+	end)
 
 	-- soft ground cover (snow drifts, moss, lawns, sand) may wrap round anything standing in it
 	local SOFT = {
@@ -593,6 +805,7 @@ return function(t)
 		local w = world() :: Instance
 		local parts = allParts()
 		expect.truthy(#parts <= Layout.PART_BUDGET, "part count " .. #parts .. " within budget")
+		expect.truthy(#parts <= PART_CEILING, "part count " .. #parts .. " no higher than before the compact layout (" .. PART_CEILING .. ")")
 		for _, p in parts do
 			if not p.Anchored then
 				expect.truthy(false, "unanchored part " .. p:GetFullName())
@@ -705,6 +918,7 @@ return function(t)
 		end
 		expect.falsy(LobbyAmbience.columnVisible("Open", false, 10, 2), "camera next to the pad")
 		expect.truthy(LobbyAmbience.columnVisible("Open", false, 10, 30), "camera high above the pad")
+		expect.falsy(LobbyAmbience.columnVisible("Open", false, 60, 0, true), "every column hides while the local player fights")
 		local columns = 0
 		for _, beam in CollectionService:GetTagged("FightingLabPadColumn") do
 			if beam:IsDescendantOf(world() :: Instance) then

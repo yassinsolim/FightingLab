@@ -1,5 +1,5 @@
 --!strict
--- Arena: Training Bay (west-north-west). An open-air dojo pier on the bay: tatami fight floor with a gold edge
+-- Arena: Training Bay (west). An open-air dojo pier on the bay: tatami fight floor with a gold edge
 -- line inside a lacquered post fence strung with a red cord and a thick straw rope hung with paper streamers,
 -- training dummies and stone lanterns on the deck, cherry trees, and the pagoda-roofed hall over the water behind
 -- (it carries the practice board).
@@ -169,36 +169,55 @@ function Arena.build(def: Layout.ArenaDef): Model
 		emblemTransparency = 0.5,
 		lightInfluence = 1,
 	})
-	-- deck dressing: dummies at the back, stone lanterns by the pads, cherry trees beside the pier
+	-- deck dressing: dummies at the back, stone lanterns at the back corners, cherry trees behind the pier's sides
 	local dressing = Kit.model(model, "Dressing")
 	for _, a in { 146, -146 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 27.6
-		dummy(dressing, Vector3.new(p.X, base, p.Z), -d)
+		local p = def.origin + d * 26.2
+		-- side-on to the ring, so the dummy's arms stay over the apron rim
+		dummy(dressing, Vector3.new(p.X, base, p.Z), Vector3.new(-d.Z, 0, d.X))
 	end
-	for _, a in { 96, -96 } do
+	for _, a in { 116, -116 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 29.4
-		Props.lantern(dressing, Vector3.new(p.X, base, p.Z), C.lantern, M.Granite, Color3.fromRGB(150, 146, 136), 3.4)
+		local p = def.origin + d * 26.1
+		local foot = Vector3.new(p.X, base, p.Z)
+		local lantern = Props.lantern(dressing, foot, C.lantern, M.Granite, Color3.fromRGB(150, 146, 136), 3.4)
+		-- squared to the ring, so its corners stay outside the flat fight floor's radius
+		local turn = CFrame.lookAt(foot, foot - d)
+		for _, part in lantern:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.CFrame = turn * CFrame.new(foot):ToObjectSpace(part.CFrame)
+			end
+		end
 	end
-	for _, a in { 78, -78 } do
+	for _, a in { 112, -112 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (Layout.STAGE_RADIUS + 6)
-		cherry(dressing, Vector3.new(p.X, 0, p.Z), rng:NextNumber(1.05, 1.25), rng)
+		-- a cherry whose crown would spread over the fight floor is regrown (then moved out a little)
+		for k = 0, 5 do
+			local p = def.origin + d * (Layout.STAGE_RADIUS + 5 + (k // 2) * 1.5)
+			local tree = cherry(dressing, Vector3.new(p.X, 0, p.Z), rng:NextNumber(1.05, 1.25), rng)
+			if ArenaKit.clearOfFightFloor(def, tree) then
+				break
+			end
+			tree:Destroy()
+		end
 	end
 	local lights = Kit.model(model, "StageLights")
 	for _, a in { 126, 158, -158, -126 } do
 		ArenaKit.stageLight(lights, def, a, Color3.fromRGB(255, 226, 180), 11, 1, C.post, Color3.fromRGB(40, 30, 26))
 	end
-	-- lantern strings across the back of the deck
+	-- lantern strings along the two back corners of the deck, hung from brackets just outside the light poles (so they
+	-- stay clear of the flat fight floor)
 	local tops: { Vector3 } = {}
 	for _, a in { 126, 158, -158, -126 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (Layout.STAGE_RADIUS - 1.6)
+		local p = def.origin + d * (Layout.STAGE_RADIUS + 0.2)
+		local pole = def.origin + d * (Layout.STAGE_RADIUS - 0.8)
 		table.insert(tops, Vector3.new(p.X, base + 10.4, p.Z))
+		Kit.rod(dressing, Vector3.new(pole.X, base + 10.4, pole.Z), Vector3.new(p.X, base + 10.4, p.Z), 0.14, M.Wood, C.post, { Name = "LanternBracket", CanCollide = false })
 	end
-	for i = 1, #tops - 1 do
-		Props.stringLights(dressing, tops[i], tops[i + 1], 6, C.lantern, 1.4, 3)
+	for _, pair in { { 1, 2 }, { 3, 4 } } do
+		Props.stringLights(dressing, tops[pair[1]], tops[pair[2]], 6, C.lantern, 1.4, 3)
 	end
 	hall(model, def, rng)
 	-- the practice board stands on a timber frame above the hall's front roof, like a dojo name board

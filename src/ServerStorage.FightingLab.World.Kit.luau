@@ -206,6 +206,110 @@ function Kit.tag(inst: Instance, tag: string)
 	CollectionService:AddTag(inst, tag)
 end
 
+-- Thin walk-on plates (spawn plates, pads, name mats, ground discs) stay solid for players, but PathfindingService
+-- would treat their few-hundredths-of-a-stud ledges as walls and route round them: a PassThrough modifier keeps them
+-- out of the navigation mesh, so computed paths cross them in a straight line exactly as a player walks.
+
+function Kit.passThrough(part: BasePart)
+	local modifier = Instance.new("PathfindingModifier")
+	modifier.Name = "WalkOver"
+	modifier.PassThrough = true
+	modifier.Parent = part
+end
+
+-- Marks every thin walk-on layer of a section (collidable, at most 1 stud thick, top at most `maxTop` above the
+-- district floor) walk-over: the paving rings, waylines, promenade, kerb, lawns and sand beds all lie on the district
+-- floor slab, which carries the navigation mesh by itself.
+function Kit.walkOverThin(root: Instance, maxTop: number): number
+	local count = 0
+	for _, d in root:GetDescendants() do
+		if d:IsA("BasePart") and d.CanCollide and not d:FindFirstChild("WalkOver") then
+			local cf, s = d.CFrame, d.Size / 2
+			local ey = math.abs(cf.RightVector.Y) * s.X + math.abs(cf.UpVector.Y) * s.Y + math.abs(cf.LookVector.Y) * s.Z
+			if ey <= 0.5 and cf.Y + ey <= maxTop then
+				Kit.passThrough(d)
+				count += 1
+			end
+		end
+	end
+	return count
+end
+
+-- Clash checks for scenery built unparented (spatial queries cannot see it yet): wooden trunks, boughs and crowns
+-- as capsules (cylinders along their axis, balls as points, anything else along its longest side).
+local function capsule(p: BasePart): (Vector3, Vector3, number)
+	local s, cf = p.Size, p.CFrame
+	if p:IsA("Part") and p.Shape == Enum.PartType.Ball then
+		return cf.Position, cf.Position, s.X / 2
+	elseif p:IsA("Part") and p.Shape == Enum.PartType.Cylinder then
+		local half = cf.RightVector * (s.X / 2)
+		return cf.Position - half, cf.Position + half, math.max(s.Y, s.Z) / 2
+	end
+	local axis, len, a, b = cf.RightVector, s.X, s.Y, s.Z
+	if s.Y > len then
+		axis, len, a, b = cf.UpVector, s.Y, s.X, s.Z
+	end
+	if s.Z > len then
+		axis, len, a, b = cf.LookVector, s.Z, s.X, s.Y
+	end
+	local half = axis * (len / 2)
+	return cf.Position - half, cf.Position + half, math.sqrt(a * a + b * b) / 2
+end
+
+-- Closest distance between segments p1-q1 and p2-q2.
+local function segmentGap(p1: Vector3, q1: Vector3, p2: Vector3, q2: Vector3): number
+	local d1, d2, r = q1 - p1, q2 - p2, p1 - p2
+	local a, e, f = d1:Dot(d1), d2:Dot(d2), d2:Dot(r)
+	local s, t = 0, 0
+	if a <= 1e-9 and e <= 1e-9 then
+		return r.Magnitude
+	elseif a <= 1e-9 then
+		t = math.clamp(f / e, 0, 1)
+	else
+		local c = d1:Dot(r)
+		if e <= 1e-9 then
+			s = math.clamp(-c / a, 0, 1)
+		else
+			local b = d1:Dot(d2)
+			local denom = a * e - b * b
+			s = if denom > 1e-9 then math.clamp((b * f - c * e) / denom, 0, 1) else 0
+			t = (b * s + f) / e
+			if t < 0 then
+				t, s = 0, math.clamp(-c / a, 0, 1)
+			elseif t > 1 then
+				t, s = 1, math.clamp((b - c) / a, 0, 1)
+			end
+		end
+	end
+	return ((p1 + d1 * s) - (p2 + d2 * t)).Magnitude
+end
+
+-- The wooden parts of a tree/palm model (what World_Test checks for clashes).
+function Kit.woodParts(root: Instance, into: { BasePart }?): { BasePart }
+	local list = into or {}
+	for _, d in root:GetDescendants() do
+		if d:IsA("BasePart") and d.Material == Enum.Material.Wood and d.CanQuery then
+			table.insert(list, d)
+		end
+	end
+	return list
+end
+
+-- Whether any wooden part of `root` touches (with `margin`) one of `others`.
+function Kit.woodClashes(root: Instance, others: { BasePart }, margin: number?): boolean
+	local pad = margin or 0.3
+	for _, w in Kit.woodParts(root) do
+		local a1, b1, r1 = capsule(w)
+		for _, o in others do
+			local a2, b2, r2 = capsule(o)
+			if segmentGap(a1, b1, a2, b2) < r1 + r2 + pad then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- Lights ---------------------------------------------------------------------------------------------------------
 
 function Kit.point(parent: Instance, color: Color3, brightness: number, range: number, shadows: boolean?): PointLight

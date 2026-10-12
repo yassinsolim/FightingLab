@@ -1,5 +1,5 @@
 --!strict
--- Arena: Jungle Ruins (south-south-west). An overgrown temple platform: sandstone fight floor with a carved sun,
+-- Arena: Jungle Ruins (south-west). An overgrown temple platform: sandstone fight floor with a carved sun,
 -- a green glyph edge line inside carved stone posts strung with vine ropes, braziers at the back, broken pillars,
 -- giant trees and a stepped pyramid rising out of the jungle behind.
 local Kit = require(script.Parent.Parent.Kit)
@@ -71,9 +71,11 @@ local function temple(model: Model, def: Layout.ArenaDef, rng: Random)
 		local q = def.origin + d * (R + 0.8)
 		Props.bush(ruins, Vector3.new(q.X, 0.6, q.Z), Vector3.new(rng:NextNumber(2.6, 4), rng:NextNumber(1.6, 2.4), rng:NextNumber(2.6, 4)), C.mossDark, rng)
 	end
-	-- jungle floor round the temple: centred behind the stage so it stops short of the plaza kerb (r 31.4) and of
-	-- the Summit's snow field (two coplanar ground discs would z-fight where they overlap)
-	Kit.cylinder(ruins, Vector3.new(def.origin.X, -0.2, def.origin.Z) - def.inward * Layout.GROUND_SHIFT, 0.44, (R + Layout.GROUND_MARGIN) * 2, M.LeafyGrass, Color3.fromRGB(84, 116, 58), { Name = "JungleFloor", CastShadow = false })
+	-- jungle floor round the temple: centred behind the stage (Layout.GROUND_SHIFT) so it stops short of the plaza kerb
+	-- and of the Summit's snow field (two coplanar ground discs would z-fight where they overlap); PathfindingService
+	-- would treat its hair-thin rim as a ledge and pinch the walkways between the stages, so it is marked walk-over
+	local floor = Kit.cylinder(ruins, Vector3.new(def.origin.X, -0.2, def.origin.Z) - def.inward * Layout.GROUND_SHIFT, 0.44, (R + Layout.GROUND_MARGIN) * 2, M.LeafyGrass, Color3.fromRGB(84, 116, 58), { Name = "JungleFloor", CastShadow = false })
+	Kit.passThrough(floor)
 	-- broken pillars round the back (tall ones fade for the fight camera)
 	for i, a in { 112, 138, 164, -166, -140, -114 } do
 		local d = Layout.around(def, a)
@@ -104,7 +106,9 @@ local function temple(model: Model, def: Layout.ArenaDef, rng: Random)
 	end
 	-- giant trees framing the temple
 	local trees = Kit.model(model, "Canopy")
-	-- giant trees round the back of the temple (kept off the side that faces the Summit's fight)
+	-- giant trees round the back of the temple; a tree that would crowd a neighbouring fight's camera or lock boughs
+	-- with a tree already standing tries further out, else is left out
+	local wood: { BasePart } = {}
 	for i = 1, 16 do
 		local a = 96 + (i - 1) * (168 / 15) + rng:NextNumber(-4, 4)
 		local d = Layout.around(def, a)
@@ -113,13 +117,15 @@ local function temple(model: Model, def: Layout.ArenaDef, rng: Random)
 			local p = def.origin + d * (reach + extra)
 			local foot = Vector3.new(p.X, 0, p.Z)
 			if Kit.clearSpot(foot, 2.6) then
-				Kit.keepOut(foot, 2.6)
-				if i % 3 == 0 then
-					Props.palm(trees, foot, rng:NextNumber(1.2, 1.5), rng)
-				else
-					Props.tree(trees, foot, rng:NextNumber(1.6, 2.1), rng, C.leaf)
+				local tree = if i % 3 == 0
+					then Props.palm(trees, foot, rng:NextNumber(1.2, 1.5), rng)
+					else Props.tree(trees, foot, rng:NextNumber(1.6, 2.1), rng, C.leaf)
+				if ArenaKit.clearOfNeighbours(def, tree) and not Kit.woodClashes(tree, wood) then
+					Kit.keepOut(foot, 2.6)
+					Kit.woodParts(tree, wood)
+					break
 				end
-				break
+				tree:Destroy()
 			end
 		end
 		Kit.step()
@@ -127,7 +133,8 @@ local function temple(model: Model, def: Layout.ArenaDef, rng: Random)
 end
 
 local function pyramidCentre(def: Layout.ArenaDef): Vector3
-	local c = def.origin + Vector3.new(-30, 0, 74)
+	-- out behind the temple platform, a little to the left of the status board (77.5 out, 19.2 to the left)
+	local c = def.origin - def.inward * 77.5 - def.right * 19.2
 	return Vector3.new(c.X, -2, c.Z)
 end
 
@@ -246,7 +253,7 @@ function Arena.build(def: Layout.ArenaDef): Model
 	local fires = Kit.model(model, "Braziers")
 	for _, a in { 118, 150, -150, -118 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (Layout.STAGE_RADIUS - 1.6)
+		local p = def.origin + d * (Layout.STAGE_RADIUS - 0.8)
 		brazier(fires, Vector3.new(p.X, def.floorY - Layout.APRON_DROP, p.Z))
 	end
 	pyramid(model, def)

@@ -1,8 +1,9 @@
 --!strict
 -- World.Walkways (OV6: the district grounds). The walkable district floor round the plaza (a 6-stud slab, top Y = 0,
 -- radius 100, so no terrain can show through), its edge (a stone balustrade on the land sides, a quay with bollards
--- and a rail over the water), and the pockets between the stages, each a small destination with a view:
--- night market (NE), sea lookout (ESE), welcome wall (S), beach garden (WSW) and lantern garden (NW).
+-- and a rail over the water), and the pockets round the stages, each a small destination with a view: the night
+-- market on the canal quay at the plaza head (NE), the lantern garden (SE), the welcome wall (S), the beach garden
+-- (WSW) and the sea lookout (NW).
 local Kit = require(script.Parent.Kit)
 local Props = require(script.Parent.Props)
 local Layout = require(script.Parent.Layout)
@@ -26,13 +27,15 @@ local C = {
 	ember = Color3.fromRGB(255, 96, 24),
 }
 
--- Gap bearings between neighbouring stages, and whether that edge faces open water.
+-- Pockets round the district: the plaza head's far end on the canal quay (the open side of the stage horseshoe) and the
+-- gaps between neighbouring stages (Layout: plaza head 38, stages at 106 / 162 / 218 / 274 / 330), and whether that
+-- edge faces open water. In the gaps, anything that rises stays out at r >= 88, outside the fight cameras' orbits.
 Walkways.GAPS = {
-	{ bearing = 36, water = false, kind = "Market" },
-	{ bearing = 108, water = true, kind = "Lookout" },
-	{ bearing = 180, water = false, kind = "Welcome" },
-	{ bearing = 252, water = true, kind = "Beach" },
-	{ bearing = 324, water = false, kind = "Garden" },
+	{ bearing = 38, water = true, kind = "Market" },
+	{ bearing = 134, water = false, kind = "Garden" },
+	{ bearing = 190, water = false, kind = "Welcome" },
+	{ bearing = 246, water = true, kind = "Beach" },
+	{ bearing = 302, water = true, kind = "Lookout" },
 }
 
 -- Angular half-width (degrees) a stage podium (or a circle of `radius` round its FightOrigin) occupies on the circle
@@ -63,8 +66,8 @@ end
 local function floor(m: Model)
 	local R = Layout.DISTRICT_RADIUS
 	Kit.cylinder(m, Vector3.new(0, -3, 0), 6, R * 2, M.Pavement, C.floor, { Name = "DistrictFloor" })
-	-- a granite kerb ring where the decorated plaza (Lobby, r 30) meets the outer floor
-	Kit.cylinder(m, Vector3.new(0, -0.285, 0), 0.6, 31.4 * 2, M.Granite, C.granite, { Name = "PlazaKerb", CastShadow = false })
+	-- a granite kerb ring where the decorated plaza (Lobby, r 33.4) meets the outer floor
+	Kit.cylinder(m, Vector3.new(0, -0.285, 0), 0.6, (Layout.PLAZA_RADIUS + 0.8) * 2, M.Granite, C.granite, { Name = "PlazaKerb", CastShadow = false })
 end
 
 local function balustrade(m: Model, from: number, to: number, water: boolean)
@@ -208,8 +211,8 @@ local function lookout(m: Model, g: number)
 		Kit.cylinder(lk, pos + Vector3.new(0, 1.2, 0), 2.4, 0.4, M.Metal, C.iron, { Name = "ScopePost" })
 		Kit.block(lk, cf * CFrame.new(0, 2.7, 0) * CFrame.Angles(math.rad(8), 0, 0), Vector3.new(1, 1, 2.2), M.Metal, Color3.fromRGB(40, 110, 160), { Name = "Telescope", CanCollide = false })
 	end
-	for _, off in { -8, 0, 8 } do
-		local pos = polar(g + off, 90)
+	for _, off in { -6, 0, 6 } do
+		local pos = polar(g + off, 91)
 		Props.bench(lk, Kit.facing(pos, pos.Unit))
 		Kit.keepOut(pos, 3)
 	end
@@ -222,24 +225,24 @@ end
 -- "EMBER SQUARE / FIGHT DISTRICT" wall facing the plaza (behind the spawn court: the photo spot when you turn round).
 local function welcome(m: Model, g: number, rng: Random)
 	local s = Kit.model(m, "WelcomeSign")
-	local pos = polar(g, 88)
+	local pos = polar(g, 92)
 	local cf = Kit.facing(pos, -pos.Unit)
-	for sx = -16, 16, 4 do
+	for sx = -12, 12, 4 do
 		Kit.keepOut((cf * CFrame.new(sx, 0, 0)).Position, 3.2)
 	end
-	for _, sx in { -20.5, 20.5 } do
+	for _, sx in { -15.5, 15.5 } do
 		Kit.keepOut((cf * CFrame.new(sx, 0, 0)).Position, 3)
 	end
 	-- and nothing grows in front of it: the wall is seen from the plaza down the walkway between the two stages
-	for sx = -16, 16, 8 do
+	for sx = -12, 12, 8 do
 		for _, sz in { -6, -12, -18 } do
 			Kit.keepOut((cf * CFrame.new(sx, 0, sz)).Position, 4.5)
 		end
 	end
-	Kit.block(s, cf * CFrame.new(0, 0.5, 0), Vector3.new(36, 1, 5), M.Granite, C.granite, { Name = "Plinth" })
-	local wall = Kit.block(s, cf * CFrame.new(0, 4.4, 0.6), Vector3.new(32, 6.8, 2.2), M.Limestone, C.stone, { Name = "NameWall" })
-	Kit.deco(s, cf * CFrame.new(0, 7.95, 0.6), Vector3.new(32.6, 0.3, 2.6), M.Metal, C.bronze, { Name = "Cap" })
-	Kit.glow(s, cf * CFrame.new(0, 1.2, -0.55), Vector3.new(31, 0.14, 0.1), C.ember, { Name = "Trim" })
+	Kit.block(s, cf * CFrame.new(0, 0.5, 0), Vector3.new(30, 1, 5), M.Granite, C.granite, { Name = "Plinth" })
+	local wall = Kit.block(s, cf * CFrame.new(0, 4.4, 0.6), Vector3.new(26, 6.8, 2.2), M.Limestone, C.stone, { Name = "NameWall" })
+	Kit.deco(s, cf * CFrame.new(0, 7.95, 0.6), Vector3.new(26.6, 0.3, 2.6), M.Metal, C.bronze, { Name = "Cap" })
+	Kit.glow(s, cf * CFrame.new(0, 1.2, -0.55), Vector3.new(25, 0.14, 0.1), C.ember, { Name = "Trim" })
 	Kit.label(wall, Enum.NormalId.Front, "EMBER SQUARE", {
 		font = Enum.Font.GothamBlack,
 		color = Color3.fromRGB(70, 46, 30),
@@ -249,15 +252,15 @@ local function welcome(m: Model, g: number, rng: Random)
 		brightness = 1,
 		name = "NameText",
 	})
-	local sub = Kit.deco(s, cf * CFrame.new(0, 9.1, 0.6), Vector3.new(20, 1.8, 0.4), M.Metal, Color3.fromRGB(40, 34, 30), { Name = "SubPlate" })
+	local sub = Kit.deco(s, cf * CFrame.new(0, 9.1, 0.6), Vector3.new(18, 1.8, 0.4), M.Metal, Color3.fromRGB(40, 34, 30), { Name = "SubPlate" })
 	Kit.label(sub, Enum.NormalId.Front, "FIGHTINGLAB  FIGHT DISTRICT", { font = Enum.Font.GothamBold, color = Color3.fromRGB(255, 214, 150), pps = 30, padding = 0.12, brightness = 1.4 })
-	for _, sx in { -14, 0, 14 } do
+	for _, sx in { -11, 0, 11 } do
 		local cup = Kit.deco(s, cf * CFrame.new(sx, 1.2, -2.4) * CFrame.Angles(math.rad(115), 0, 0), Vector3.new(0.8, 0.8, 0.5), M.Metal, C.iron, { Name = "Uplight" })
 		Kit.spot(cup, Enum.NormalId.Front, Color3.fromRGB(255, 220, 180), 1.6, 16, 60, false)
 	end
-	Props.flowers(s, (cf * CFrame.new(-10, 1, -2)).Position, 3, 12, rng)
-	Props.flowers(s, (cf * CFrame.new(10, 1, -2)).Position, 3, 12, rng)
-	for _, sx in { -20.5, 20.5 } do
+	Props.flowers(s, (cf * CFrame.new(-8, 1, -2)).Position, 3, 12, rng)
+	Props.flowers(s, (cf * CFrame.new(8, 1, -2)).Position, 3, 12, rng)
+	for _, sx in { -15.5, 15.5 } do
 		Props.planter(s, cf * CFrame.new(sx, 0, 0), Vector3.new(4, 1.2, 4), M.Brick, Color3.fromRGB(176, 104, 76), rng, false)
 	end
 end
@@ -270,9 +273,9 @@ local function beach(m: Model, g: number, rng: Random)
 	-- top 0.045: clear of the district floor (0) and of the jungle floor (0.02) that reaches close by
 	Kit.cylinder(bg, c + Vector3.new(0, -0.175, 0), 0.44, 24, M.Sand, C.sand, { Name = "SandBed", CastShadow = false })
 	Kit.keepOut(c, 12.5)
-	for i, pb in { { g - 6, 93 }, { g + 6, 94 }, { g - 1, 96.5 } } do
+	for i, pb in { { g - 2.6, 96 }, { g + 2.6, 96.4 } } do
 		local p = polar(pb[1], pb[2])
-		Props.palm(bg, Vector3.new(p.X, 0, p.Z), 0.95 + i * 0.07, rng)
+		Props.palm(bg, Vector3.new(p.X, 0, p.Z), 0.92 + i * 0.05, rng)
 		Kit.keepOut(p, 2)
 	end
 	local out = c.Unit
@@ -290,12 +293,14 @@ local function beach(m: Model, g: number, rng: Random)
 	Kit.cylinder(bg, Vector3.new(up.X, 6.9, up.Z), 0.4, 6.4, M.Fabric, Color3.fromRGB(40, 150, 170), { Name = "Umbrella", CanCollide = false })
 end
 
--- Cherry trees, stone lanterns, a koi pond with stepping stones and a bench.
+-- Cherry trees, stone lanterns, a koi pond with stepping stones and a bench (everything that rises stands on the
+-- outer half of the lawn, outside the neighbouring fights' camera orbits).
 local function garden(m: Model, g: number, rng: Random)
 	local gd = Kit.model(m, "LanternGarden")
-	local c = polar(g, 82)
+	local c = polar(g, 86)
 	Kit.keepOut(c, 13)
-	Kit.cylinder(gd, c + Vector3.new(0, -0.2, 0), 0.44, 24, M.Grass, Color3.fromRGB(92, 132, 64), { Name = "Lawn", CastShadow = false })
+	-- lawn top 0.035: clear of the district floor (0), the kerb (0.015) and the Summit's snow field (0.02) close by
+	Kit.cylinder(gd, c + Vector3.new(0, -0.185, 0), 0.44, 24, M.Grass, Color3.fromRGB(92, 132, 64), { Name = "Lawn", CastShadow = false })
 	Kit.cylinder(gd, c + Vector3.new(0, -0.1, 0), 0.3, 11, M.Slate, Color3.fromRGB(56, 74, 80), { Name = "PondBed", CastShadow = false })
 	Kit.cylinder(gd, c + Vector3.new(0, 0.12, 0), 0.06, 10, M.Glass, Color3.fromRGB(70, 150, 170), { Name = "PondWater", Transparency = 0.35, CanCollide = false, CastShadow = false })
 	for k = 1, 5 do
@@ -306,14 +311,14 @@ local function garden(m: Model, g: number, rng: Random)
 	local out = c.Unit
 	local side = Vector3.new(-out.Z, 0, out.X)
 	for _, s in { -1, 1 } do
-		local p = c + side * s * 9 + out * 2
+		local p = c + side * s * 7.5 + out * 8.5
 		local blossom = { Color3.fromRGB(250, 186, 206), Color3.fromRGB(244, 160, 190), Color3.fromRGB(255, 210, 222) }
 		Props.tree(gd, Vector3.new(p.X, 0, p.Z), rng:NextNumber(1, 1.2), rng, blossom)
-		local q = c + side * s * 5 - out * 7
+		local q = c + side * s * 3.5 + out * 8
 		Props.lantern(gd, Vector3.new(q.X, 0, q.Z), Color3.fromRGB(255, 196, 120), M.Granite, Color3.fromRGB(150, 146, 136), 3.6)
 	end
-	local bp = c - out * 10
-	Props.bench(gd, Kit.facing(Vector3.new(bp.X, 0, bp.Z), out))
+	local bp = c + out * 10.2
+	Props.bench(gd, Kit.facing(Vector3.new(bp.X, 0, bp.Z), -out))
 end
 
 function Walkways.build(parent: Instance?): Model
