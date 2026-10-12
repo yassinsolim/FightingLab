@@ -1,5 +1,147 @@
 # Characters (OV6) — handoff
 
+## Round 4 (scaling audit): every fighter in real adult proportion
+
+The user asked for a full scaling audit ("each fighter looks right in every scale"): Kael's and Sierra's massive gloves,
+Rhys's head reading too big, Goran's box-like lifting belt, and anything else the measurements flag. Every fighter was
+measured on the fight templates and the lobby avatars (identical numbers), fixed, and is now bounded by
+`CharacterLook_Test`. RootHeight and hip height are unchanged to the millimetre for all six; arm lengths moved -1.3% to
++1.5%.
+
+**Method.** All numbers come from precise-collision copies of the meshes (`AssetService:CreateMeshPartAsync`,
+`PreciseConvexDecomposition`) on a Workspace clone of the neutral template, sampled with rays: head width = widest
+front-view row of the bare head (ears included), head depth = widest side-view row; hair = head + hair/hat silhouette;
+shoulders = deltoid to deltoid on the bare body (upper torso + upper arms, widest front-view row from 0.07 x stature
+below the shoulder joints to 0.02 x stature above; the arms hang slightly abducted, so the band's lower edge is the
+widest row for everyone); neck = narrowest front-view row between the head box bottom - 0.15 and the jaw; hand length =
+wrist joint to the farthest point of the hand mesh (the relaxed curl makes the box length unreliable), hand width =
+widest row across the palm incl. the thumb (hand frame). Rigid gear is measured the same way through its weld; layered
+items (they wrap the body cage on the client only) were measured as rendered (front and side chroma silhouettes vs the
+precise bare body; on the rigid gloves, measured both ways, the renders read 2-4% larger than the precise hulls) and
+are bounded by those renders in the test, per fit (body scales and hand scale). The CharacterLook_Test helpers produce every number in the tables
+(`OV6\work\r4-characters\data\report-main.txt` / `report-final.txt`).
+
+| Fighter | Heads tall | Head W / D (studs) | Hair / head W | Shoulders / head W | Neck / head W | Hand length, width / stature (visible hands) | Arms L / R (shoulder-elbow-wrist) |
+|---|---|---|---|---|---|---|---|
+| Kael | 7.03 -> 7.03 | .572 / .639 | 1.00 | **3.38 -> 3.24** | .56 | gloved (bare hand inside .111-.114, .065) | 1.704 / 1.669 -> 1.701 / 1.666 |
+| Sierra | 7.01 -> **7.10** | .554 / .555 -> .547 / .547 | 1.00 | **2.19 -> 2.45** | .43 (head-mesh neck) | gloved (.098-.101, .054) | 1.643 / 1.647 -> 1.652 / 1.659 |
+| Goran | 7.07 -> 7.07 | .666 / .691 | shaved | **4.31 -> 3.50** | .61 -> .60 | **.093 -> .103, .081 -> .054** | 1.901 / 1.926 -> 1.876 / 1.901 |
+| Lumi | 7.25 -> 7.32 | .601 / .634 -> .595 / .626 | **1.64 -> 1.36** | **2.12 -> 2.43** | **.43 -> .48** | .109, .047 | 1.574 / 1.582 -> 1.597 / 1.605 |
+| Rhys | **7.07 -> 7.25** | **.516 / .562 -> .502 / .547** | 1.04 | **3.18 -> 3.29** | .54 | .105, **.061 -> .054** | 1.697 / 1.677 -> 1.698 / 1.677 |
+| Nia | **6.99 -> 7.07** | .518 / .479 -> .511 / .473 | **1.31 -> 1.23** | **2.24 -> 2.53** | .45 (.448, head-mesh neck) | **.091 -> .102**, .052 | 1.431 / 1.451 -> 1.450 / 1.470 |
+
+Targets: 7.0-7.4 heads; shoulders men 2.8-3.3 head widths (Goran 3.6), women 2.4-2.9; neck >= 0.45 head widths (men
+0.5); hands 0.10-0.115 x stature long, <= 0.055 wide; hair <= 1.3 head widths (curly 1.4). Statures: Kael 5.947,
+Sierra 5.848 -> 5.837, Goran 6.753, Lumi 5.910 -> 5.901, Rhys 5.915 -> 5.893, Nia 5.503 -> 5.494. RootHeight / hip joint
+height: Kael 4.113 / 3.215, Sierra 4.059 / 3.161, Goran 4.095 / 3.245, Lumi 4.111 / 3.292, Rhys 4.100 / 3.155,
+Nia 3.933 / 3.073, all unchanged.
+
+Justified outliers: Sierra's and Nia's necks (0.428 and 0.448 head widths) are the slender necks of their head meshes:
+the narrowest point lies on the head mesh, which scales uniformly, so no scale changes the ratio (bounded at 0.42 and
+0.44). Rhys is held at the top of the men's shoulder band (3.25-3.30) and >= 7.2 heads: the band caps how much broader
+his frame may get, so the rest of the fix is a smaller head (0.72 -> 0.70) and slimmer hands; his bun stays (every
+slimmer bun or topknot left scalp gaps or a hole at the back).
+
+**Gloves.** Kael's and Sierra's layered both-gloves item (Deki's UGC) wrapped the large hand cage: Kael's rendered 1.44
+head widths wide and 1.29 head depths deep and sat inside his head from the first guard frame on. Both now wear VochtigDoekje's
+single gloves as rigid gear (`role = "glove"`, the mesh de-tilted and turned palm-in, uniform scale, tinted; the hand is
+hidden inside). The glove is seated like a real one on a closed fist: its fist end lies past the knuckles by the padding
+(Kael's heavy gloves 0.82 hand lengths from the wrist joint, Sierra's lighter ones 0.71; seated on the open fingertips,
+1.03, the gloves stood 0.2-0.3 studs above the eye line in guard) and the cuff wraps the wrist 0.55-0.62 hand lengths up
+the forearm.
+
+| | Length / stature | Width / head W | Depth / head D | Fist end, cuff (hand lengths from the wrist) | Glove inside the head (guard, jab + cross to full extension, 6 hit reactions; 195 frames) | Eyes hidden in guard (fight camera, both sides) |
+|---|---|---|---|---|---|---|
+| Kael | .165 -> .155 | **1.44 -> .95** | **1.29 -> .84** | 1.14, .36 -> .82, .55 | **209 of 390 glove-frames -> 0** | 0 of 45 eye sightings -> 0 of 45 |
+| Sierra | .146 -> .134 | .93 -> .84 | .75 -> .83 | 1.06, .37 -> .71, .60 | **5 (jab/cross extension) -> 0** | **45 of 90 -> 0 of 90** |
+
+**Gear.** Goran's lifting belt was a 0.62-stud box (0.092 x stature tall): refit lower and slimmer on the shorts'
+waistband, 0.32 tall (0.047), 0.17 proud (0.026). His tactical knee pads stood 0.355 off the knee (0.053; every catalog
+pad measured 0.31-0.37), so they are gone; they had been hiding the body bundle's open knee joint (the upper-leg mesh
+ends above the lower-leg mesh at the front of the knee, at any scale), so he now wears plain black compression tights
+under the shorts (layered, flush; grappler spats). Nia's rigid pirate sash was a box at the hip (band 0.094 x stature,
+0.063 proud) -> GAULTIER's layered purple waist wrap: band 0.085 (a draped sash; real sashes are 10-15 cm, 0.09 bound),
+band 0.029 proud, tails hanging 0.29 off the hip. Sweatbands 0.095 -> 0.084 (0.012), Lumi's sleeves 0.094 (0.016),
+Rhys's wraps 0.058 (0.010).
+
+**Changes per fighter** (`characters/<Id>.json`; `tools\build-data.ps1` regenerated `CharacterSpecs`, `CREDITS.md`
+and the Credits module):
+
+- Kael: Width .96 -> .92; layered Boxing Gloves (Deki's UGC, 101503419947939) -> rigid Boxing Glove Left/Right White
+  (VochtigDoekje, 14775131832 / 14775127400), scale .845, tinted burnt orange.
+- Sierra: Width .76 -> .84, Head .72 -> .71; layered Boxing Gloves (Deki's UGC, 81319860328594) -> the same rigid
+  VochtigDoekje gloves, scale .72, tinted brown. (Width .85 put her teep kick's released planted foot on a 0.22-stud
+  one-frame snap at max range in MotionGround_Test, limit 0.2; at .76-.84 the worst released-foot jump over all kicks
+  is .10-.17.)
+- Goran: Width 1.12 -> .91, Depth 1.12 -> .98; knee pads ((3.0) Black Tactical Knee Pads, SonokoToume) removed; black
+  leggings (WhoseTouz, 15824475572) as compression tights; belt fit [1.15, .297, 1.25] offset [0, .04, .01]; boot fit
+  Z 1.06 (keeps the boots 0.16 x stature long); handScale [.88, 1.18, .76] (his January Model Man hands were short mitts).
+- Lumi: Width .74 -> .84, Head .88 -> .87; curly hair Scale [.75, .78, .78] Position y +.015 (still 100% scalp).
+- Rhys: Head .72 -> .70, Width .86 -> .865; handScale [1, 1, .88].
+- Nia: Width .80 -> .89, Head .75 -> .74; bob Scale [.87, .90, .88]; Purple Pirate's Waist Sash (Рort Royal,
+  15502016508) -> Elegant Waist Wrap Drape (Purple) (GAULTIER, 93954966441244); handScale [1, 1.13, 1].
+
+**Factory.** NEW `Spec.handScale = {x, y, z}`: scales both hand parts and their attachments about the hand centre after
+the avatar is built, re-sets the wrist Motor6D from the scaled wrist attachment (the wrist joint stays put; arm length
+unchanged) and scales the Humanoid's OriginalSize / OriginalPosition values so Humanoid rescaling keeps it. Idempotent
+(`FightingLabHandScale` attribute): re-applying is a no-op, re-dressing a live character as another fighter undoes the
+previous factor; part of the dress signature.
+
+**Tests** (`CharacterLook_Test`, 21 -> 38; all fail on `main` where it had the defect: 14 failures, listed with
+numbers in `OV6\work\r4-characters\data\test-r4-main.txt`):
+
+- heads tall bound tightened 6.8-7.6 -> 7.0-7.4 (Nia 6.99 failed on main).
+- per fighter "is in real adult proportion": heads (Rhys >= 7.2), shoulder band, neck, hair silhouette, visible hands.
+- "motion-relevant lengths hold": RootHeight and hip height within 1%, arm length within 3% of round 3.
+- per gloved fighter "boxing gloves are sized like real gloves and cover the hands": rigid gloves exact (precise mesh
+  through the weld), layered gloves only through a measured render; length <= .18 x stature, width <= 1.1 head widths,
+  depth <= .9 head depths, fist end .65-.9 hand lengths from the wrist, cuff >= .4, closed glove hides the open hand.
+- per gloved fighter "gloves never clip into the head and leave the eyes visible in guard": the template posed with the
+  real MotionPlayer (guard cycle, jab and cross to their first active frame, High/Mid/Low x Light/Heavy hit reactions);
+  glove copies shrunk 8% about their centre (a glove resting on a cheek is contact, not clipping) must not overlap the
+  head; in guard, from CameraDirector's fight plan on either side of the fight line, no glove may hide an eye that the
+  camera sees in front of the profile line (<= 90 degrees off the face) past the head and hair.
+- per fighter "gear sits close to the body": protrusion <= .04 x stature, belts <= .06 x stature tall, sash bands
+  <= .09 (rigid gear measured, layered gear through renders per fit).
+- `dressCharacter` idempotency now covers the hand scale (applied once, kept, undone on re-dress, restored).
+
+Full suite on the branch (my Studio, Play, server): `[SUMMARY] 387 run, 387 passed, 0 failed` (main: 370).
+
+**Evidence** (`OV6\handoff\characters-shots\round4\`): `lineup-front-before-vs-after.jpg` (head-width and
+shoulder-width bars, per-fighter labels), `lineup-side-before-vs-after.jpg`, `fightcam-actions-before.jpg` /
+`fightcam-actions-after.jpg` (close-up fight camera: guard, jab at full extension, kick at contact, hit reaction, all
+six), `fightcam-actions-after-wide.jpg` (FOV 36 as played), `fightcam-gloves-opponent-side-after.jpg`,
+`fighter-select-before-vs-after.jpg`, `lobby-front34-before-vs-after.jpg`, `lobby-back34-before-vs-after.jpg`.
+
+**Known issues (round 4).**
+
+- Guard glove tops sit 0.10-0.18 studs above the eye centre for Kael (brow level) and -0.06..+0.08 for Sierra. From
+  the player's own fight camera Kael's face is turned just behind the profile line (92-95 degrees off the face) and his
+  rear glove covers the cheek and the profile there (0.02-0.08 studs lower would clear it); the eyes read from the
+  opponent's side (74-79 degrees, never covered). Sierra's eyes stay clear from both sides.
+- The VochtigDoekje glove mesh is stubbier than a real glove (length 1.7 x its width; real 2.3): a real-length glove
+  would be wider than the head, so the gloves are a little short (.134-.155 x stature, real about .17).
+- Goran's tights change his round-3 look (bare legs + knee pads); no thin catalog knee sleeve exists (the only one is a
+  left-knee item modelled bent, which does not fit as rigid gear).
+- Rhys's gi is bulky by design (one layered item): his bare-body shoulder ratio is 3.29, the gi reads wider.
+
+**REQUESTs (round 4).**
+
+- motion (`MotionGround_Test` / Sierra's teep kick): at Sierra Width .85 the released planted foot snaps 0.223 studs in
+  one frame at max range (limit 0.2); round 4 ships Width .84 (0.10). The release is on a knife edge for small changes
+  in hip width.
+- motion (guard pose, `Motion.States` / style arms): optionally lower Kael's rear guard glove ~0.1 studs (glove tops
+  at the cheekbone instead of the brow) so his profile eye also reads from the player's own camera.
+- motion QA: re-check clipping with the new rigs — rigid gloves (Kael scale .845, Sierra .72, seated toward the wrist:
+  the glove's fist end is 0.21 studs closer to the wrist than the round-3 layered gloves' end), hand scales
+  (Goran [.88, 1.18, .76], Nia [1, 1.13, 1], Rhys [1, 1, .88]) and the new widths (Kael .92, Sierra .84, Goran .91 /
+  depth .98, Lumi .84, Rhys .865, Nia .89). CharacterLook_Test poses the gloved fighters with MotionPlayer and
+  CameraDirector, so guard or camera changes on r4-motion should be re-run against it.
+- combat (`Roster` look strings), optional: Kael "burnt-orange leather boxing gloves", Sierra "brown leather boxing
+  gloves", Goran "grey camo fight shorts over black compression tights" (no knee pads), Nia "deep-purple draped waist
+  wrap" (the specs' `look` strings carry the new text).
+- Nia's visible-foot ground REQUEST from round 3 is still open.
+
 ## Round 3 (user feedback): slimmer shoes, no more bald backs of heads
 
 The user played Overhaul 6 and reported (1) "a lot of the characters' shoes are too big" (Kael's high-tops read as clown
