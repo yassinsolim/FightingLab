@@ -1,0 +1,16 @@
+# Roblox Studio lock files
+*.rbxlx.lock
+*.rbxl.lock
+
+# Python
+__pycache__/
+*.pyc
+
+# Local binaries and temporary output
+tools/bin/
+*.tmp
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store

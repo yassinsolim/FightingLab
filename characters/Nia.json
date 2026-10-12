@@ -1,0 +1,219 @@
+{
+  "id": "Nia",
+  "displayName": "NIA",
+  "tagline": "Relentless flow fighter who never stops moving",
+  "style": "Kung-fu-inspired whirlwind",
+  "primaryColor": [
+    92,
+    46,
+    112
+  ],
+  "accentColor": [
+    226,
+    180,
+    70
+  ],
+  "skinColor": [
+    236,
+    214,
+    200
+  ],
+  "scales": {
+    "Height": 0.86,
+    "Width": 0.8,
+    "Depth": 0.8,
+    "Head": 0.75,
+    "BodyType": 1.0,
+    "Proportion": 0.5
+  },
+  "bodyParts": {
+    "Head": 76846031172896,
+    "Torso": 122831550366162,
+    "LeftArm": 106832235837446,
+    "RightArm": 95246976223366,
+    "LeftLeg": 124333485905753,
+    "RightLeg": 86653892031792
+  },
+  "accessories": [
+    {
+      "AssetId": 126833710732978,
+      "AccessoryType": "Hair",
+      "Scale": [
+        0.9,
+        0.9,
+        0.9
+      ]
+    },
+    {
+      "AssetId": 95142893482414,
+      "AccessoryType": "Shirt",
+      "IsLayered": true,
+      "Order": 2,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 120192598736981,
+      "AccessoryType": "LeftShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 78935764733147,
+      "AccessoryType": "RightShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 80566106375297,
+      "AccessoryType": "Pants",
+      "IsLayered": true,
+      "Order": 3,
+      "Puffiness": 0.3,
+      "Tint": [
+        104,
+        58,
+        134
+      ]
+    },
+    {
+      "AssetId": 15502016508,
+      "AccessoryType": "Waist",
+      "Scale": [
+        0.74,
+        0.85,
+        0.74
+      ]
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 181282816119101,
+      "name": "Woman Fashion Model Doll",
+      "creator": "angelshefford",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 76846031172896,
+      "name": "Woman Fashion Model Doll - Dynamic Head",
+      "creator": "angelshefford",
+      "kind": "Head"
+    },
+    {
+      "id": 122831550366162,
+      "name": "Woman Fashion Model Doll - Torso",
+      "creator": "angelshefford",
+      "kind": "Torso"
+    },
+    {
+      "id": 106832235837446,
+      "name": "Woman Fashion Model Doll - Left Arm",
+      "creator": "angelshefford",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 95246976223366,
+      "name": "Woman Fashion Model Doll - Right Arm",
+      "creator": "angelshefford",
+      "kind": "RightArm"
+    },
+    {
+      "id": 124333485905753,
+      "name": "Woman Fashion Model Doll - Left Leg",
+      "creator": "angelshefford",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 86653892031792,
+      "name": "Woman Fashion Model Doll - Right Leg",
+      "creator": "angelshefford",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 126833710732978,
+      "name": "Black Bob Hair",
+      "creator": "Aiden Bogo UGC",
+      "kind": "Hair"
+    },
+    {
+      "id": 95142893482414,
+      "name": "✧♡✧ Black Gold Martial Arts Top",
+      "creator": "AIKA fashion",
+      "kind": "Layered martial top"
+    },
+    {
+      "id": 198808991844647,
+      "name": "Casual Slip On Dude Shoes (Dark Grey)",
+      "creator": "SOLE ARCHIVE",
+      "kind": "Shoes bundle"
+    },
+    {
+      "id": 120192598736981,
+      "name": "Casual Slip On Dude Shoes (… - Left Shoe Accessory",
+      "creator": "SOLE ARCHIVE",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 78935764733147,
+      "name": "Casual Slip On Dude Shoes … - Right Shoe Accessory",
+      "creator": "SOLE ARCHIVE",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 80566106375297,
+      "name": "White Slim fit tracksuit pants",
+      "creator": "Blue infinity studios",
+      "kind": "Layered tapered training pants (tinted)"
+    },
+    {
+      "id": 15502016508,
+      "name": "Purple Pirate's Waist Sash",
+      "creator": "Рort Royal",
+      "kind": "Wrapped waist sash"
+    }
+  ],
+  "mood": 14618207727,
+  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with gold brush embroidery and laced gold bracers, deep-purple wrapped waist sash, purple tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
+  "bodyColors": {
+    "Head": [
+      236,
+      214,
+      200
+    ],
+    "Torso": [
+      236,
+      214,
+      200
+    ],
+    "LeftArm": [
+      236,
+      214,
+      200
+    ],
+    "RightArm": [
+      236,
+      214,
+      200
+    ],
+    "LeftLeg": [
+      236,
+      214,
+      200
+    ],
+    "RightLeg": [
+      236,
+      214,
+      200
+    ]
+  },
+  "face": 0,
+  "gear": [],
+  "hideHands": false
+}

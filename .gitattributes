@@ -1,0 +1,16 @@
+* text=auto
+*.luau text eol=lf
+*.lua text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.ps1 text eol=crlf
+
+# The place is the XML file Roblox Studio saves. Keep its bytes exactly and skip line diffs:
+# script changes are reviewed in src/ (see tools/export-sources.ps1).
+*.rbxlx -text -diff linguist-generated=true
+*.rbxl binary
+
+*.png binary
+*.jpg binary

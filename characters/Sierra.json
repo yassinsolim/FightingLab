@@ -1,0 +1,196 @@
+{
+  "id": "Sierra",
+  "displayName": "SIERRA",
+  "tagline": "Precision kickboxer with clean angles and fast exits",
+  "style": "Kickboxing / range control",
+  "primaryColor": [
+    235,
+    245,
+    246
+  ],
+  "accentColor": [
+    77,
+    219,
+    205
+  ],
+  "skinColor": [
+    255,
+    255,
+    255
+  ],
+  "scales": {
+    "Height": 0.9,
+    "Width": 0.76,
+    "Depth": 0.78,
+    "Head": 0.72,
+    "BodyType": 1.0,
+    "Proportion": 0.8
+  },
+  "bodyParts": {
+    "Head": 75113716867572,
+    "Torso": 74203867041109,
+    "LeftArm": 89294577189357,
+    "RightArm": 85761870061455,
+    "LeftLeg": 72013766986908,
+    "RightLeg": 139331641629327
+  },
+  "accessories": [
+    {
+      "AssetId": 5227532062,
+      "AccessoryType": "Hair",
+      "Scale": [
+        0.88,
+        0.88,
+        0.88
+      ]
+    },
+    {
+      "AssetId": 87164823026814,
+      "AccessoryType": "Shirt",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3,
+      "Tint": [
+        77,
+        219,
+        205
+      ]
+    },
+    {
+      "AssetId": 9726900805,
+      "AccessoryType": "Shorts",
+      "IsLayered": true,
+      "Order": 3,
+      "Puffiness": 0.28,
+      "Tint": [
+        34,
+        104,
+        112
+      ]
+    },
+    {
+      "AssetId": 81319860328594,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 20,
+      "Puffiness": 0.08
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 64276026698783,
+      "name": "Realistic Model Woman Doll",
+      "creator": "iAngel",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 214055257893779,
+      "name": "Realistic Model Woman Doll v2",
+      "creator": "iAngel",
+      "kind": "Head bundle"
+    },
+    {
+      "id": 75113716867572,
+      "name": "Realistic Model Woman Doll v2  - Dynamic Head",
+      "creator": "iAngel",
+      "kind": "Head"
+    },
+    {
+      "id": 74203867041109,
+      "name": "Realistic Model Woman Doll - Torso",
+      "creator": "iAngel",
+      "kind": "Torso"
+    },
+    {
+      "id": 89294577189357,
+      "name": "Realistic Model Woman Doll - Left Arm",
+      "creator": "iAngel",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 85761870061455,
+      "name": "Realistic Model Woman Doll - Right Arm",
+      "creator": "iAngel",
+      "kind": "RightArm"
+    },
+    {
+      "id": 72013766986908,
+      "name": "Realistic Model Woman Doll - Left Leg",
+      "creator": "iAngel",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 139331641629327,
+      "name": "Realistic Model Woman Doll - Right Leg",
+      "creator": "iAngel",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 87164823026814,
+      "name": "White Tank Top w/ bra (Stripes)",
+      "creator": "solv/",
+      "kind": "Layered training tank (tinted)"
+    },
+    {
+      "id": 9726900805,
+      "name": "White Boxing Shorts",
+      "creator": "Dockery",
+      "kind": "Layered kickboxing trunks (tinted)"
+    },
+    {
+      "id": 81319860328594,
+      "name": "Boxing Gloves",
+      "creator": "Deki’s UGC",
+      "kind": "Layered boxing gloves"
+    },
+    {
+      "id": 5227532062,
+      "name": "Doll High Ponytail (Platinum)",
+      "creator": "Ellzd",
+      "kind": "Hair"
+    }
+  ],
+  "mood": 14618207727,
+  "gear": [],
+  "look": "Adult lean kickboxer with fair realistic face and a platinum high ponytail with swept fringe; teal striped training tank over a sports bra, deep-teal satin kickboxing trunks with black waistband, brown vintage leather boxing gloves, barefoot.",
+  "bodyColors": {
+    "Head": [
+      255,
+      255,
+      255
+    ],
+    "Torso": [
+      255,
+      255,
+      255
+    ],
+    "LeftArm": [
+      255,
+      255,
+      255
+    ],
+    "RightArm": [
+      255,
+      255,
+      255
+    ],
+    "LeftLeg": [
+      255,
+      255,
+      255
+    ],
+    "RightLeg": [
+      255,
+      255,
+      255
+    ]
+  },
+  "face": 0,
+  "hideHands": true
+}

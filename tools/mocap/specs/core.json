@@ -1,0 +1,701 @@
+{
+  "folder": "Core",
+  "sources": {
+    "accad-male2": {
+      "root": "research/motion/raw/accad/Male2",
+      "calib": [
+        "Male2_D1_StandToReady.bvh",
+        0
+      ],
+      "license": "CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)",
+      "credit": "Motion capture data from the Open Motion Project by ACCAD/The Ohio State University, licensed under CC BY 3.0."
+    },
+    "cmu": {
+      "root": "research/motion/raw/cmu",
+      "license": "CMU Graphics Lab Motion Capture Database terms (free to use, modify, include in products; no resale of the data)",
+      "credit": "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217."
+    },
+    "quaternius": {
+      "root": "research/motion/raw/quaternius",
+      "calib": [
+        "UAL2/bvh/Idle_No_Loop.bvh",
+        0
+      ],
+      "license": "CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+      "credit": "Universal Animation Library by Quaternius (CC0)."
+    }
+  },
+  "clips": [
+    {
+      "name": "Stance",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e8-bounce",
+      "range": [
+        40,
+        100
+      ],
+      "loop": true,
+      "travel": "center",
+      "mirror": true
+    },
+    {
+      "name": "Stance_Kickboxer",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e8-bounce",
+      "range": [
+        110,
+        170
+      ],
+      "loop": true,
+      "travel": "center",
+      "mirror": true
+    },
+    {
+      "name": "Stance_Karate",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d1-standtoready",
+      "range": [
+        44,
+        88
+      ],
+      "loop": true,
+      "travel": "center",
+      "mirror": true
+    },
+    {
+      "name": "Stance_KungFu",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d1-standtoready",
+      "range": [
+        44,
+        88
+      ],
+      "loop": true,
+      "travel": "center",
+      "mirror": true
+    },
+    {
+      "name": "Stance_Grappler",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d1-standtoready",
+      "range": [
+        48,
+        88
+      ],
+      "loop": true,
+      "travel": "center",
+      "mirror": true
+    },
+    {
+      "name": "WalkFwd",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e3-advance",
+      "range": [
+        38,
+        68
+      ],
+      "loop": true,
+      "travel": "linear",
+      "mirror": true
+    },
+    {
+      "name": "WalkBack",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e5-retreat",
+      "range": [
+        66,
+        91
+      ],
+      "loop": true,
+      "travel": "linear",
+      "mirror": true
+    },
+    {
+      "name": "Dash",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e4-quickadvance-s2",
+      "range": [
+        33,
+        62
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "useCatalogContact": false,
+      "overlay": {
+        "rootRot": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.2,
+            [
+              -12,
+              0,
+              0
+            ]
+          ],
+          [
+            0.75,
+            [
+              -10,
+              0,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              -3,
+              0,
+              0
+            ]
+          ]
+        ],
+        "root": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0,
+              -0.035,
+              0.02
+            ]
+          ],
+          [
+            0.8,
+            [
+              0,
+              -0.02,
+              0.01
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "Backdash",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e6-quickretreat-s2",
+      "range": [
+        74,
+        95
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "useCatalogContact": false,
+      "overlay": {
+        "rootRot": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.18,
+            [
+              8,
+              0,
+              0
+            ]
+          ],
+          [
+            0.55,
+            [
+              4,
+              0,
+              0
+            ]
+          ],
+          [
+            0.8,
+            [
+              -5,
+              0,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "rootFeet": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.12,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.32,
+            [
+              0,
+              0.05,
+              0
+            ]
+          ],
+          [
+            0.52,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "root": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.52,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.66,
+            [
+              0,
+              -0.045,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "SidestepLeft",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e10-sidestepright-s1",
+      "range": [
+        4,
+        42
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "useCatalogContact": false,
+      "overlay": {
+        "root": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              -0.08,
+              -0.025,
+              0
+            ]
+          ],
+          [
+            0.7,
+            [
+              -0.04,
+              -0.01,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "rootRot": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0,
+              0,
+              8
+            ]
+          ],
+          [
+            0.7,
+            [
+              0,
+              0,
+              3
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "neck": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0,
+              0,
+              5
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "SidestepRight",
+      "source": "accad-male2",
+      "catalog": "accad-male2-e9-sidestepleft-s2",
+      "range": [
+        23,
+        49
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "useCatalogContact": false,
+      "overlay": {
+        "root": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0.08,
+              -0.025,
+              0
+            ]
+          ],
+          [
+            0.7,
+            [
+              0.04,
+              -0.01,
+              0
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "rootRot": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0,
+              0,
+              -8
+            ]
+          ],
+          [
+            0.7,
+            [
+              0,
+              0,
+              -3
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ],
+        "neck": [
+          [
+            0,
+            [
+              0,
+              0,
+              0
+            ]
+          ],
+          [
+            0.35,
+            [
+              0,
+              0,
+              -5
+            ]
+          ],
+          [
+            1,
+            [
+              0,
+              0,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "FallBack",
+      "source": "quaternius",
+      "catalog": "quat-ual2-hit-knockback",
+      "range": [
+        0,
+        25
+      ],
+      "travel": "remove",
+      "contact": 11
+    },
+    {
+      "name": "Juggle",
+      "source": "quaternius",
+      "catalog": "quat-ual2-hit-knockback",
+      "range": [
+        1,
+        9
+      ],
+      "travel": "remove",
+      "ground": 0,
+      "useCatalogContact": false
+    },
+    {
+      "name": "KOBack",
+      "source": "cmu",
+      "catalog": "cmu-90_18",
+      "travel": "none"
+    },
+    {
+      "name": "GetupBack",
+      "source": "cmu",
+      "catalog": "cmu-140_08",
+      "range": [
+        436,
+        610
+      ],
+      "travel": "remove"
+    },
+    {
+      "name": "GetupFront",
+      "source": "cmu",
+      "catalog": "cmu-140_01",
+      "range": [
+        270,
+        500
+      ],
+      "travel": "remove"
+    },
+    {
+      "name": "Intro",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d8-bowtoready",
+      "range": [
+        0,
+        128
+      ],
+      "travel": "remove",
+      "mirror": true
+    },
+    {
+      "name": "Victory",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d10-victory2",
+      "range": [
+        20,
+        140
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "leadIn": {
+        "from": "Displayed:Kael",
+        "seconds": 0.4
+      }
+    },
+    {
+      "name": "Victory_Kickboxer",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d9-victory1",
+      "range": [
+        20,
+        190
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "leadIn": {
+        "from": "Displayed:Sierra",
+        "seconds": 0.4
+      }
+    },
+    {
+      "name": "Victory_Karate",
+      "source": "accad-male2",
+      "catalog": "accad-male2-d8-bowtoready",
+      "range": [
+        0,
+        75
+      ],
+      "travel": "remove",
+      "mirror": true,
+      "leadIn": {
+        "from": "Displayed:Rhys",
+        "seconds": 0.6
+      }
+    },
+    {
+      "name": "Victory_Grappler",
+      "source": "cmu",
+      "catalog": "cmu-79_94",
+      "range": [
+        400,
+        760
+      ],
+      "travel": "remove",
+      "leadIn": {
+        "from": "Displayed:Goran",
+        "seconds": 0.6
+      }
+    },
+    {
+      "name": "Victory_Flow",
+      "source": "cmu",
+      "catalog": "cmu-79_69",
+      "range": [
+        350,
+        620
+      ],
+      "travel": "remove",
+      "leadIn": {
+        "from": "Displayed:Lumi",
+        "seconds": 0.5
+      }
+    },
+    {
+      "name": "Defeat",
+      "source": "cmu",
+      "catalog": "cmu-79_71",
+      "range": [
+        120,
+        420
+      ],
+      "travel": "remove",
+      "leadIn": {
+        "from": "Displayed:Kael",
+        "seconds": 0.6
+      }
+    },
+    {
+      "name": "FallFrontAir",
+      "source": "cmu",
+      "catalog": "cmu-90_16",
+      "range": [
+        372,
+        590
+      ],
+      "travel": "remove"
+    }
+  ]
+}

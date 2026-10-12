@@ -1,0 +1,5668 @@
+{
+  "folder": "Core",
+  "license": "Original hand-keyed animation (FightingLab motioncore), built on mocap stance frames (ACCAD CC BY 3.0 / Quaternius CC0)",
+  "clips": [
+    {
+      "name": "FallFront",
+      "sources": [
+        "original:motioncore",
+        "cmu-90_16"
+      ],
+      "contact": 0.3,
+      "notes": "Grounded face-down knockdown: knees buckle, the body pitches forward over them and lands on the chest and hands.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "in",
+          "root+": [
+            0,
+            -0.22,
+            0.04
+          ],
+          "rootRot+": [
+            -18,
+            0,
+            0
+          ],
+          "waist+": [
+            -12,
+            0,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.15,
+              -0.45,
+              0.55
+            ],
+            "pole": [
+              -0.6,
+              -0.2,
+              -0.8
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.15,
+              -0.45,
+              0.55
+            ],
+            "pole": [
+              0.6,
+              -0.2,
+              -0.8
+            ]
+          }
+        },
+        {
+          "t": 0.2,
+          "ease": "in",
+          "root+": [
+            0,
+            -0.35,
+            0.18
+          ],
+          "rootRot+": [
+            -40,
+            0,
+            0
+          ],
+          "waist+": [
+            -6,
+            0,
+            0
+          ],
+          "neck+": [
+            18,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.2,
+              -0.65,
+              0.55
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.2,
+              -0.65,
+              0.55
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.3,
+          "ease": "in",
+          "from": "FallFrontAir@99",
+          "root+": [
+            0,
+            0,
+            0.25
+          ],
+          "feetFollowRoot": true,
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          },
+          "ground": 1
+        },
+        {
+          "t": 0.6,
+          "from": "FallFrontAir@99",
+          "root+": [
+            0,
+            0,
+            0.25
+          ],
+          "feetFollowRoot": true,
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          },
+          "ground": 1
+        }
+      ]
+    },
+    {
+      "name": "KOFront",
+      "sources": [
+        "original:motioncore",
+        "cmu-90_16"
+      ],
+      "contact": 0.55,
+      "notes": "Face-down KO: a slower forward crumple onto the chest.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.18,
+          "ease": "in",
+          "root+": [
+            0,
+            -0.22,
+            0.04
+          ],
+          "rootRot+": [
+            -18,
+            0,
+            0
+          ],
+          "waist+": [
+            -12,
+            0,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.15,
+              -0.45,
+              0.55
+            ],
+            "pole": [
+              -0.6,
+              -0.2,
+              -0.8
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.15,
+              -0.45,
+              0.55
+            ],
+            "pole": [
+              0.6,
+              -0.2,
+              -0.8
+            ]
+          }
+        },
+        {
+          "t": 0.36,
+          "ease": "in",
+          "root+": [
+            0,
+            -0.35,
+            0.18
+          ],
+          "rootRot+": [
+            -40,
+            0,
+            0
+          ],
+          "waist+": [
+            -6,
+            0,
+            0
+          ],
+          "neck+": [
+            18,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.2,
+              -0.65,
+              0.55
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.2,
+              -0.65,
+              0.55
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.55,
+          "ease": "in",
+          "from": "FallFrontAir@99",
+          "root+": [
+            0,
+            0,
+            0.25
+          ],
+          "feetFollowRoot": true,
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          },
+          "ground": 1
+        },
+        {
+          "t": 1.0,
+          "from": "FallFrontAir@99",
+          "root+": [
+            0,
+            0,
+            0.25
+          ],
+          "feetFollowRoot": true,
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          },
+          "ground": 1
+        }
+      ]
+    },
+    {
+      "name": "Crouch",
+      "loop": true,
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Crouch guard: Stance frame lowered into a squat, torso fairly upright, slow breathing.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance@0",
+          "root+": [
+            0,
+            -0.3,
+            0.03
+          ],
+          "rootRot+": [
+            -12,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.7,
+          "from": "Stance@0",
+          "root+": [
+            0,
+            -0.315,
+            0.03
+          ],
+          "rootRot+": [
+            -12,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 1.4,
+          "from": "Stance@0",
+          "root+": [
+            0,
+            -0.3,
+            0.03
+          ],
+          "rootRot+": [
+            -12,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        }
+      ]
+    },
+    {
+      "name": "Crouch_Kickboxer",
+      "loop": true,
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Crouch guard: Stance_Kickboxer frame lowered into a squat, torso fairly upright, slow breathing.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance_Kickboxer@0",
+          "root+": [
+            0,
+            -0.3,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.7,
+          "from": "Stance_Kickboxer@0",
+          "root+": [
+            0,
+            -0.315,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 1.4,
+          "from": "Stance_Kickboxer@0",
+          "root+": [
+            0,
+            -0.3,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        }
+      ]
+    },
+    {
+      "name": "Crouch_Grappler",
+      "loop": true,
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouch guard: Stance_Grappler frame lowered into a squat, torso fairly upright, slow breathing.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance_Grappler@0",
+          "root+": [
+            0,
+            -0.27,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.7,
+          "from": "Stance_Grappler@0",
+          "root+": [
+            0,
+            -0.28500000000000003,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 1.4,
+          "from": "Stance_Grappler@0",
+          "root+": [
+            0,
+            -0.27,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        }
+      ]
+    },
+    {
+      "name": "Crouch_Karate",
+      "loop": true,
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouch guard: Stance_Karate frame lowered into a squat, torso fairly upright, slow breathing.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance_Karate@0",
+          "root+": [
+            0,
+            -0.29,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.7,
+          "from": "Stance_Karate@0",
+          "root+": [
+            0,
+            -0.305,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 1.4,
+          "from": "Stance_Karate@0",
+          "root+": [
+            0,
+            -0.29,
+            0.03
+          ],
+          "rootRot+": [
+            -10,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        }
+      ]
+    },
+    {
+      "name": "Crouch_KungFu",
+      "loop": true,
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouch guard: Stance_KungFu frame lowered into a squat, torso fairly upright, slow breathing.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance_KungFu@0",
+          "root+": [
+            0,
+            -0.34,
+            0.03
+          ],
+          "rootRot+": [
+            -8,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.7,
+          "from": "Stance_KungFu@0",
+          "root+": [
+            0,
+            -0.35500000000000004,
+            0.03
+          ],
+          "rootRot+": [
+            -8,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 1.4,
+          "from": "Stance_KungFu@0",
+          "root+": [
+            0,
+            -0.34,
+            0.03
+          ],
+          "rootRot+": [
+            -8,
+            0,
+            0
+          ],
+          "waist+": [
+            -5,
+            0,
+            0
+          ],
+          "neck+": [
+            12,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        }
+      ]
+    },
+    {
+      "name": "HitHighLight",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Jab/straight to the head: head snaps back and away, shoulders follow, weight rocks back with a half step of the lead foot. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            28,
+            -14,
+            5
+          ],
+          "waist+": [
+            8,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            3,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.01,
+            -0.025
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.04,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.0,
+              0.03,
+              -0.07
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "neck+": [
+            8,
+            -4,
+            0
+          ],
+          "waist+": [
+            6,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.07
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.17,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.03
+            ]
+          },
+          "root+": [
+            0,
+            0,
+            -0.015
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighHeavy",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy/counter hit to the head: big head and torso snap with a twist, arms fly open, the rear foot steps back to catch the weight. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            36,
+            -24,
+            8
+          ],
+          "waist+": [
+            16,
+            -12,
+            4
+          ],
+          "rootRot+": [
+            8,
+            -8,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.05,
+              0.1,
+              -0.22
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.08,
+              0.06,
+              -0.18
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "neck+": [
+            8,
+            -6,
+            0
+          ],
+          "waist+": [
+            8,
+            -6,
+            0
+          ],
+          "rootRot+": [
+            6,
+            -6,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.1
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.13
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.22,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.04
+            ]
+          },
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.05,
+            -0.05
+          ],
+          "neck+": [
+            6,
+            0,
+            0
+          ],
+          "waist+": [
+            4,
+            0,
+            0
+          ],
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.7,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidLight",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Body shot: the body folds at the waist over the impact, hands drop to the stomach, knees dip. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -18,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.03
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.04,
+              -0.2,
+              -0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.04,
+              -0.22,
+              -0.06
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.03
+          ],
+          "neck+": [
+            -4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidHeavy",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy/counter body hit: deep fold at the waist, knees give, the rear foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -30,
+            6,
+            0
+          ],
+          "neck+": [
+            -14,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -8,
+            4,
+            0
+          ],
+          "root+": [
+            0,
+            -0.08,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.06,
+              -0.32,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.05,
+              -0.34,
+              -0.1
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.12,
+          "ease": "out",
+          "waist+": [
+            -10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.06,
+            -0.06
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.1
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.24,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.48,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowLight",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Shin/low hit: the struck lead leg buckles and is knocked back, the hips dip toward it. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.03,
+              0.1,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.08,
+            -0.02
+          ],
+          "rootRot+": [
+            -6,
+            8,
+            9
+          ],
+          "waist+": [
+            -10,
+            -6,
+            -6
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.06,
+              -0.06,
+              0.02
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.06,
+              -0.04,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.1,
+              -0.02
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowHeavy",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy low hit: the lead leg is kicked out from under the body, the knee buckles deep, arms out for balance. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.08,
+              0.17,
+              -0.22
+            ]
+          },
+          "root+": [
+            0,
+            -0.15,
+            -0.03
+          ],
+          "rootRot+": [
+            -10,
+            14,
+            16
+          ],
+          "waist+": [
+            -16,
+            -8,
+            -10
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.2,
+              -0.08,
+              0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.2,
+              -0.08,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance@0",
+          "neck+": [
+            -8,
+            6,
+            0
+          ]
+        },
+        {
+          "t": 0.14,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.17,
+              0.04
+            ]
+          },
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.45,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ],
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "Blockstun",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Standing block: the guard absorbs the hit, chin tucks, the body is pushed back a little. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.03,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.03,
+              -0.08
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "root+": [
+            0,
+            0,
+            -0.01
+          ]
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "Stagger",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Parried: arms knocked open, off balance, the lead foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "rootRot+": [
+            10,
+            -14,
+            0
+          ],
+          "waist+": [
+            14,
+            -12,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            0,
+            -0.06
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.32,
+              0.12,
+              -0.36
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.26,
+              0.06,
+              -0.26
+            ]
+          },
+          "from": "Stance@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.16,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.3,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "from": "Stance@0"
+        },
+        {
+          "t": 0.8,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "CrouchBlockstun",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Crouching block: the low guard absorbs the hit.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Crouch@0",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "waist+": [
+            5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.0,
+              -0.07
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.0,
+              -0.06
+            ]
+          }
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Crouch@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighLight_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Jab/straight to the head: head snaps back and away, shoulders follow, weight rocks back with a half step of the lead foot. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            28,
+            -14,
+            5
+          ],
+          "waist+": [
+            8,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            3,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.01,
+            -0.025
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.04,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.0,
+              0.03,
+              -0.07
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "neck+": [
+            8,
+            -4,
+            0
+          ],
+          "waist+": [
+            6,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.07
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.17,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.03
+            ]
+          },
+          "root+": [
+            0,
+            0,
+            -0.015
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighHeavy_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy/counter hit to the head: big head and torso snap with a twist, arms fly open, the rear foot steps back to catch the weight. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            36,
+            -24,
+            8
+          ],
+          "waist+": [
+            16,
+            -12,
+            4
+          ],
+          "rootRot+": [
+            8,
+            -8,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.05,
+              0.1,
+              -0.22
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.08,
+              0.06,
+              -0.18
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "neck+": [
+            8,
+            -6,
+            0
+          ],
+          "waist+": [
+            8,
+            -6,
+            0
+          ],
+          "rootRot+": [
+            6,
+            -6,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.1
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.13
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.22,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.04
+            ]
+          },
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.05,
+            -0.05
+          ],
+          "neck+": [
+            6,
+            0,
+            0
+          ],
+          "waist+": [
+            4,
+            0,
+            0
+          ],
+          "from": "Stance_Kickboxer@0"
+        },
+        {
+          "t": 0.7,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidLight_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Body shot: the body folds at the waist over the impact, hands drop to the stomach, knees dip. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -18,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.03
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.04,
+              -0.2,
+              -0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.04,
+              -0.22,
+              -0.06
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.03
+          ],
+          "neck+": [
+            -4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidHeavy_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy/counter body hit: deep fold at the waist, knees give, the rear foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -30,
+            6,
+            0
+          ],
+          "neck+": [
+            -14,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -8,
+            4,
+            0
+          ],
+          "root+": [
+            0,
+            -0.08,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.06,
+              -0.32,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.05,
+              -0.34,
+              -0.1
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.12,
+          "ease": "out",
+          "waist+": [
+            -10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.06,
+            -0.06
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.1
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.24,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.48,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "from": "Stance_Kickboxer@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowLight_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Shin/low hit: the struck lead leg buckles and is knocked back, the hips dip toward it. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.03,
+              0.1,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.08,
+            -0.02
+          ],
+          "rootRot+": [
+            -6,
+            8,
+            9
+          ],
+          "waist+": [
+            -10,
+            -6,
+            -6
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.06,
+              -0.06,
+              0.02
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.06,
+              -0.04,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Kickboxer@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.1,
+              -0.02
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowHeavy_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Heavy low hit: the lead leg is kicked out from under the body, the knee buckles deep, arms out for balance. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.08,
+              0.17,
+              -0.22
+            ]
+          },
+          "root+": [
+            0,
+            -0.15,
+            -0.03
+          ],
+          "rootRot+": [
+            -10,
+            14,
+            16
+          ],
+          "waist+": [
+            -16,
+            -8,
+            -10
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.2,
+              -0.08,
+              0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.2,
+              -0.08,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Kickboxer@0",
+          "neck+": [
+            -8,
+            6,
+            0
+          ]
+        },
+        {
+          "t": 0.14,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.17,
+              0.04
+            ]
+          },
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.45,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ],
+          "from": "Stance_Kickboxer@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "Blockstun_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Standing block: the guard absorbs the hit, chin tucks, the body is pushed back a little. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.03,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.03,
+              -0.08
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "root+": [
+            0,
+            0,
+            -0.01
+          ]
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "Stagger_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Parried: arms knocked open, off balance, the lead foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "rootRot+": [
+            10,
+            -14,
+            0
+          ],
+          "waist+": [
+            14,
+            -12,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            0,
+            -0.06
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.32,
+              0.12,
+              -0.36
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.26,
+              0.06,
+              -0.26
+            ]
+          },
+          "from": "Stance_Kickboxer@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.16,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.3,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "from": "Stance_Kickboxer@0"
+        },
+        {
+          "t": 0.8,
+          "ease": "smooth",
+          "from": "Stance_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "CrouchBlockstun_Kickboxer",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Crouching block: the low guard absorbs the hit.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Crouch_Kickboxer@0",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "waist+": [
+            5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.0,
+              -0.07
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.0,
+              -0.06
+            ]
+          }
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Crouch_Kickboxer@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighLight_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Jab/straight to the head: head snaps back and away, shoulders follow, weight rocks back with a half step of the lead foot. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            28,
+            -14,
+            5
+          ],
+          "waist+": [
+            8,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            3,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.01,
+            -0.025
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.04,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.0,
+              0.03,
+              -0.07
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "neck+": [
+            8,
+            -4,
+            0
+          ],
+          "waist+": [
+            6,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.07
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.17,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.03
+            ]
+          },
+          "root+": [
+            0,
+            0,
+            -0.015
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighHeavy_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter hit to the head: big head and torso snap with a twist, arms fly open, the rear foot steps back to catch the weight. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            36,
+            -24,
+            8
+          ],
+          "waist+": [
+            16,
+            -12,
+            4
+          ],
+          "rootRot+": [
+            8,
+            -8,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.05,
+              0.1,
+              -0.22
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.08,
+              0.06,
+              -0.18
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "neck+": [
+            8,
+            -6,
+            0
+          ],
+          "waist+": [
+            8,
+            -6,
+            0
+          ],
+          "rootRot+": [
+            6,
+            -6,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.1
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.13
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.22,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.04
+            ]
+          },
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.05,
+            -0.05
+          ],
+          "neck+": [
+            6,
+            0,
+            0
+          ],
+          "waist+": [
+            4,
+            0,
+            0
+          ],
+          "from": "Stance_Grappler@0"
+        },
+        {
+          "t": 0.7,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidLight_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Body shot: the body folds at the waist over the impact, hands drop to the stomach, knees dip. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -18,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.03
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.04,
+              -0.2,
+              -0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.04,
+              -0.22,
+              -0.06
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.03
+          ],
+          "neck+": [
+            -4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidHeavy_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter body hit: deep fold at the waist, knees give, the rear foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -30,
+            6,
+            0
+          ],
+          "neck+": [
+            -14,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -8,
+            4,
+            0
+          ],
+          "root+": [
+            0,
+            -0.08,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.06,
+              -0.32,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.05,
+              -0.34,
+              -0.1
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.12,
+          "ease": "out",
+          "waist+": [
+            -10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.06,
+            -0.06
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.1
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.24,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.48,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "from": "Stance_Grappler@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowLight_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Shin/low hit: the struck lead leg buckles and is knocked back, the hips dip toward it. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.03,
+              0.1,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.08,
+            -0.02
+          ],
+          "rootRot+": [
+            -6,
+            8,
+            9
+          ],
+          "waist+": [
+            -10,
+            -6,
+            -6
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.06,
+              -0.06,
+              0.02
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.06,
+              -0.04,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Grappler@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.1,
+              -0.02
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowHeavy_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy low hit: the lead leg is kicked out from under the body, the knee buckles deep, arms out for balance. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.08,
+              0.17,
+              -0.22
+            ]
+          },
+          "root+": [
+            0,
+            -0.15,
+            -0.03
+          ],
+          "rootRot+": [
+            -10,
+            14,
+            16
+          ],
+          "waist+": [
+            -16,
+            -8,
+            -10
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.2,
+              -0.08,
+              0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.2,
+              -0.08,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Grappler@0",
+          "neck+": [
+            -8,
+            6,
+            0
+          ]
+        },
+        {
+          "t": 0.14,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.17,
+              0.04
+            ]
+          },
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.45,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ],
+          "from": "Stance_Grappler@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "Blockstun_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Standing block: the guard absorbs the hit, chin tucks, the body is pushed back a little. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.03,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.03,
+              -0.08
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "root+": [
+            0,
+            0,
+            -0.01
+          ]
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "Stagger_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Parried: arms knocked open, off balance, the lead foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "rootRot+": [
+            10,
+            -14,
+            0
+          ],
+          "waist+": [
+            14,
+            -12,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            0,
+            -0.06
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.32,
+              0.12,
+              -0.36
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.26,
+              0.06,
+              -0.26
+            ]
+          },
+          "from": "Stance_Grappler@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.16,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.3,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "from": "Stance_Grappler@0"
+        },
+        {
+          "t": 0.8,
+          "ease": "smooth",
+          "from": "Stance_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "CrouchBlockstun_Grappler",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouching block: the low guard absorbs the hit.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Crouch_Grappler@0",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "waist+": [
+            5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.0,
+              -0.07
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.0,
+              -0.06
+            ]
+          }
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Crouch_Grappler@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighLight_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Jab/straight to the head: head snaps back and away, shoulders follow, weight rocks back with a half step of the lead foot. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            28,
+            -14,
+            5
+          ],
+          "waist+": [
+            8,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            3,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.01,
+            -0.025
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.04,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.0,
+              0.03,
+              -0.07
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "neck+": [
+            8,
+            -4,
+            0
+          ],
+          "waist+": [
+            6,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.07
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.17,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.03
+            ]
+          },
+          "root+": [
+            0,
+            0,
+            -0.015
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighHeavy_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter hit to the head: big head and torso snap with a twist, arms fly open, the rear foot steps back to catch the weight. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            36,
+            -24,
+            8
+          ],
+          "waist+": [
+            16,
+            -12,
+            4
+          ],
+          "rootRot+": [
+            8,
+            -8,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.05,
+              0.1,
+              -0.22
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.08,
+              0.06,
+              -0.18
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "neck+": [
+            8,
+            -6,
+            0
+          ],
+          "waist+": [
+            8,
+            -6,
+            0
+          ],
+          "rootRot+": [
+            6,
+            -6,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.1
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.13
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.22,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.04
+            ]
+          },
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.05,
+            -0.05
+          ],
+          "neck+": [
+            6,
+            0,
+            0
+          ],
+          "waist+": [
+            4,
+            0,
+            0
+          ],
+          "from": "Stance_Karate@0"
+        },
+        {
+          "t": 0.7,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidLight_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Body shot: the body folds at the waist over the impact, hands drop to the stomach, knees dip. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -18,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.03
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.04,
+              -0.2,
+              -0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.04,
+              -0.22,
+              -0.06
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.03
+          ],
+          "neck+": [
+            -4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidHeavy_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter body hit: deep fold at the waist, knees give, the rear foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -30,
+            6,
+            0
+          ],
+          "neck+": [
+            -14,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -8,
+            4,
+            0
+          ],
+          "root+": [
+            0,
+            -0.08,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.06,
+              -0.32,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.05,
+              -0.34,
+              -0.1
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.12,
+          "ease": "out",
+          "waist+": [
+            -10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.06,
+            -0.06
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.1
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.24,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.48,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "from": "Stance_Karate@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowLight_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Shin/low hit: the struck lead leg buckles and is knocked back, the hips dip toward it. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.03,
+              0.1,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.08,
+            -0.02
+          ],
+          "rootRot+": [
+            -6,
+            8,
+            9
+          ],
+          "waist+": [
+            -10,
+            -6,
+            -6
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.06,
+              -0.06,
+              0.02
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.06,
+              -0.04,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Karate@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.1,
+              -0.02
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowHeavy_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy low hit: the lead leg is kicked out from under the body, the knee buckles deep, arms out for balance. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.08,
+              0.17,
+              -0.22
+            ]
+          },
+          "root+": [
+            0,
+            -0.15,
+            -0.03
+          ],
+          "rootRot+": [
+            -10,
+            14,
+            16
+          ],
+          "waist+": [
+            -16,
+            -8,
+            -10
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.2,
+              -0.08,
+              0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.2,
+              -0.08,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_Karate@0",
+          "neck+": [
+            -8,
+            6,
+            0
+          ]
+        },
+        {
+          "t": 0.14,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.17,
+              0.04
+            ]
+          },
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.45,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ],
+          "from": "Stance_Karate@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "Blockstun_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Standing block: the guard absorbs the hit, chin tucks, the body is pushed back a little. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.03,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.03,
+              -0.08
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "root+": [
+            0,
+            0,
+            -0.01
+          ]
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "Stagger_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Parried: arms knocked open, off balance, the lead foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "rootRot+": [
+            10,
+            -14,
+            0
+          ],
+          "waist+": [
+            14,
+            -12,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            0,
+            -0.06
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.32,
+              0.12,
+              -0.36
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.26,
+              0.06,
+              -0.26
+            ]
+          },
+          "from": "Stance_Karate@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.16,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.3,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "from": "Stance_Karate@0"
+        },
+        {
+          "t": 0.8,
+          "ease": "smooth",
+          "from": "Stance_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "CrouchBlockstun_Karate",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouching block: the low guard absorbs the hit.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Crouch_Karate@0",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "waist+": [
+            5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.0,
+              -0.07
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.0,
+              -0.06
+            ]
+          }
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Crouch_Karate@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighLight_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Jab/straight to the head: head snaps back and away, shoulders follow, weight rocks back with a half step of the lead foot. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            28,
+            -14,
+            5
+          ],
+          "waist+": [
+            8,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            3,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.01,
+            -0.025
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.04,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.0,
+              0.03,
+              -0.07
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "neck+": [
+            8,
+            -4,
+            0
+          ],
+          "waist+": [
+            6,
+            -4,
+            0
+          ],
+          "rootRot+": [
+            4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.07
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.17,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.03
+            ]
+          },
+          "root+": [
+            0,
+            0,
+            -0.015
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "HitHighHeavy_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter hit to the head: big head and torso snap with a twist, arms fly open, the rear foot steps back to catch the weight. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "neck+": [
+            36,
+            -24,
+            8
+          ],
+          "waist+": [
+            16,
+            -12,
+            4
+          ],
+          "rootRot+": [
+            8,
+            -8,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.05,
+              0.1,
+              -0.22
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.08,
+              0.06,
+              -0.18
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "neck+": [
+            8,
+            -6,
+            0
+          ],
+          "waist+": [
+            8,
+            -6,
+            0
+          ],
+          "rootRot+": [
+            6,
+            -6,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.1
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.13
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.22,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.04
+            ]
+          },
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0,
+              -0.05
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.05,
+            -0.05
+          ],
+          "neck+": [
+            6,
+            0,
+            0
+          ],
+          "waist+": [
+            4,
+            0,
+            0
+          ],
+          "from": "Stance_KungFu@0"
+        },
+        {
+          "t": 0.7,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidLight_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Body shot: the body folds at the waist over the impact, hands drop to the stomach, knees dip. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -18,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -4,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.04,
+            -0.03
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.04,
+              -0.2,
+              -0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.04,
+              -0.22,
+              -0.06
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "ease": "out",
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.03,
+            -0.03
+          ],
+          "neck+": [
+            -4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "HitMidHeavy_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy/counter body hit: deep fold at the waist, knees give, the rear foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "waist+": [
+            -30,
+            6,
+            0
+          ],
+          "neck+": [
+            -14,
+            0,
+            0
+          ],
+          "rootRot+": [
+            -8,
+            4,
+            0
+          ],
+          "root+": [
+            0,
+            -0.08,
+            -0.05
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.06,
+              -0.32,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.05,
+              -0.34,
+              -0.1
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.12,
+          "ease": "out",
+          "waist+": [
+            -10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            -0.06,
+            -0.06
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "RightFoot+": {
+            "pos": [
+              0,
+              0.05,
+              -0.1
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.24,
+          "RightFoot+": {
+            "pos": [
+              0,
+              -0.05,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.48,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "waist+": [
+            -8,
+            0,
+            0
+          ],
+          "from": "Stance_KungFu@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowLight_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Shin/low hit: the struck lead leg buckles and is knocked back, the hips dip toward it. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.03,
+              0.1,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.08,
+            -0.02
+          ],
+          "rootRot+": [
+            -6,
+            8,
+            9
+          ],
+          "waist+": [
+            -10,
+            -6,
+            -6
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.06,
+              -0.06,
+              0.02
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.06,
+              -0.04,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_KungFu@0"
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.1,
+              -0.02
+            ]
+          },
+          "root+": [
+            0,
+            -0.02,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.42,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "HitLowHeavy_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Heavy low hit: the lead leg is kicked out from under the body, the knee buckles deep, arms out for balance. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "LeftFoot+": {
+            "pos": [
+              0.08,
+              0.17,
+              -0.22
+            ]
+          },
+          "root+": [
+            0,
+            -0.15,
+            -0.03
+          ],
+          "rootRot+": [
+            -10,
+            14,
+            16
+          ],
+          "waist+": [
+            -16,
+            -8,
+            -10
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.2,
+              -0.08,
+              0.06
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.2,
+              -0.08,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          },
+          "from": "Stance_KungFu@0",
+          "neck+": [
+            -8,
+            6,
+            0
+          ]
+        },
+        {
+          "t": 0.14,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.17,
+              0.04
+            ]
+          },
+          "root+": [
+            0,
+            -0.04,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.45,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ],
+          "from": "Stance_KungFu@0"
+        },
+        {
+          "t": 0.72,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "Blockstun_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Standing block: the guard absorbs the hit, chin tucks, the body is pushed back a little. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "root+": [
+            0,
+            -0.02,
+            -0.05
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.03,
+              -0.1
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.03,
+              -0.08
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.1,
+          "ease": "out",
+          "root+": [
+            0,
+            0,
+            -0.01
+          ]
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "Stagger_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Parried: arms knocked open, off balance, the lead foot steps back. Starts on the impact pose (shown during hitstop).",
+      "keys": [
+        {
+          "t": 0.0,
+          "rootRot+": [
+            10,
+            -14,
+            0
+          ],
+          "waist+": [
+            14,
+            -12,
+            0
+          ],
+          "neck+": [
+            10,
+            0,
+            0
+          ],
+          "root+": [
+            0,
+            0,
+            -0.06
+          ],
+          "LeftHand+": {
+            "pos": [
+              -0.32,
+              0.12,
+              -0.36
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              0.26,
+              0.06,
+              -0.26
+            ]
+          },
+          "from": "Stance_KungFu@0",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.16,
+          "ease": "out",
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.12
+            ]
+          },
+          "root+": [
+            0,
+            -0.03,
+            -0.05
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.3,
+          "LeftFoot+": {
+            "pos": [
+              0,
+              -0.06,
+              -0.02
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "from": "Stance_KungFu@0"
+        },
+        {
+          "t": 0.8,
+          "ease": "smooth",
+          "from": "Stance_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "CrouchBlockstun_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Crouching block: the low guard absorbs the hit.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Crouch_KungFu@0",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "waist+": [
+            5,
+            0,
+            0
+          ],
+          "LeftHand+": {
+            "pos": [
+              0.02,
+              0.0,
+              -0.07
+            ]
+          },
+          "RightHand+": {
+            "pos": [
+              -0.02,
+              0.0,
+              -0.06
+            ]
+          }
+        },
+        {
+          "t": 0.32,
+          "ease": "smooth",
+          "from": "Crouch_KungFu@0"
+        }
+      ]
+    },
+    {
+      "name": "ThrowBreak",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Generic throw break (both roles): hands locked in the clinch shove the opponent away, the body rocks back and the lead foot steps back into the stance. Played over CombatConfig.ThrowBreakFrames from throw.breakFrame.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Stance",
+          "root+": [
+            0,
+            -0.03,
+            0.05
+          ],
+          "rootRot+": [
+            -6,
+            0,
+            0
+          ],
+          "waist+": [
+            -4,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.12,
+              0.02,
+              0.72
+            ],
+            "pole": [
+              -0.8,
+              -0.5,
+              0.0
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.12,
+              0.02,
+              0.72
+            ],
+            "pole": [
+              0.8,
+              -0.5,
+              0.0
+            ]
+          }
+        },
+        {
+          "t": 0.07,
+          "ease": "snap",
+          "root+": [
+            0,
+            0.01,
+            -0.07
+          ],
+          "rootRot+": [
+            10,
+            0,
+            0
+          ],
+          "waist+": [
+            6,
+            0,
+            0
+          ],
+          "neck+": [
+            -6,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.1,
+              0.06,
+              0.92
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.1,
+              0.06,
+              0.92
+            ]
+          }
+        },
+        {
+          "t": 0.17,
+          "ease": "out",
+          "root+": [
+            0,
+            -0.02,
+            -0.04
+          ],
+          "LeftFoot+": {
+            "pos": [
+              0,
+              0.06,
+              -0.1
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              0.2,
+              0.15,
+              0.45
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.15,
+              0.18,
+              0.35
+            ]
+          }
+        },
+        {
+          "t": 0.3,
+          "ease": "smooth",
+          "from": "Stance"
+        }
+      ]
+    },
+    {
+      "name": "SideRoll",
+      "sources": [
+        "original:motioncore",
+        "quat-ual2-hit-knockback",
+        "cmu-140_08"
+      ],
+      "notes": "Log roll to the fighter's left (mirrored at runtime for rollDir -1), rolling without slipping: face up the chest turns toward the travel side first (side, belly, other side, back = one full turn by getup frame 13.5 of 36; the sim carries 2.2 studs over the first 10). Face down (prone) the runtime starts at tags.proneStart (belly down) and plays the second half turn (~8 frames). Then a quick sit-up and the face-up mocap getup with the squat hold shortened.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "FallBack@0.83"
+        },
+        {
+          "t": 0.0833,
+          "ease": "linear",
+          "rootRot+": [
+            0,
+            0,
+            90
+          ],
+          "root+": [
+            0,
+            0.05,
+            0
+          ],
+          "feetFollowRoot": true
+        },
+        {
+          "t": 0.1667,
+          "ease": "linear",
+          "rootRot+": [
+            0,
+            0,
+            90
+          ],
+          "root+": [
+            0,
+            -0.03,
+            0
+          ],
+          "feetFollowRoot": true
+        },
+        {
+          "t": 0.2639,
+          "ease": "linear",
+          "rootRot+": [
+            0,
+            0,
+            90
+          ],
+          "root+": [
+            0,
+            0.03,
+            0
+          ],
+          "feetFollowRoot": true
+        },
+        {
+          "t": 0.375,
+          "ease": "out",
+          "rootRot+": [
+            0,
+            0,
+            90
+          ],
+          "root+": [
+            0,
+            -0.05,
+            0
+          ],
+          "feetFollowRoot": true
+        },
+        {
+          "t": 0.4861,
+          "from": "GetupBack@0.12"
+        },
+        {
+          "t": 0.5972,
+          "from": "GetupBack@0.48"
+        },
+        {
+          "t": 0.7083,
+          "from": "GetupBack@0.83"
+        },
+        {
+          "t": 0.8611,
+          "from": "GetupBack@1.15"
+        },
+        {
+          "t": 1.0,
+          "from": "GetupBack@1.45"
+        }
+      ],
+      "tags": {
+        "proneStart": 0.1667
+      }
+    },
+    {
+      "name": "BackRoll",
+      "sources": [
+        "original:motioncore",
+        "quat-ual2-hit-knockback",
+        "accad-male2-e8-bounce"
+      ],
+      "notes": "Backward roll from lying face up: knees tuck, the hips roll up over the shoulders (hands push off beside the head), the body comes over onto the knees and rises into the stance. The sim carries the body 2.2 studs back over the first 10 frames.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "FallBack@0.83"
+        },
+        {
+          "t": 0.05,
+          "ease": "linear",
+          "rootRot+": [
+            45,
+            0,
+            0
+          ],
+          "root": [
+            0,
+            -0.8,
+            0.0
+          ],
+          "LeftFoot": {
+            "pos": [
+              -0.12,
+              0.3,
+              0.05
+            ],
+            "pole": [
+              0,
+              1,
+              0.3
+            ]
+          },
+          "RightFoot": {
+            "pos": [
+              0.12,
+              0.3,
+              0.05
+            ],
+            "pole": [
+              0,
+              1,
+              0.3
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              -0.1,
+              0.05,
+              -0.55
+            ],
+            "pole": [
+              -0.6,
+              0.6,
+              0
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              0.1,
+              0.05,
+              -0.55
+            ],
+            "pole": [
+              0.6,
+              0.6,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 0
+          },
+          "ground": 1
+        },
+        {
+          "t": 0.1,
+          "ease": "linear",
+          "rootRot+": [
+            45,
+            0,
+            0
+          ],
+          "root": [
+            0,
+            -0.62,
+            -0.1
+          ],
+          "LeftFoot": {
+            "pos": [
+              -0.12,
+              0.05,
+              -0.55
+            ],
+            "pole": [
+              0,
+              0.5,
+              -1
+            ]
+          },
+          "RightFoot": {
+            "pos": [
+              0.12,
+              0.05,
+              -0.55
+            ],
+            "pole": [
+              0,
+              0.5,
+              -1
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              -0.15,
+              -0.7,
+              -0.1
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              0.15,
+              -0.7,
+              -0.1
+            ]
+          },
+          "ground": 1
+        },
+        {
+          "t": 0.15,
+          "ease": "linear",
+          "rootRot+": [
+            45,
+            0,
+            0
+          ],
+          "root": [
+            0,
+            -0.58,
+            -0.18
+          ],
+          "LeftFoot": {
+            "pos": [
+              -0.14,
+              -0.3,
+              -0.55
+            ],
+            "pole": [
+              0,
+              -0.3,
+              -1
+            ]
+          },
+          "RightFoot": {
+            "pos": [
+              0.14,
+              -0.3,
+              -0.55
+            ],
+            "pole": [
+              0,
+              -0.3,
+              -1
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              -0.15,
+              -0.85,
+              0.1
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              0.15,
+              -0.85,
+              0.1
+            ]
+          },
+          "ground": 0.6
+        },
+        {
+          "t": 0.21,
+          "ease": "out",
+          "rootRot+": [
+            45,
+            0,
+            0
+          ],
+          "root": [
+            0,
+            -0.55,
+            -0.15
+          ],
+          "LeftFoot": {
+            "pos": [
+              -0.16,
+              -0.45,
+              -0.4
+            ],
+            "pole": [
+              0,
+              -0.8,
+              1
+            ]
+          },
+          "RightFoot": {
+            "pos": [
+              0.16,
+              -0.45,
+              -0.4
+            ],
+            "pole": [
+              0,
+              -0.8,
+              1
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              -0.12,
+              -0.8,
+              0.3
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              0.12,
+              -0.8,
+              0.3
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          },
+          "ground": 0
+        },
+        {
+          "t": 0.3,
+          "ease": "smooth",
+          "from": "Crouch@0",
+          "root+": [
+            0,
+            -0.08,
+            0
+          ]
+        },
+        {
+          "t": 0.46,
+          "ease": "smooth",
+          "from": "Stance@0",
+          "root+": [
+            0,
+            -0.06,
+            0
+          ]
+        },
+        {
+          "t": 0.6,
+          "ease": "smooth",
+          "from": "Stance@0"
+        }
+      ]
+    },
+    {
+      "name": "Victory_KungFu",
+      "sources": [
+        "original:motioncore",
+        "accad-male2-d1-standtoready"
+      ],
+      "notes": "Kung-fu victory (Nia): draws the lead foot in and closes the stance, squares up to the beaten opponent, presents the fist-and-palm salute (right fist against the left palm in front of the chest), a short bow, then holds the salute. Starts on her displayed stance.",
+      "keys": [
+        {
+          "t": 0.0,
+          "from": "Displayed:Nia",
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.08,
+          "from": "Displayed:Nia",
+          "root+": [
+            0.02,
+            0.0,
+            -0.03
+          ],
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.22,
+          "root": [
+            -0.01,
+            -0.08,
+            0.009
+          ],
+          "LeftFoot": {
+            "pos": [
+              -0.091,
+              -0.843,
+              0.122
+            ]
+          },
+          "rootRot": [
+            0,
+            12,
+            0
+          ],
+          "waist": [
+            0,
+            0,
+            0
+          ],
+          "LeftHand": {
+            "pos": [
+              0.33,
+              -0.135,
+              0.482
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.131,
+              -0.153,
+              0.479
+            ]
+          },
+          "contact": {
+            "LeftFoot": 0,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.36,
+          "root": [
+            0.0,
+            -0.035,
+            0.0
+          ],
+          "LeftFoot": {
+            "pos": [
+              0.029,
+              -0.965,
+              0.022
+            ],
+            "pole": [
+              -0.15,
+              0.0,
+              1.0
+            ],
+            "rot": [
+              0,
+              14,
+              0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          },
+          "rootRot": [
+            0,
+            0,
+            0
+          ],
+          "waist": [
+            0,
+            0,
+            0
+          ],
+          "neck": [
+            4,
+            0,
+            0
+          ]
+        },
+        {
+          "t": 0.48,
+          "RightFoot": {
+            "pos": [
+              0.043,
+              -0.888,
+              -0.107
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 0
+          }
+        },
+        {
+          "t": 0.62,
+          "ease": "snap",
+          "RightFoot": {
+            "pos": [
+              -0.034,
+              -0.965,
+              -0.02
+            ],
+            "pole": [
+              0.15,
+              0.0,
+              1.0
+            ],
+            "rot": [
+              0,
+              -14,
+              0
+            ]
+          },
+          "LeftHand": {
+            "pos": [
+              0.243,
+              -0.284,
+              0.476
+            ],
+            "pole": [
+              -0.75,
+              -0.66,
+              0.0
+            ]
+          },
+          "RightHand": {
+            "pos": [
+              -0.243,
+              -0.258,
+              0.481
+            ],
+            "pole": [
+              0.75,
+              -0.66,
+              0.0
+            ]
+          },
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 0.95,
+          "root+": [
+            0,
+            -0.008,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 1.3,
+          "rootRot": [
+            -7,
+            0,
+            0
+          ],
+          "waist": [
+            -16,
+            0,
+            0
+          ],
+          "neck": [
+            -14,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 1.8,
+          "rootRot": [
+            -7,
+            0,
+            0
+          ],
+          "waist": [
+            -17,
+            0,
+            0
+          ],
+          "neck": [
+            -15,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 2.25,
+          "root+": [
+            0,
+            0.008,
+            0
+          ],
+          "rootRot": [
+            0,
+            0,
+            0
+          ],
+          "waist": [
+            0,
+            0,
+            0
+          ],
+          "neck": [
+            4,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        },
+        {
+          "t": 2.7,
+          "rootRot": [
+            0,
+            0,
+            0
+          ],
+          "waist": [
+            0,
+            0,
+            0
+          ],
+          "neck": [
+            4,
+            0,
+            0
+          ],
+          "contact": {
+            "LeftFoot": 1,
+            "RightFoot": 1
+          }
+        }
+      ]
+    }
+  ]
+}

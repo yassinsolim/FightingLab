@@ -1,0 +1,252 @@
+{
+  "id": "Goran",
+  "displayName": "GORAN",
+  "tagline": "Iron-grip powerhouse who walks through punches",
+  "style": "Heavyweight grappling / armored pressure",
+  "primaryColor": [
+    94,
+    76,
+    52
+  ],
+  "accentColor": [
+    210,
+    54,
+    60
+  ],
+  "skinColor": [
+    184,
+    132,
+    94
+  ],
+  "scales": {
+    "Height": 0.85,
+    "Width": 1.12,
+    "Depth": 1.12,
+    "Head": 0.81,
+    "BodyType": 1.0,
+    "Proportion": 0.0
+  },
+  "bodyParts": {
+    "Head": 126811571812177,
+    "Torso": 106062650582720,
+    "LeftArm": 93273068870672,
+    "RightArm": 123504742874685,
+    "LeftLeg": 109637020907933,
+    "RightLeg": 108488675090572
+  },
+  "accessories": [
+    {
+      "AssetId": 13631074853,
+      "AccessoryType": "Face",
+      "Position": [
+        0,
+        -0.05,
+        0.0
+      ],
+      "Scale": [
+        0.72,
+        0.74,
+        0.64
+      ]
+    },
+    {
+      "AssetId": 135571447604238,
+      "AccessoryType": "TShirt",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.25
+    },
+    {
+      "AssetId": 135168322016429,
+      "AccessoryType": "Shorts",
+      "IsLayered": true,
+      "Order": 3,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 17697195879,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 12,
+      "Puffiness": 0.1
+    },
+    {
+      "AssetId": 140700617127197,
+      "AccessoryType": "LeftShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 100014109264125,
+      "AccessoryType": "RightShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 114155090849709,
+      "AccessoryType": "Shorts",
+      "IsLayered": true,
+      "Order": 6,
+      "Puffiness": 0.15
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 272889456128840,
+      "name": "January Model Man",
+      "creator": "iAngel",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 126811571812177,
+      "name": "January Model Man - Dynamic Head",
+      "creator": "iAngel",
+      "kind": "Head"
+    },
+    {
+      "id": 106062650582720,
+      "name": "January Model Man - Torso",
+      "creator": "iAngel",
+      "kind": "Torso"
+    },
+    {
+      "id": 93273068870672,
+      "name": "January Model Man - Left Arm",
+      "creator": "iAngel",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 123504742874685,
+      "name": "January Model Man - Right Arm",
+      "creator": "iAngel",
+      "kind": "RightArm"
+    },
+    {
+      "id": 109637020907933,
+      "name": "January Model Man - Left Leg",
+      "creator": "iAngel",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 108488675090572,
+      "name": "January Model Man - Right Leg",
+      "creator": "iAngel",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 135168322016429,
+      "name": "Y2K Active Shorts (Grey Camo)",
+      "creator": "dont look down",
+      "kind": "Layered fight shorts"
+    },
+    {
+      "id": 17697195879,
+      "name": "Red Sports Wrist Sweatbands",
+      "creator": "NINET9 Clothing",
+      "kind": "Layered wrist sweatbands"
+    },
+    {
+      "id": 148454237701358,
+      "name": "Light Brown Combat Boots",
+      "creator": "FATAL ARCHIVE",
+      "kind": "Shoes bundle"
+    },
+    {
+      "id": 140700617127197,
+      "name": "Light Brown Combat Boots - Left Shoe Accessory",
+      "creator": "FATAL ARCHIVE",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 100014109264125,
+      "name": "Light Brown Combat Boots - Right Shoe Accessory",
+      "creator": "FATAL ARCHIVE",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 18883135935,
+      "name": "Weight Lifting Belt",
+      "creator": "AUZL",
+      "kind": "Welded gear (lifting belt)"
+    },
+    {
+      "id": 13631074853,
+      "name": "Light Brown Full Trimmed Beard",
+      "creator": "The Barber Shoppe",
+      "kind": "3D beard"
+    },
+    {
+      "id": 135571447604238,
+      "name": "Tight Muscle Tank Top (Dark Red)",
+      "creator": "GALLIANO",
+      "kind": "Layered muscle tank"
+    },
+    {
+      "id": 114155090849709,
+      "name": "(3.0) Black Tactical Knee Pads",
+      "creator": "SonokoToume",
+      "kind": "Layered knee pads"
+    }
+  ],
+  "mood": 14618207727,
+  "gear": [
+    {
+      "assetId": 18883135935,
+      "name": "LiftingBelt",
+      "target": "LowerTorso",
+      "fit": [
+        1.12,
+        0.6,
+        1.14
+      ],
+      "offset": [
+        0,
+        0.06,
+        0
+      ]
+    }
+  ],
+  "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts, black leather lifting belt, black tactical knee pads, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
+  "bodyColors": {
+    "Head": [
+      184,
+      132,
+      94
+    ],
+    "Torso": [
+      184,
+      132,
+      94
+    ],
+    "LeftArm": [
+      184,
+      132,
+      94
+    ],
+    "RightArm": [
+      184,
+      132,
+      94
+    ],
+    "LeftLeg": [
+      184,
+      132,
+      94
+    ],
+    "RightLeg": [
+      184,
+      132,
+      94
+    ]
+  },
+  "face": 0,
+  "hideHands": false
+}

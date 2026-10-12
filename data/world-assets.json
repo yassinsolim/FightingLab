@@ -1,0 +1,11 @@
+{
+  "agent": "world",
+  "note": "No new external assets. The world is built entirely from parts, Roblox 2022 materials, SurfaceGuis and terrain created in code. Particle textures are Roblox built-ins (rbxasset://textures/particles/fire_main.dds, smoke_main.dds, sparkles_main.dds). The only marketplace assets used are the five stage ambience sounds already in the game (Stages.<StageId>.Ambience, already listed in RF.Credits), re-used by CL.LobbyAmbience as positional loops at each arena.",
+  "assets": [
+    { "id": 9112866852, "name": "San Francisco 1 (SFX)", "creator": "ProSoundEffects", "kind": "Audio", "usedFor": "LobbyAmbience positional loop at Arena_MidnightRooftop (re-used from Stages.MidnightRooftop.Ambience, already in the game)" },
+    { "id": 9112829678, "name": "Marina Ambience 5 (SFX)", "creator": "ProSoundEffects", "kind": "Audio", "usedFor": "LobbyAmbience positional loop at Arena_HarborDusk (re-used from Stages.HarborDusk.Ambience, already in the game)" },
+    { "id": 9112807078, "name": "Jungle Dripping 1 (SFX)", "creator": "ProSoundEffects", "kind": "Audio", "usedFor": "LobbyAmbience positional loop at Arena_JungleRuins (re-used from Stages.JungleRuins.Ambience, already in the game)" },
+    { "id": 9125742262, "name": "Plasma Trails Constant Airy Whooshing Windy (SFX)", "creator": "ProSoundEffects", "kind": "Audio", "usedFor": "LobbyAmbience positional loop at Arena_SnowSummit (re-used from Stages.SnowSummit.Ambience, already in the game)" },
+    { "id": 9112739113, "name": "Aircraft Carrier Ambience 1 (SFX)", "creator": "ProSoundEffects", "kind": "Audio", "usedFor": "LobbyAmbience positional loop at Arena_TrainingBay (re-used from Stages.TrainingBay.Ambience, already in the game)" }
+  ]
+}

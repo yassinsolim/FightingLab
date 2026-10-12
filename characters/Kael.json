@@ -1,0 +1,217 @@
+{
+  "id": "Kael",
+  "displayName": "KAEL",
+  "tagline": "Pressure-forged striker with calm, heavy hands",
+  "style": "Street boxing / pressure",
+  "primaryColor": [
+    54,
+    62,
+    72
+  ],
+  "accentColor": [
+    238,
+    105,
+    48
+  ],
+  "skinColor": [
+    255,
+    255,
+    255
+  ],
+  "scales": {
+    "Height": 0.93,
+    "Width": 0.96,
+    "Depth": 0.92,
+    "Head": 0.7,
+    "BodyType": 1.0,
+    "Proportion": 0.4
+  },
+  "bodyParts": {
+    "Head": 108356625707649,
+    "Torso": 137818495202071,
+    "LeftArm": 94670898413446,
+    "RightArm": 121780194799365,
+    "LeftLeg": 116349841260868,
+    "RightLeg": 71235686557283
+  },
+  "accessories": [
+    {
+      "AssetId": 17750359523,
+      "AccessoryType": "Hair"
+    },
+    {
+      "AssetId": 108264643648437,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 10,
+      "Puffiness": 0.4,
+      "Tint": [
+        96,
+        110,
+        128
+      ]
+    },
+    {
+      "AssetId": 9726891755,
+      "AccessoryType": "Shorts",
+      "IsLayered": true,
+      "Order": 3,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 101503419947939,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 20,
+      "Puffiness": 0.08,
+      "Tint": [
+        238,
+        105,
+        48
+      ]
+    },
+    {
+      "AssetId": 128212268343103,
+      "AccessoryType": "LeftShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 110054253690142,
+      "AccessoryType": "RightShoe",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.3
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 261708299650319,
+      "name": "Model Man",
+      "creator": "angelshefford",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 108356625707649,
+      "name": "Model Man - Dynamic Head",
+      "creator": "angelshefford",
+      "kind": "Head"
+    },
+    {
+      "id": 137818495202071,
+      "name": "Model Man - Torso",
+      "creator": "angelshefford",
+      "kind": "Torso"
+    },
+    {
+      "id": 94670898413446,
+      "name": "Model Man - Left Arm",
+      "creator": "angelshefford",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 121780194799365,
+      "name": "Model Man - Right Arm",
+      "creator": "angelshefford",
+      "kind": "RightArm"
+    },
+    {
+      "id": 116349841260868,
+      "name": "Model Man - Left Leg",
+      "creator": "angelshefford",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 71235686557283,
+      "name": "Model Man - Right Leg",
+      "creator": "angelshefford",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 17750359523,
+      "name": "Cornrows",
+      "creator": "EstheKing",
+      "kind": "Hair"
+    },
+    {
+      "id": 108264643648437,
+      "name": "Grey Sleeveless Boxing Hoodie Layered Vest",
+      "creator": "Zen.Studio",
+      "kind": "Layered sleeveless hoodie (tinted)"
+    },
+    {
+      "id": 9726891755,
+      "name": "Red Boxing Shorts",
+      "creator": "Dockery",
+      "kind": "Layered boxing trunks"
+    },
+    {
+      "id": 101503419947939,
+      "name": "Boxing Gloves",
+      "creator": "Deki’s UGC",
+      "kind": "Layered boxing gloves (tinted)"
+    },
+    {
+      "id": 141883318340139,
+      "name": "Black Street Fit Sneakers [PBR]",
+      "creator": "Dresscraft",
+      "kind": "Shoes bundle"
+    },
+    {
+      "id": 128212268343103,
+      "name": "Black Street Fit Sneakers [PBR] - 左靴用アクセサリ",
+      "creator": "Dresscraft",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 110054253690142,
+      "name": "Black Street Fit Sneakers [PBR] - 右靴用アクセサリ",
+      "creator": "Dresscraft",
+      "kind": "Layered shoe"
+    }
+  ],
+  "mood": 14618207727,
+  "gear": [],
+  "look": "Adult street boxer with medium-olive realistic face and tight cornrows; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, black-and-white chunky high-top sneakers.",
+  "bodyColors": {
+    "Head": [
+      255,
+      255,
+      255
+    ],
+    "Torso": [
+      255,
+      255,
+      255
+    ],
+    "LeftArm": [
+      255,
+      255,
+      255
+    ],
+    "RightArm": [
+      255,
+      255,
+      255
+    ],
+    "LeftLeg": [
+      255,
+      255,
+      255
+    ],
+    "RightLeg": [
+      255,
+      255,
+      255
+    ]
+  },
+  "face": 0,
+  "hideHands": true
+}

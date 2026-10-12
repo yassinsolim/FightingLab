@@ -1,0 +1,222 @@
+{
+  "id": "Lumi",
+  "displayName": "LUMI",
+  "tagline": "Rooftop freerunner who fights from impossible angles",
+  "style": "Acrobatic freerunning",
+  "primaryColor": [
+    44,
+    54,
+    60
+  ],
+  "accentColor": [
+    86,
+    214,
+    160
+  ],
+  "skinColor": [
+    118,
+    76,
+    50
+  ],
+  "scales": {
+    "Height": 0.82,
+    "Width": 0.74,
+    "Depth": 0.76,
+    "Head": 0.88,
+    "BodyType": 1.0,
+    "Proportion": 1.0
+  },
+  "bodyParts": {
+    "Head": 87394201185324,
+    "Torso": 71835459452885,
+    "LeftArm": 97633279696517,
+    "RightArm": 89067250563417,
+    "LeftLeg": 88496750791076,
+    "RightLeg": 114123828483948
+  },
+  "accessories": [
+    {
+      "AssetId": 132626232018567,
+      "AccessoryType": "Hair",
+      "Scale": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "Position": [
+        0,
+        0.04,
+        0
+      ]
+    },
+    {
+      "AssetId": 90430205270040,
+      "AccessoryType": "TShirt",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.22
+    },
+    {
+      "AssetId": 13048594874,
+      "AccessoryType": "Sweater",
+      "IsLayered": true,
+      "Order": 9,
+      "Puffiness": 0.1
+    },
+    {
+      "AssetId": 106421807303280,
+      "AccessoryType": "LeftShoe",
+      "IsLayered": true,
+      "Order": 5,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 77675773538059,
+      "AccessoryType": "RightShoe",
+      "IsLayered": true,
+      "Order": 5,
+      "Puffiness": 0.3
+    },
+    {
+      "AssetId": 80566106375297,
+      "AccessoryType": "Pants",
+      "IsLayered": true,
+      "Order": 2,
+      "Puffiness": 0.3,
+      "Tint": [
+        86,
+        214,
+        160
+      ]
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 75057502474636,
+      "name": "January Model Doll",
+      "creator": "iAngel",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 87394201185324,
+      "name": "January Model Doll - Dynamic Head",
+      "creator": "iAngel",
+      "kind": "Head"
+    },
+    {
+      "id": 71835459452885,
+      "name": "January Model Doll - Torso",
+      "creator": "iAngel",
+      "kind": "Torso"
+    },
+    {
+      "id": 97633279696517,
+      "name": "January Model Doll - Left Arm",
+      "creator": "iAngel",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 89067250563417,
+      "name": "January Model Doll - Right Arm",
+      "creator": "iAngel",
+      "kind": "RightArm"
+    },
+    {
+      "id": 88496750791076,
+      "name": "January Model Doll - Left Leg",
+      "creator": "iAngel",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 114123828483948,
+      "name": "January Model Doll - Right Leg",
+      "creator": "iAngel",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 132626232018567,
+      "name": "Black Curly Mid Taper Fade w/ Sports Hair Band",
+      "creator": "GIAENHA",
+      "kind": "Hair"
+    },
+    {
+      "id": 90430205270040,
+      "name": "Olive Tank Top",
+      "creator": "ANGVLI",
+      "kind": "Layered tank top"
+    },
+    {
+      "id": 13048594874,
+      "name": "Techwear Sleeves (Jet)",
+      "creator": "Luka's Workshop",
+      "kind": "Layered arm sleeves"
+    },
+    {
+      "id": 230848115295914,
+      "name": "Obsidian Prism Tech Sneakers [PBR]",
+      "creator": "Dresscraft",
+      "kind": "Shoes bundle"
+    },
+    {
+      "id": 106421807303280,
+      "name": "Obsidian Prism Tech Sneakers [PBR] - 左靴用アクセサリ",
+      "creator": "Dresscraft",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 77675773538059,
+      "name": "Obsidian Prism Tech Sneakers [PBR] - 右靴用アクセサリ",
+      "creator": "Dresscraft",
+      "kind": "Layered shoe"
+    },
+    {
+      "id": 80566106375297,
+      "name": "White Slim fit tracksuit pants",
+      "creator": "Blue infinity studios",
+      "kind": "Layered slim track pants (tinted)"
+    }
+  ],
+  "mood": 14618207727,
+  "look": "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black/grey camo tech sneakers, open hands.",
+  "bodyColors": {
+    "Head": [
+      118,
+      76,
+      50
+    ],
+    "Torso": [
+      118,
+      76,
+      50
+    ],
+    "LeftArm": [
+      118,
+      76,
+      50
+    ],
+    "RightArm": [
+      118,
+      76,
+      50
+    ],
+    "LeftLeg": [
+      118,
+      76,
+      50
+    ],
+    "RightLeg": [
+      118,
+      76,
+      50
+    ]
+  },
+  "face": 0,
+  "gear": [],
+  "hideHands": false
+}

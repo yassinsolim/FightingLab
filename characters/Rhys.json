@@ -1,0 +1,190 @@
+{
+  "id": "Rhys",
+  "displayName": "RHYS",
+  "tagline": "Patient counter-striker who punishes every mistake",
+  "style": "Karate-based counter striking",
+  "primaryColor": [
+    32,
+    48,
+    92
+  ],
+  "accentColor": [
+    190,
+    202,
+    218
+  ],
+  "skinColor": [
+    255,
+    255,
+    255
+  ],
+  "scales": {
+    "Height": 0.95,
+    "Width": 0.86,
+    "Depth": 0.86,
+    "Head": 0.72,
+    "BodyType": 1.0,
+    "Proportion": 0.6
+  },
+  "bodyParts": {
+    "Head": 138914865792933,
+    "Torso": 136484138279485,
+    "LeftArm": 133656943925070,
+    "RightArm": 99161622704680,
+    "LeftLeg": 108570629440593,
+    "RightLeg": 94210819268147
+  },
+  "accessories": [
+    {
+      "AssetId": 16454695769,
+      "AccessoryType": "Shirt",
+      "IsLayered": true,
+      "Order": 1,
+      "Puffiness": 0.2
+    },
+    {
+      "AssetId": 14063983879,
+      "AccessoryType": "Hair",
+      "Position": [
+        0,
+        0.06,
+        -0.06
+      ],
+      "Scale": [
+        0.86,
+        0.8,
+        0.8
+      ]
+    },
+    {
+      "AssetId": 16362208023,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 4,
+      "Puffiness": 0.3,
+      "Tint": [
+        40,
+        52,
+        86
+      ]
+    },
+    {
+      "AssetId": 131531879662841,
+      "AccessoryType": "Sweater",
+      "IsLayered": true,
+      "Order": 2,
+      "Puffiness": 0.2
+    }
+  ],
+  "sourceAssets": [
+    {
+      "id": 148843544796522,
+      "name": "Fashion Model Man Bundle",
+      "creator": "angelshefford",
+      "kind": "Body bundle"
+    },
+    {
+      "id": 138914865792933,
+      "name": "Fashion Model Man Bundle - Dynamic Head",
+      "creator": "angelshefford",
+      "kind": "Head"
+    },
+    {
+      "id": 136484138279485,
+      "name": "Fashion Model Man Bundle - Torso",
+      "creator": "angelshefford",
+      "kind": "Torso"
+    },
+    {
+      "id": 133656943925070,
+      "name": "Fashion Model Man Bundle - Left Arm",
+      "creator": "angelshefford",
+      "kind": "LeftArm"
+    },
+    {
+      "id": 99161622704680,
+      "name": "Fashion Model Man Bundle - Right Arm",
+      "creator": "angelshefford",
+      "kind": "RightArm"
+    },
+    {
+      "id": 108570629440593,
+      "name": "Fashion Model Man Bundle - Left Leg",
+      "creator": "angelshefford",
+      "kind": "LeftLeg"
+    },
+    {
+      "id": 94210819268147,
+      "name": "Fashion Model Man Bundle - Right Leg",
+      "creator": "angelshefford",
+      "kind": "RightLeg"
+    },
+    {
+      "id": 14618207727,
+      "name": "Default Mood",
+      "creator": "Roblox",
+      "kind": "Mood"
+    },
+    {
+      "id": 16454695769,
+      "name": "male compression t-shirt grey",
+      "creator": "Dolla ֆ",
+      "kind": "Layered training tee"
+    },
+    {
+      "id": 14063983879,
+      "name": "Brown Hair Undercut Ponytail",
+      "creator": "LimaMosca",
+      "kind": "Hair"
+    },
+    {
+      "id": 16362208023,
+      "name": "White/Black Belt Judo Kungfu Outfit",
+      "creator": "Dubit",
+      "kind": "Layered karate gi (tinted)"
+    },
+    {
+      "id": 131531879662841,
+      "name": "Hand Wraps",
+      "creator": "Maximum_ADHD",
+      "kind": "Layered hand wraps"
+    }
+  ],
+  "mood": 14618207727,
+  "look": "Adult karate counter-striker with light realistic face and tied-back dark-brown undercut; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
+  "bodyColors": {
+    "Head": [
+      255,
+      255,
+      255
+    ],
+    "Torso": [
+      255,
+      255,
+      255
+    ],
+    "LeftArm": [
+      255,
+      255,
+      255
+    ],
+    "RightArm": [
+      255,
+      255,
+      255
+    ],
+    "LeftLeg": [
+      255,
+      255,
+      255
+    ],
+    "RightLeg": [
+      255,
+      255,
+      255
+    ]
+  },
+  "face": 0,
+  "gear": [],
+  "hideHands": false
+}

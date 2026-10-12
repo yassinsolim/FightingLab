@@ -1,0 +1,436 @@
+--!strict
+-- DuelService with stub players (plain tables) and a fake clock: pads, countdown, slot routing, forfeit,
+-- results/leaderstats, CPU requests, practice validation and the world index.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local Lab = ReplicatedStorage:WaitForChild("FightingLab")
+local NetProtocol = require(Lab:WaitForChild("NetProtocol"))
+local RenderBuffer = require(Lab:WaitForChild("RenderBuffer"))
+local Duel = ServerStorage:WaitForChild("FightingLab"):WaitForChild("Duel")
+local DuelService = require(Duel:WaitForChild("DuelService"))
+local WorldIndex = require(Duel:WaitForChild("WorldIndex"))
+
+local DUEL_ORIGIN = Vector3.new(100, 0, 0)
+local DOJO_ORIGIN = Vector3.new(-100, 0, 0)
+
+local function pad(position: Vector3, side: number, mode: string?): any
+	return { position = position, radius = 3.5, side = side, mode = mode }
+end
+
+local function fakeWorld(): any
+	return {
+		arenas = {
+			Arena_Test = {
+				id = "Arena_Test", stageId = "HarborDusk", displayName = "Test Arena", kind = "Duel", order = 1, origin = DUEL_ORIGIN,
+				pads = { [1] = pad(DUEL_ORIGIN + Vector3.new(-27, 0, 0), 1), [2] = pad(DUEL_ORIGIN + Vector3.new(27, 0, 0), 2) },
+				practicePads = {}, exits = { P1 = CFrame.new(DUEL_ORIGIN + Vector3.new(-33, 0.5, 0)), P2 = CFrame.new(DUEL_ORIGIN + Vector3.new(33, 0.5, 0)) },
+			},
+			Arena_Dojo = {
+				id = "Arena_Dojo", stageId = "TrainingBay", displayName = "Dojo", kind = "Practice", order = 5, origin = DOJO_ORIGIN, pads = {},
+				practicePads = { Training = pad(DOJO_ORIGIN + Vector3.new(-27, 0, 0), 0, "Training"), Cpu = pad(DOJO_ORIGIN + Vector3.new(27, 0, 0), 0, "Cpu") },
+				exits = { Training = CFrame.new(DOJO_ORIGIN + Vector3.new(-33, 0.5, 0)), Cpu = CFrame.new(DOJO_ORIGIN + Vector3.new(33, 0.5, 0)) },
+			},
+		},
+		order = { "Arena_Test", "Arena_Dojo" },
+		spawns = {},
+	}
+end
+
+type Harness = { service: any, clock: { t: number }, sent: { any }, snapshots: { any }, avatarCalls: { any }, stations: Folder }
+
+local function harness(): Harness
+	local clock = { t = 1000 }
+	local sent, snapshots, avatarCalls = {}, {}, {}
+	local stations = Instance.new("Folder")
+	local service = DuelService.new({
+		world = fakeWorld(),
+		now = function() return clock.t end,
+		serverTime = function() return clock.t + 5000 end,
+		send = function(player: any, kind: string, payload: any) table.insert(sent, { player = player, kind = kind, payload = payload }) end,
+		sendSnapshot = function(player: any, packed: any) table.insert(snapshots, { player = player, packed = packed }) end,
+		avatars = {
+			freeze = function(_, p: any) table.insert(avatarCalls, { op = "freeze", player = p }) end,
+			unfreeze = function(_, p: any, at: CFrame?) table.insert(avatarCalls, { op = "unfreeze", player = p, at = at }) end,
+			reload = function(_, p: any) table.insert(avatarCalls, { op = "reload", player = p }) end,
+		},
+		stations = stations,
+		random = Random.new(7),
+	})
+	return { service = service, clock = clock, sent = sent, snapshots = snapshots, avatarCalls = avatarCalls, stations = stations }
+end
+
+local function stub(id: number, position: Vector3?, fighter: string?): any
+	return { UserId = id, Name = "Stub" .. id, DisplayName = "Stub" .. id, fighterId = fighter or "Kael", position = position or Vector3.new(0, 3, 0) }
+end
+
+local function lastSent(h: Harness, player: any, kind: string): any
+	for i = #h.sent, 1, -1 do
+		local m = h.sent[i]
+		if m.player == player and m.kind == kind then return m.payload end
+	end
+	return nil
+end
+
+local function onPad(side: number): Vector3
+	return DUEL_ORIGIN + Vector3.new(if side == 1 then -27 else 27, 3, 0)
+end
+
+local function startPvp(h: Harness): (any, any)
+	local a, b = stub(1, onPad(1), "Kael"), stub(2, onPad(2), "Goran")
+	h.service:addPlayer(a)
+	h.service:addPlayer(b)
+	h.service:pollPads()
+	h.clock.t += 3.05
+	h.service:update(0)
+	return a, b
+end
+
+return function(t)
+	t.test("world index reads arenas, pads, exits and spawns from the contract layout", function()
+		local world = Instance.new("Folder")
+		local lobby = Instance.new("Model")
+		lobby.Name = "Lobby"
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Name = "LobbySpawn"
+		spawn.Parent = lobby
+		lobby.Parent = world
+		local arenas = Instance.new("Folder")
+		arenas.Name = "Arenas"
+		arenas.Parent = world
+		local arena = Instance.new("Model")
+		arena.Name = "Arena_Unit"
+		arena:SetAttribute("ArenaId", "Arena_Unit")
+		arena:SetAttribute("StageId", "JungleRuins")
+		arena:SetAttribute("Kind", "Duel")
+		arena:SetAttribute("Order", 3)
+		local function part(name: string, position: Vector3): Part
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Position = position
+			p.Parent = arena
+			return p
+		end
+		part("FightOrigin", Vector3.new(10, 0, 50))
+		part("PadP1", Vector3.new(-17, 0.1, 50)):SetAttribute("PadRadius", 4)
+		part("PadP2", Vector3.new(37, 0.1, 50))
+		part("ExitP1", Vector3.new(-23, 0.5, 50))
+		part("ExitP2", Vector3.new(43, 0.5, 50))
+		arena.Parent = arenas
+		local index = WorldIndex.scan(world)
+		local a = index.arenas.Arena_Unit
+		t.expect.truthy(a ~= nil, "arena indexed")
+		t.expect.equal(a.stageId, "JungleRuins")
+		t.expect.equal(a.origin, Vector3.new(10, 0, 50))
+		t.expect.equal(a.pads[1].radius, 4)
+		t.expect.equal(a.pads[2].radius, WorldIndex.DefaultPadRadius)
+		t.expect.truthy(a.exits.P1.LookVector:Dot(Vector3.xAxis) > 0.99, "exit faces the fight centre")
+		t.expect.equal(#index.spawns, 1)
+		t.expect.truthy(WorldIndex.onPad(a.pads[1], Vector3.new(-17, 3, 52)))
+		t.expect.falsy(WorldIndex.onPad(a.pads[1], Vector3.new(-17, 3, 56)))
+		world:Destroy()
+	end)
+
+	t.test("standing on a pad queues the player and publishes station state", function()
+		local h = harness()
+		local a = stub(1, onPad(1))
+		h.service:addPlayer(a)
+		h.service:pollPads()
+		local rec = h.service:recordOf(a)
+		t.expect.equal(rec.state, "Queued")
+		t.expect.equal(rec.padSide, 1)
+		t.expect.equal(rec.arenaId, "Arena_Test")
+		local station = h.stations:FindFirstChild("Arena_Test")
+		t.expect.truthy(station ~= nil and station:IsA("Configuration"), "station configuration exists")
+		t.expect.equal(station:GetAttribute("State"), "Waiting")
+		t.expect.equal(station:GetAttribute("P1UserId"), 1)
+		t.expect.equal(station:GetAttribute("P1Fighter"), "Kael")
+		t.expect.equal(station:GetAttribute("Kind"), "Duel")
+		a.position = Vector3.new(0, 3, 0)
+		h.service:pollPads()
+		t.expect.equal(rec.state, "Lobby")
+		t.expect.equal(station:GetAttribute("State"), "Open")
+		t.expect.equal(station:GetAttribute("P1UserId"), 0)
+		t.expect.equal(h.stations:FindFirstChild("Arena_Dojo"):GetAttribute("Kind"), "Practice")
+	end)
+
+	t.test("both pads start a 3 s countdown that stepping off cancels", function()
+		local h = harness()
+		local a, b = stub(1, onPad(1)), stub(2, onPad(2))
+		h.service:addPlayer(a)
+		h.service:addPlayer(b)
+		h.service:pollPads()
+		local ca, cb = lastSent(h, a, "Countdown"), lastSent(h, b, "Countdown")
+		t.expect.truthy(ca ~= nil and cb ~= nil, "both told about the countdown")
+		t.expect.equal(ca.arenaId, "Arena_Test")
+		t.expect.equal(ca.side, 1)
+		t.expect.equal(cb.side, 2)
+		t.expect.equal(ca.endsAt, h.clock.t + 5000 + NetProtocol.CountdownSeconds)
+		t.expect.equal(h.service:recordOf(a).state, "Countdown")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Countdown")
+		h.clock.t += 1.5
+		b.position = Vector3.new(0, 3, 0)
+		h.service:pollPads()
+		t.expect.truthy(lastSent(h, a, "CountdownCancelled") ~= nil)
+		t.expect.truthy(lastSent(h, b, "CountdownCancelled") ~= nil)
+		t.expect.equal(h.service:recordOf(a).state, "Queued")
+		t.expect.equal(h.service:recordOf(b).state, "Lobby")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Waiting")
+		h.clock.t += 5
+		h.service:update(0)
+		t.expect.equal(h.service:recordOf(a).state, "Queued", "a cancelled countdown never starts a match")
+	end)
+
+	t.test("countdown end starts a server match and routes inputs only to each player's slot", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		local sa, sb = lastSent(h, a, "MatchStart"), lastSent(h, b, "MatchStart")
+		t.expect.truthy(sa ~= nil and sb ~= nil, "both get MatchStart")
+		t.expect.equal(sa.authority, "Server")
+		t.expect.equal(sa.slot, 1)
+		t.expect.equal(sb.slot, 2)
+		t.expect.equal(sa.matchId, sb.matchId)
+		t.expect.equal(sa.origin, DUEL_ORIGIN)
+		t.expect.equal(sa.p1.fighter, "Kael")
+		t.expect.equal(sa.p2.fighter, "Goran")
+		t.expect.equal(sa.p2.userId, 2)
+		t.expect.equal(sa.cpu, false)
+		t.expect.equal(h.service:recordOf(a).state, "Fighting")
+		t.expect.equal(#h.avatarCalls, 2)
+		t.expect.equal(h.avatarCalls[1].op, "freeze")
+		local station = h.service:station("Arena_Test")
+		local match = station.host.runner.match
+		h.service:onCommand(a, "Move", 1, 0)
+		h.service:onCommand(b, "Move", -1, 1)
+		t.expect.equal(match.fighters[1].input.moveX, 1)
+		t.expect.equal(match.fighters[2].input.moveX, -1)
+		t.expect.equal(match.fighters[2].input.moveZ, 1)
+		h.service:onCommand(b, "Block", true)
+		t.expect.equal(match.fighters[2].input.block, true)
+		t.expect.equal(match.fighters[1].input.block, false)
+		local outsider = stub(9)
+		h.service:addPlayer(outsider)
+		h.service:onCommand(outsider, "Move", -1, 0)
+		t.expect.equal(match.fighters[1].input.moveX, 1, "non-participants are ignored")
+		local epoch = station.host.runner.epoch
+		h.service:onCommand(a, "Reset")
+		h.service:onCommand(a, "SetMode", "Training")
+		t.expect.equal(station.host.runner.epoch, epoch, "only Move/Block/Crouch/Attack are accepted")
+		t.expect.equal(match.mode, "Match")
+	end)
+
+	t.test("server matches stream every step to both participants with matchId", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		local before = #h.snapshots
+		h.service:update(1 / 60)
+		h.service:update(1 / 60)
+		h.service:update(1 / 60)
+		t.expect.truthy(#h.snapshots - before >= 4, "two players x at least two steps")
+		local last = h.snapshots[#h.snapshots]
+		local matchId = h.service:recordOf(a).matchId
+		t.expect.equal(NetProtocol.matchIdOf(last.packed), matchId)
+		local entry = RenderBuffer.parse(NetProtocol.unpackEntry(last.packed))
+		t.expect.truthy(entry ~= nil, "packed snapshot parses")
+		t.expect.equal((entry :: any).matchId, matchId)
+		t.expect.equal((entry :: any).p2Id, "Goran")
+		local station = h.stations.Arena_Test
+		t.expect.equal(station:GetAttribute("State"), "Fighting")
+		h.service:update(0.11)
+		t.expect.equal(station:GetAttribute("Phase"), "Ready")
+		t.expect.equal(station:GetAttribute("P2Fighter"), "Goran")
+		t.expect.equal(station:GetAttribute("P1Health"), 1)
+	end)
+
+	t.test("command rate is limited per player", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		local runner = h.service:station("Arena_Test").host.runner
+		local accepted = 0
+		local original = runner.command
+		runner.command = function(self: any, ...: any)
+			accepted += 1
+			return original(self, ...)
+		end
+		for _ = 1, 200 do h.service:onCommand(a, "Crouch", false) end
+		t.expect.equal(accepted, NetProtocol.CommandBurst, "burst capped")
+		h.service:onCommand(b, "Crouch", false)
+		t.expect.equal(accepted, NetProtocol.CommandBurst + 1, "the other player is unaffected")
+		h.clock.t += 1
+		h.service:onCommand(a, "Crouch", false)
+		t.expect.equal(accepted, NetProtocol.CommandBurst + 2, "tokens refill over time")
+	end)
+
+	t.test("forfeit awards the opponent, updates stats and returns both players", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		local matchId = h.service:recordOf(a).matchId
+		h.service:onLobby(a, "LeaveFight", {})
+		local ea, eb = lastSent(h, a, "MatchEnd"), lastSent(h, b, "MatchEnd")
+		t.expect.truthy(ea ~= nil and eb ~= nil, "both get MatchEnd")
+		t.expect.equal(ea.matchId, matchId)
+		t.expect.equal(ea.winnerSlot, 2)
+		t.expect.equal(ea.reason, "Forfeit")
+		local ra, rb = h.service:recordOf(a), h.service:recordOf(b)
+		t.expect.equal(rb.wins, 1)
+		t.expect.equal(rb.streak, 1)
+		t.expect.equal(ra.wins, 0)
+		t.expect.equal(ra.streak, 0)
+		t.expect.equal(ra.state, "Lobby")
+		t.expect.equal(rb.state, "Lobby")
+		local unfreezes = 0
+		for _, call in h.avatarCalls do
+			if call.op == "unfreeze" then
+				unfreezes += 1
+				local expected = if call.player == a then DUEL_ORIGIN + Vector3.new(-33, 0.5, 0) else DUEL_ORIGIN + Vector3.new(33, 0.5, 0)
+				t.expect.equal((call.at :: CFrame).Position, expected)
+			end
+		end
+		t.expect.equal(unfreezes, 2)
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Open")
+		h.service:pollPads()
+		t.expect.equal(ra.state, "Lobby", "still standing on the pad after the match does not re-queue")
+	end)
+
+	t.test("MatchOver shows results for a few seconds, then MatchEnd with leaderstats", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		local station = h.service:station("Arena_Test")
+		local match = station.host.runner.match
+		match.scores = { 2, 1 }
+		match.phase = "MatchOver"
+		match.reason = "KO"
+		h.service:update(1 / 60)
+		t.expect.equal(station.state, "Results")
+		t.expect.equal(h.service:recordOf(a).state, "Results")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("WinnerSlot"), 1)
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("ResultText"), "Stub1 wins")
+		t.expect.falsy(lastSent(h, a, "MatchEnd"), "no MatchEnd during results")
+		h.clock.t += NetProtocol.ResultsSeconds + 0.1
+		h.service:update(1 / 60)
+		local ea = lastSent(h, a, "MatchEnd")
+		t.expect.truthy(ea ~= nil)
+		t.expect.equal(ea.winnerSlot, 1)
+		t.expect.equal(ea.reason, "KO")
+		t.expect.equal(ea.rounds.p1, 2)
+		t.expect.equal(ea.rounds.p2, 1)
+		t.expect.equal(h.service:recordOf(a).wins, 1)
+		t.expect.equal(h.service:recordOf(a).streak, 1)
+		t.expect.equal(h.service:recordOf(b).streak, 0)
+		t.expect.equal(station.state, "Open")
+	end)
+
+	t.test("a disconnect during a fight forfeits to the remaining player", function()
+		local h = harness()
+		local a, b = startPvp(h)
+		h.service:removePlayer(a)
+		local eb = lastSent(h, b, "MatchEnd")
+		t.expect.truthy(eb ~= nil)
+		t.expect.equal(eb.winnerSlot, 2)
+		t.expect.equal(eb.reason, "Disconnect")
+		t.expect.falsy(lastSent(h, a, "MatchEnd"), "nothing is sent to the leaver")
+		t.expect.equal(h.service:recordOf(b).wins, 1)
+	end)
+
+	t.test("CPU is offered only to a player waiting alone, after the offer delay", function()
+		local h = harness()
+		local a = stub(1, onPad(2), "Lumi")
+		h.service:addPlayer(a)
+		h.service:pollPads()
+		h.service:onLobby(a, "RequestCpu", { difficulty = "Hard" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "TooSoon")
+		h.clock.t += NetProtocol.CpuOfferSeconds
+		h.service:onLobby(a, "RequestCpu", { difficulty = "Hard" })
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil, "CPU match started")
+		t.expect.equal(start.slot, 2)
+		t.expect.equal(start.cpu, true)
+		t.expect.equal(start.difficulty, "Hard")
+		t.expect.equal(start.p1.userId, NetProtocol.CpuUserId)
+		t.expect.equal(start.p2.fighter, "Lumi")
+		local station = h.service:station("Arena_Test")
+		t.expect.equal(station.host.runner.human[1], false)
+		t.expect.equal(station.host.runner.human[2], true)
+		t.expect.equal(station.host.runner.match.difficulty, "Hard")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("Cpu"), true)
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("P1UserId"), NetProtocol.CpuUserId)
+		local lonely = stub(3)
+		h.service:addPlayer(lonely)
+		h.service:onLobby(lonely, "RequestCpu", {})
+		t.expect.equal(lastSent(h, lonely, "Rejected").reason, "NotWaiting")
+		h.service:onCommand(a, "Move", 1, 0)
+		t.expect.equal(station.host.runner.match.fighters[2].input.moveX, 1, "the human drives slot 2")
+	end)
+
+	t.test("practice needs the matching dojo pad and ends at the dojo exit", function()
+		local h = harness()
+		local a = stub(1, Vector3.new(0, 3, 0), "Rhys")
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "StartPractice", { mode = "Training" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "NotOnPad")
+		a.position = DOJO_ORIGIN + Vector3.new(27, 3, 0)
+		h.service:onLobby(a, "StartPractice", { mode = "Training" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "NotOnPad", "the CPU pad does not start Training")
+		h.service:onLobby(a, "StartPractice", { mode = "Cpu", difficulty = "Easy", opponent = "Nia" })
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil)
+		t.expect.equal(start.authority, "Local")
+		t.expect.equal(start.mode, "Match")
+		t.expect.equal(start.cpu, true)
+		t.expect.equal(start.origin, DOJO_ORIGIN)
+		t.expect.equal(start.p1.fighter, "Rhys")
+		t.expect.equal(start.p2.fighter, "Nia")
+		t.expect.equal(start.difficulty, "Easy")
+		local rec = h.service:recordOf(a)
+		t.expect.equal(rec.state, "Practice")
+		t.expect.equal(h.avatarCalls[#h.avatarCalls].op, "freeze")
+		h.service:onLobby(a, "SelectFighter", { id = "Goran" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "Busy")
+		h.service:onLobby(a, "EndPractice", {})
+		local ended = lastSent(h, a, "MatchEnd")
+		t.expect.equal(ended.matchId, start.matchId)
+		t.expect.equal(ended.reason, "Practice")
+		t.expect.equal(rec.state, "Lobby")
+		local last = h.avatarCalls[#h.avatarCalls]
+		t.expect.equal(last.op, "unfreeze")
+		t.expect.equal((last.at :: CFrame).Position, DOJO_ORIGIN + Vector3.new(33, 0.5, 0))
+	end)
+
+	t.test("fighter select reloads the avatar only in the lobby or queue", function()
+		local h = harness()
+		local a = stub(1)
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "SelectFighter", { id = "Nia" })
+		t.expect.equal(h.service:recordOf(a).fighterId, "Nia")
+		t.expect.equal(h.avatarCalls[#h.avatarCalls].op, "reload")
+		h.service:onLobby(a, "SelectFighter", { id = "NotAFighter" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "Invalid")
+		t.expect.equal(h.service:recordOf(a).fighterId, "Nia")
+	end)
+
+	t.test("a queued player keeps the pad while the avatar reloads for a fighter change", function()
+		local h = harness()
+		local loading = {}
+		h.service.deps.avatars.isLoading = function(_, p: any): boolean return loading[p] == true end
+		local a = stub(1, onPad(1))
+		h.service:addPlayer(a)
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(a).state, "Queued")
+		loading[a] = true
+		a.position = Vector3.new(0, 3, 0)
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(a).state, "Queued", "a reloading avatar (briefly at the lobby spawn) keeps the claim")
+		loading[a] = nil
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(a).state, "Lobby")
+	end)
+
+	t.test("lobby request floods are dropped", function()
+		local h = harness()
+		local a = stub(1)
+		h.service:addPlayer(a)
+		for _ = 1, 40 do h.service:onLobby(a, "RequestCpu", {}) end
+		local rejected = 0
+		for _, m in h.sent do if m.player == a and m.kind == "Rejected" then rejected += 1 end end
+		t.expect.equal(rejected, NetProtocol.LobbyBurst)
+	end)
+end

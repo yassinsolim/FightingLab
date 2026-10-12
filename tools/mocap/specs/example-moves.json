@@ -1,0 +1,14 @@
+{
+  "folder": "Moves.Strikes",
+  "sources": {
+    "accad-male2": {
+      "root": "research/motion/raw/accad/Male2",
+      "calib": ["Male2_D1_StandToReady.bvh", 0],
+      "license": "CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/)",
+      "credit": "Motion capture data from the Open Motion Project by ACCAD/The Ohio State University, licensed under CC BY 3.0."
+    }
+  },
+  "clips": [
+    { "name": "Example_Kael_Jab", "source": "accad-male2", "catalog": "accad-male2-e1-jableft", "fighter": "Kael", "move": "Jab", "travel": "remove" }
+  ]
+}

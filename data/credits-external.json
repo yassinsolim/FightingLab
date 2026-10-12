@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Open Motion Project",
+    "author": "ACCAD / The Ohio State University",
+    "url": "https://accad.osu.edu/research/motion-lab/mocap-system-and-data",
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "credit": "Motion capture data from the Open Motion Project by ACCAD/The Ohio State University, licensed under CC BY 3.0.",
+    "usedFor": "fighter stances, footwork, punches, kicks, guards and victory motions (retargeted and edited)",
+    "sourcePrefix": "accad-"
+  },
+  {
+    "title": "CMU Graphics Lab Motion Capture Database",
+    "author": "Carnegie Mellon University",
+    "url": "http://mocap.cs.cmu.edu/",
+    "license": "CMU mocap terms (free for all uses; no resale of the data)",
+    "licenseUrl": "http://mocap.cs.cmu.edu/faqs.php",
+    "credit": "The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217.",
+    "usedFor": "karate kicks, boxing, falls and getups (retargeted and edited)",
+    "sourcePrefix": "cmu-"
+  },
+  {
+    "title": "Universal Animation Library 1 & 2",
+    "author": "Quaternius",
+    "url": "https://quaternius.itch.io/universal-animation-library",
+    "license": "CC0 1.0",
+    "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "credit": "Animations: Universal Animation Library by Quaternius (CC0).",
+    "usedFor": "hit reactions and knockback references (retargeted and edited)",
+    "sourcePrefix": "quat-"
+  }
+]
