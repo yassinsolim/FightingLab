@@ -26,6 +26,10 @@ Round 5b (motionstrikes REQUESTs 3 and 4): a released foot lock **lets go over 4
 step-in **held back at Separation** (keepApart capped the advance) no longer steps in place (§4, §11). Two more
 `MotionGround_Test` cases cover them on every move clip. Still no clip or format changes.
 
+Overhaul round 4 (motion QA, branch `r4-motion`): a smoothness / joint-limit / clipping **QA harness on the real rigs**,
+runtime fixes for every root cause it found (transitions, hitstop, IK continuity, strike contact, self clearance, feet),
+re-timed throw clips, an eased fight camera and the `MotionQA_Test` suite — see §13.
+
 ---------------------------------------------------------------------------------------------------------------------
 
 ## 0. Quick start (one move, no Studio)
@@ -525,3 +529,101 @@ per unit of width above 1), lowering the pelvis by `drop` leg lengths (feet stay
   for comparison.
 - Walks keep part of the style (drop × 0.4, width halfway to 1); crouches keep only the width. Reactions, falls,
   getups and attack clips are not style-adjusted.
+
+---------------------------------------------------------------------------------------------------------------------
+
+## 13. Round 4 (overhaul): motion QA on the real rigs, smooth transitions
+
+The user asked for fights that look smooth and physically believable. Round 4 measured every state, move, throw and
+transition on the real fighter rigs, fixed the root causes in the runtime first, then the clips that still jumped.
+
+### 13.1 QA harness and report
+
+- `ServerStorage.UnitTest.MotionQA` plays views through the same path as `CharacterPresenter`
+  (`MotionPlayer.presentFrame`: sample -> root placement -> apply -> throw grips -> contact pass) at 60 fps on clones of
+  `ReplicatedStorage.FightingLab.Characters` and measures per frame: rotation/limb-tip pops (over an absolute limit AND
+  4x the local median), transition jumps (> 15 deg per joint at a key change, and > 1.5x the joint's own motion),
+  elbow/knee bend-plane flips (> 45 deg/frame), joint limits (elbow/knee hyperextension, shoulder/hip twist, wrist,
+  ankle, neck yaw > 80, waist twist > 70), self-intersection (glove/hand in the own head or torso, arm centreline in the
+  torso, legs through each other), opponent interpenetration (striking hand/foot depth at contact, bodies overlapping
+  outside throws) and jitter (a part reversing 3 times within 6 frames at >= 0.02 studs / 2 deg per frame) in loops.
+  Rig geometry comes from the rig (part sizes, profiled hulls in `Motion.BodyShape`, rigid glove parts, layered
+  gloves, fists), so it works on any rig — re-run it after any proportion change.
+- Cases (~600 per run, ~65k frames): every state (idle, walk, backwalk, crouch, dash, backdash, both sidesteps,
+  standing/crouching block and blockstun, hit reactions high/mid/low/counter/heavy, stagger, launch/juggle/landing,
+  knockdowns face up/down with every getup and roll, KO, victory, defeat), all 100 moves at max and close range
+  (Separation), hit and block outcomes of every move on the partner, string chains, move -> counter hit,
+  blockstun -> attack, dash -> attack, sidestep -> attack, and both roles of every throw (normal and broken).
+- Full ranked report: in Studio Play (server), load the harness and run `tools/mocap/motionqa_report.luau`
+  (`_G.MotionQATag`, `_G.MotionQAFighters`, `_G.MotionQAParts = {"states","moves","transitions","throws","hits"}`;
+  it POSTs one JSON per fighter to a local sink), then
+  `python tools/mocap/motionqa_report.py --reports <dir> --tag <tag> --baseline <tag> --out <md> --json <json>`
+  (ranked defects: fighter · case · frame · metric · value, counts per category and fighter, glove-vs-head table).
+- `ServerStorage.UnitTest.Cases.MotionQA_Test` (6 tests, ~13 s) asserts the targets on a sample: loops of all six
+  (no pop, flip, limit or jitter; glove/hand vs head <= 0.03, other self-intersection <= 0.05), standing transitions
+  of all six (no joint > 15 deg in a frame at a switch, no pop or flip outside an attack's own clip), strikes resting
+  on the opponent (<= 0.15 deep at contact) and throw tracks without teleports. Tolerated defects are listed in its
+  `EXCEPTIONS` table with the reason; a new defect or a known one getting worse fails.
+
+### 13.2 Runtime changes (MotionPlayer, ClipPlayer, BodyShape, CameraDirector)
+
+| area | change | knobs |
+|---|---|---|
+| hitstop | the animation clock stops on the rendered hit window (server duels render a buffer behind the newest snapshot); the attacker shows its contact frame | `hitstopActive(frame)` |
+| impact entries | a reaction / knockdown / launch / KO / throw starting on a hit crossfades on real time (plays during the freeze), linear, sized by how far the pose travels | `ImpactFadeMin` 4/60, `ImpactFadeMax` 12/60, `ImpactDegPerFrame` 8 |
+| crossfades | other fades stretch with pose travel (never shorter than the state asks); getups capped (sim roll timing); attack fade-ins end before the first active frame, linear when capped, at most 8 frames | `CrossfadeDegPerFrame` 9, `CrossfadeMax` 0.3, `GetupCrossfadeMax` 0.1, `MoveFadeMax` 8/60 |
+| blend paths | arm targets blend around the shoulder (direction slerp + reach lerp), rotations slerp, step-in caps hold through fade-ins | — |
+| hit push | the sim's hit push glides instead of a one-frame shove; displacement the renderer delivers over the next frames (practice interpolates between sim frames, duels between snapshots) is absorbed into the same glide for a short window after a hit or a throw exit | `PushAbsorbWindow` 2.5/60 |
+| round reset | the cut is also detected from the newest entry's position jump (> `TeleportDistance` and faster than 1.5 studs/frame; the renderers interpolate across the reset), and the new round's intro pose is shown at the new mark until the interpolation arrives there (no in-between frame) | `ResetSnapWindow` 0.5 |
+| blockstun | ducking or standing up during a blockstun crossfades between the standing and crouching clip (own key, same stun clock) instead of swapping in one frame | `MotionRequest.timeKey` |
+| IK poles | the bend plane keeps the previous frame's direction as the clip's pole hint weakens, and turns at most 30 deg/frame (no elbow/knee flips) | `PoleContinuity`, `PoleMaxStep` |
+| feet | heel drop rate-limited, soft floor and soft reach limits (C1), rise-on-ball eased in with the contact and never more than the rise that lifts the ankle, median-filtered clip contacts, lying-leg ramps | `FlattenRate` 0.15, `SoftFloor` / `SoftReach` 0.06, `LyingLegsRamp` 0.1 |
+| strike contact | a hand/foot (and its forearm/shin) sinking into the opponent's head/chest/pelvis is drawn back along its reach to the surface (elbow/knee bends, flex-limited), released gradually; throws and grab moves exempt | `StrikeContact`, `ContactAllowance` 0.05, `ContactMaxRetract` 0.85, `ContactMaxFlex` 135, `ContactRelease` 0.1 |
+| self clearance | in guard, movement, block and hit reactions a glove/hand inside the own head or torso, or an arm through the torso, is pushed out along the surface normal (rate-limited, in heading space); also after a contact retraction | `SelfClearance`, `SelfHeadAllowance` 0.015, `SelfBodyAllowance` 0.03, `SelfPushRate` 0.05 |
+| grips | throw grips fade in/out over a minimum time | `GripFadeInMin` 0.05, `GripReleaseMin` 0.15 |
+| guard trims | per-fighter hand offsets in the guard states: Kael's rear (camera-side) glove sits 0.1 lower so his profile eye reads from the player's own camera | `GuardTrim` |
+| body shapes | `Motion.BodyShape`: profiled hulls of the real parts, rigid glove capsules (round-4 gloves), `handCapsule`, `coreDistance` — shared by the runtime and the harness | — |
+| camera | eased hitstop lean, impact push and tilt; 5-7 Hz eased shake; acceleration-limited follow (no jerk when a shot jumps); zeroed on cuts | `CameraDirector.MaxCameraAccel` 600 |
+
+### 13.3 Clips
+
+- `tools/mocap/retime.py` re-times fast segments of built clips in place (anchors at start, contact/impact, recover and
+  end stay exact; slow holds play a little faster, snaps a little slower; poses unchanged). All 13 FLThrow1 throws were
+  re-timed: fastest body point 0.87-2.06 -> 0.46-0.54 studs/frame; grips remapped; break tracks untouched.
+
+### 13.4 Results (all six fighters, merged round-4 rigs; distinct defects main -> branch, report r18 vs base7)
+
+| category | main -> branch | of which >= 2x the limit |
+|---|---|---|
+| rotation pops | 5226 -> 2005 | 3723 -> 1391 |
+| limb-tip speed pops | 1988 -> 767 | 1665 -> 488 |
+| transition jumps (> 15 deg/frame at a switch) | 777 -> 231 | 560 -> 128 |
+| elbow/knee bend-plane flips | 471 -> 247 | 173 -> 14 |
+| joint limits | 1576 -> 1502 | 391 -> 366 |
+| glove/hand in own head | 27 -> 48 | 21 -> 34 |
+| glove/hand in own torso | 194 -> 113 | 155 -> 85 |
+| arm through own torso | 1360 -> 911 | 1057 -> 438 |
+| legs through each other | 266 -> 228 | 241 -> 202 |
+| strike depth at contact | 76 -> 36 | 56 -> 17 |
+| strike through the opponent | 83 -> 32 | 52 -> 19 |
+| bodies overlapping | 4 -> 6 | 2 -> 2 |
+| jitter (loops) | 3 -> 2 | 0 -> 0 |
+
+Guard, movement and hit reactions: every glove clears the own head for all six (Kael's left glove -0.07). The
+glove-in-head count rose only in face-down getups/rolls (up to 0.42 for 1-2 frames: the hand targets blend around the
+shoulder — the arc that removed 140-180 deg arm whips elsewhere — and pass under the face as the hands leave the floor;
+a straight-line blend there was measured and rejected: joint jumps up to 152 deg, deeper torso clipping) and Lumi
+PalmHeel (0.05). Real-play emulation (four CPU fights, 2000 frames each, rendered
+between sim frames like practice): isolated root jumps 88 -> 13 (3 are the intended round-reset cuts, the other 10 are
+<= 0.15 studs; main's worst non-reset jump was 0.57), isolated limb/head jumps 566 -> 199. What remains is clip content: fast strike/spin arcs, getups and rolls (gloves through the
+head/torso while rolling, up to 0.4-0.7), ankle/knee direction mismatches in a few clips, point-blank strikes limited
+by the flex cap, and the counter-hit entries listed OPEN in `MotionQA_Test`.
+
+### 13.5 For clip authors
+
+- Run `MotionQA_Test` and the report after changing a clip; fix pops by re-keying or `retime.py`, keep contact
+  frames exact, start and end on the displayed stance.
+- A wind-up that tucks the hand next to the ear passes the arm close to the shoulder: keep the elbow's pole hint
+  consistent through the chamber (a pole pointing along the forearm flips the elbow).
+- Gloves: the runtime keeps them out of the head/torso only in guard, movement and reactions; in attacks, getups and
+  throws the clip must route the hands around the body.
