@@ -1,9 +1,11 @@
 --!strict
--- World.Lobby: "Ember Square", the round plaza at the heart of the district (floor top Y = 0, origin-centred).
--- Contract pieces: six LobbySpawn plates (spawn court north of the beacon, everyone facing north into the district),
--- FighterKiosk (PromptPart + ChooseFighter prompt) and the Hall of Champions' Leaderboard flanking the court, and
--- the Signpost with an arm per arena. Dressing: the Ember Beacon fountain tower, concentric paving, wayfinding lines
--- in each arena's colour from the beacon to its stair, lamps, benches, planters and festoon lights.
+-- World.Lobby: "Ember Square", the round plaza at the heart of the district (floor top Y = 0, origin-centred) and its
+-- head on the open side of the stage horseshoe. Contract pieces: six LobbySpawn plates (a tight spawn court on the
+-- plaza centre, everyone facing the plaza head), FighterKiosk (PromptPart + ChooseFighter prompt) and the Hall of
+-- Champions' Leaderboard flanking the head, and the Signpost with an arm per arena. Dressing: the Ember Beacon
+-- fountain tower at the head of the plaza, concentric paving, wayfinding lines in each arena's colour from the spawn
+-- court to its pads, lamps, benches and festoon lights. Everything that rises above a fight floor + 1.5 stays outside
+-- every fight camera's orbit (Layout.CAMERA_ORBIT from each FightOrigin).
 local Kit = require(script.Parent.Kit)
 local Props = require(script.Parent.Props)
 local Layout = require(script.Parent.Layout)
@@ -30,39 +32,57 @@ local C = {
 }
 Lobby.colors = C
 
-Lobby.COURT_CENTRE = Vector3.new(0, 0, -15)
-Lobby.KIOSK_BEARING = 40
--- 314 (not 320): the hall's 21-stud base would clip the rooftop stair's west cheek
-Lobby.HALL_BEARING = 314
-Lobby.SIDE_RADIUS = 26
+Lobby.COURT_CENTRE = Vector3.zero
+-- The plaza head (the open side of the stage horseshoe): the beacon on its axis, the kiosk and the hall either side,
+-- all facing the spawn court and all outside every fight camera's orbit.
+Lobby.HEAD_BEARING = Layout.PLAZA_HEAD_BEARING
+Lobby.KIOSK_BEARING = Layout.PLAZA_HEAD_BEARING - 21
+Lobby.HALL_BEARING = Layout.PLAZA_HEAD_BEARING + 21
+Lobby.SIDE_RADIUS = 36
+Lobby.BEACON_DISTANCE = 44
+Lobby.BEACON_CENTRE = Layout.polar(Layout.PLAZA_HEAD_BEARING, Lobby.BEACON_DISTANCE)
+Lobby.BEACON_BASIN_RADIUS = 7
+Lobby.SIGNPOST_POSITION = Layout.polar(Layout.PLAZA_HEAD_BEARING, 15.5)
 
 local polar = Layout.polar
 
-local function disc(parent: Instance, radius: number, top: number, material: Enum.Material, color: Color3, props: Kit.Props?): Part
+local function disc(parent: Instance, radius: number, top: number, material: Enum.Material, color: Color3, props: Kit.Props?, centre: Vector3?): Part
 	local h = 0.6
-	return Kit.cylinder(parent, Vector3.new(0, top - h / 2, 0), h, radius * 2, material, color, props)
+	local c = centre or Vector3.zero
+	return Kit.cylinder(parent, Vector3.new(c.X, top - h / 2, c.Z), h, radius * 2, material, color, props)
 end
 
 -- Paving: nested discs a hair apart give clean concentric rings without z-fighting (the district floor below is 0).
+-- Heights in use: kerb 0.015, band 0.03, court 0.05, beacon band 0.06, court ring 0.07, beacon court 0.08,
+-- court inner 0.09, pad halos 0.11, promenade 0.13, wayfinding inlays 0.16-0.19, name mats 0.22.
 local function buildPaving(m: Model)
-	disc(m, 30, 0.03, M.Brick, C.band, { Name = "PlazaBand", CastShadow = false })
-	disc(m, 28.6, 0.05, M.Pavement, C.court, { Name = "PlazaCourt", CastShadow = false })
-	disc(m, 18.6, 0.07, M.Marble, C.courtTile, { Name = "CourtRing", CastShadow = false })
-	disc(m, 17.8, 0.09, M.Pavement, C.court, { Name = "CourtInner", CastShadow = false })
-	-- wayfinding lines in each arena's colour from the beacon to the foot of its stair
+	disc(m, 33.4, 0.03, M.Brick, C.band, { Name = "PlazaBand", CastShadow = false })
+	disc(m, 32, 0.05, M.Pavement, C.court, { Name = "PlazaCourt", CastShadow = false })
+	disc(m, Layout.SPAWN_COURT_RADIUS + 0.8, 0.07, M.Marble, C.courtTile, { Name = "CourtRing", CastShadow = false })
+	disc(m, Layout.SPAWN_COURT_RADIUS, 0.09, M.Pavement, C.court, { Name = "CourtInner", CastShadow = false })
+	-- the beacon's own round court at the head of the plaza, and a cream promenade leading to it
+	disc(m, Lobby.BEACON_BASIN_RADIUS + 6.4, 0.06, M.Brick, C.band, { Name = "BeaconBand", CastShadow = false }, Lobby.BEACON_CENTRE)
+	disc(m, Lobby.BEACON_BASIN_RADIUS + 5.6, 0.08, M.Pavement, C.court, { Name = "BeaconCourt", CastShadow = false }, Lobby.BEACON_CENTRE)
+	local head = Layout.bearingDir(Lobby.HEAD_BEARING)
+	local p0 = head * (Layout.SPAWN_COURT_RADIUS + 1)
+	local p1 = Lobby.BEACON_CENTRE - head * (Lobby.BEACON_BASIN_RADIUS + 5)
+	local pm = (p0 + p1) / 2
+	Kit.deco(m, CFrame.lookAt(pm + Vector3.new(0, 0.09, 0), pm + Vector3.new(0, 0.09, 0) + head), Vector3.new(5, 0.08, (p1 - p0).Magnitude), M.Marble, C.cream, { Name = "Promenade", CastShadow = false })
+	-- wayfinding lines in each arena's colour from the spawn court to the name mat at the foot of its stair (they run
+	-- between the arena's two pads, through its Arrival spot)
 	for _, def in Layout.ARENAS do
 		local dir = Layout.bearingDir(def.bearing)
 		local foot = Layout.stairFoot(def)
-		local a = dir * (if def.bearing == 0 then Layout.SPAWN_COURT_END else 8.6)
-		local b = Vector3.new(foot.X, 0, foot.Z) - dir * 0.6
+		local a = dir * (Layout.SPAWN_COURT_RADIUS + 1)
+		local b = Vector3.new(foot.X, 0, foot.Z) + def.inward * 4.6
 		local mid = (a + b) / 2
 		local len = (b - a).Magnitude
 		local cf = CFrame.lookAt(mid + Vector3.new(0, 0.12, 0), mid + Vector3.new(0, 0.12, 0) + dir)
 		Kit.deco(m, cf, Vector3.new(2.4, 0.08, len), M.Marble, Kit.mix(def.accent, C.cream, 0.5), { Name = "WayLine", CastShadow = false })
 		Kit.glow(m, cf * CFrame.new(0, 0.03, 0), Vector3.new(0.5, 0.06, len), def.accent, { Name = "WayGlow", Transparency = 0.1 })
 		-- arrow chevrons along the line, pointing at the arena
-		for k = 1, math.floor(len / 7) do
-			local p = a + dir * (k * 7 - 1)
+		for k = 1, math.floor(len / 6) do
+			local p = a + dir * (k * 6 - 1)
 			local ccf = CFrame.lookAt(p + Vector3.new(0, 0.17, 0), p + Vector3.new(0, 0.17, 0) + dir)
 			for _, s in { -1, 1 } do
 				Kit.glow(m, ccf * CFrame.new(s * 0.55, 0, 0.4) * CFrame.Angles(0, math.rad(s * 40), 0), Vector3.new(0.3, 0.04, 1.5), def.accent, { Name = "WayChevron", Transparency = 0.15 })
@@ -71,10 +91,11 @@ local function buildPaving(m: Model)
 	end
 end
 
--- The Ember Beacon: octagonal fountain basin, slim tiered stone tower, bronze crown and a glowing ember crystal.
+-- The Ember Beacon: octagonal fountain basin, slim tiered stone tower, bronze crown and a glowing ember crystal. Built
+-- round the origin, then moved to the head of the plaza (Lobby.BEACON_CENTRE).
 local function buildBeacon(m: Model)
 	local beacon = Kit.model(m, "EmberBeacon")
-	local apothem = Layout.BEACON_BASIN_RADIUS - 0.7
+	local apothem = Lobby.BEACON_BASIN_RADIUS - 0.7
 	local side = 2 * apothem * math.tan(math.rad(22.5))
 	disc(beacon, apothem + 0.2, 0.2, M.Slate, C.basinFloor, { Name = "BasinFloor" })
 	Kit.cylinder(beacon, Vector3.new(0, 0.55, 0), 0.7, apothem * 2, M.Glass, C.water, { Name = "Water", Transparency = 0.42, CanCollide = false, CastShadow = false })
@@ -110,7 +131,7 @@ local function buildBeacon(m: Model)
 		end
 	end
 	-- the fountain is not a short cut: an invisible collider keeps walkers (and paths) round the basin
-	Kit.cylinder(beacon, Vector3.new(0, 2, 0), 4, Layout.BEACON_BASIN_RADIUS * 2 + 0.4, M.SmoothPlastic, C.water, { Name = "BasinCollider", Transparency = 1, CastShadow = false })
+	Kit.cylinder(beacon, Vector3.new(0, 2, 0), 4, Lobby.BEACON_BASIN_RADIUS * 2 + 0.4, M.SmoothPlastic, C.water, { Name = "BasinCollider", Transparency = 1, CastShadow = false })
 	-- tower
 	Kit.cylinder(beacon, Vector3.new(0, 1.6, 0), 3.2, 6.4, M.Granite, C.granite, { Name = "Plinth" })
 	Kit.cylinder(beacon, Vector3.new(0, 3.5, 0), 0.6, 5.6, M.Marble, C.cream, { Name = "PlinthStep" })
@@ -195,11 +216,22 @@ local function buildBeacon(m: Model)
 		EmissionDirection = Enum.NormalId.Top,
 		Texture = "rbxasset://textures/particles/smoke_main.dds",
 	})
+	-- move the whole beacon to the head of the plaza (the orbit rings keep their pivots for LobbyAmbience)
+	local offset = Lobby.BEACON_CENTRE
+	for _, d in beacon:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CFrame += offset
+		elseif d:IsA("Model") then
+			d.WorldPivot += offset
+		end
+	end
+	beacon.WorldPivot = CFrame.new(offset)
 end
 
 local function buildSpawns(m: Model)
+	local facing = Layout.bearingDir(Layout.SPAWN_FACING)
 	for i, pos in Layout.SPAWN_POINTS do
-		local cf = CFrame.lookAt(pos + Vector3.new(0, 0.05, 0), pos + Vector3.new(0, 0.05, -10))
+		local cf = CFrame.lookAt(pos + Vector3.new(0, 0.05, 0), pos + Vector3.new(0, 0.05, 0) + facing)
 		local spawn = Instance.new("SpawnLocation")
 		spawn.Name = "LobbySpawn"
 		spawn.Anchored = true
@@ -213,6 +245,7 @@ local function buildSpawns(m: Model)
 		spawn.Duration = 0
 		spawn.AllowTeamChangeOnTouch = false
 		spawn:SetAttribute("SpawnIndex", i)
+		Kit.passThrough(spawn)
 		spawn.Parent = m
 		Kit.stats.parts += 1
 		-- medallion: bronze ring, ember glow rim, marble disc, bronze and terracotta centre (flush, no glare)
@@ -224,10 +257,10 @@ local function buildSpawns(m: Model)
 	end
 end
 
--- Fingerpost between the spawn court and the rooftop stair: one arm per arena, pointing at its stair.
+-- Fingerpost on the promenade just ahead of the spawn court: one arm per arena, pointing at its stair.
 local function buildFingerpost(m: Model)
 	local fp = Kit.model(m, "Signpost")
-	local base = Vector3.new(-9, 0, -24.5)
+	local base = Lobby.SIGNPOST_POSITION
 	Kit.block(fp, CFrame.new(base + Vector3.new(0, 0.4, 0)), Vector3.new(2.4, 0.8, 2.4), M.Granite, C.granite, { Name = "PostBase" })
 	Kit.cylinder(fp, base + Vector3.new(0, 6.2, 0), 11.4, 0.55, M.Metal, C.metalDark, { Name = "Post" })
 	Kit.ball(fp, base + Vector3.new(0, 12.1, 0), 1, M.Neon, C.ember, { CanCollide = false })
@@ -362,29 +395,33 @@ local function buildLeaderboard(m: Model)
 	end
 end
 
--- Lamps, benches and planters round the plaza edge between the stairs; festoons from the beacon to five posts.
+-- Street lamps on the plaza rim in the gaps between neighbouring stages (outside every fight camera's orbit), benches
+-- round the beacon basin, and festoons from the beacon tower to the kiosk and the hall.
 local function buildDressing(m: Model)
 	local dress = Kit.model(m, "Dressing")
-	local rng = Kit.rng(11)
-	local gaps = { 108, 180, 252 }
-	for _, g in gaps do
-		local lampPos = polar(g, 27)
-		Props.streetLamp(dress, lampPos, -lampPos.Unit, nil, 11)
-		-- a low flower planter in front of the lamp (keeps the sight lines across the plaza open)
-		local pos = polar(g, 23.5)
-		Props.planter(dress, Kit.facing(pos, -pos.Unit), Vector3.new(6, 1, 2.6), M.Brick, Color3.fromRGB(176, 104, 76), rng, false)
+	local byBearing = table.clone(Layout.ARENAS)
+	table.sort(byBearing, function(a, b) return a.bearing < b.bearing end)
+	for i = 1, #byBearing - 1 do
+		local a, b = byBearing[i], byBearing[i + 1]
+		if b.bearing - a.bearing <= Layout.ARENA_SPACING + 1 then
+			local lampPos = polar((a.bearing + b.bearing) / 2, 32.5)
+			Props.streetLamp(dress, lampPos, -lampPos.Unit, nil, 11)
+		end
 	end
-	-- benches round the beacon basin between the wayfinding lines, facing the fountain
-	for _, b in { 108, 180, 252 } do
-		local pos = polar(b, 10.4)
-		Props.bench(dress, Kit.facing(pos, -pos.Unit))
+	-- benches on the beacon court, facing the fountain from the plaza side
+	local back = -Layout.bearingDir(Lobby.HEAD_BEARING)
+	for _, turn in { -62, 0, 62 } do
+		local r = math.rad(turn)
+		local d = Vector3.new(back.X * math.cos(r) - back.Z * math.sin(r), 0, back.X * math.sin(r) + back.Z * math.cos(r))
+		local pos = Lobby.BEACON_CENTRE + d * (Lobby.BEACON_BASIN_RADIUS + 3.6)
+		Props.bench(dress, Kit.facing(pos, -d))
 	end
-	-- festoons from the beacon to one lamp of each pair
-	local hub = Vector3.new(0, 18, 0)
-	for _, g in gaps do
-		local pos = polar(g, 27)
-		local dir = Vector3.new(pos.X, 0, pos.Z).Unit
-		Props.stringLights(dress, hub + dir * 2.4, pos + Vector3.new(0, 10.6, 0), 12, Color3.fromRGB(255, 206, 130), 2.2, 6)
+	-- festoons from the beacon tower to the kiosk canopy and the hall's header
+	local hub = Lobby.BEACON_CENTRE + Vector3.new(0, 18, 0)
+	for _, target in { sideFrame(Lobby.KIOSK_BEARING) * CFrame.new(0, 11.4, 2.2), sideFrame(Lobby.HALL_BEARING) * CFrame.new(0, 16.4, 0.2) } do
+		local p = target.Position
+		local dir = Vector3.new(p.X - hub.X, 0, p.Z - hub.Z).Unit
+		Props.stringLights(dress, hub + dir * 2.4, p, 10, Color3.fromRGB(255, 206, 130), 2.2, 5)
 	end
 end
 

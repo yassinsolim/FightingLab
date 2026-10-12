@@ -2,8 +2,8 @@
 -- World.ArenaKit: the pieces every arena stage shares (OV6). Model attributes and FightOrigin; the round podium with
 -- its plaza stair; the fight floor ringed by a glowing edge line at the fight radius and a themed barrier just
 -- outside it (rails/ropes with clearance underneath, so a fighter cornered at radius 21 stands against them and a
--- body knocked down at the edge slides under); the pads and exits at the front of the stage; the status board;
--- stage lights; and the camera-occluder tagging pass.
+-- body knocked down at the edge slides under); the pads, exits and Arrival marker on the plaza in front of the stair;
+-- the status board; stage lights; and the camera-occluder tagging pass.
 local CollectionService = game:GetService("CollectionService")
 
 local Kit = require(script.Parent.Kit)
@@ -44,6 +44,8 @@ function ArenaKit.new(def: ArenaDef): Model
 	-- scenery (this stage's and its neighbours') never stands on the podium or through the status board
 	Kit.keepOut(def.origin, Layout.STAGE_RADIUS + 1.5)
 	Kit.keepOut(def.origin - def.inward * Layout.BOARD_DISTANCE, 16.5)
+	-- and nothing grows on the forecourt with the pads
+	Kit.keepOut(Layout.plazaPoint(def, 0, Layout.PAD_Z), Layout.PAD_X + Layout.PAD_RADIUS + 4)
 	Kit.stats.parts += 1
 	return model
 end
@@ -342,12 +344,13 @@ end
 
 -- Pads and exits ---------------------------------------------------------------------------------------------------
 
--- A glowing pad disc (top = floor + 0.2) with halo ring, emblem, light, light column and rising motes.
+-- A glowing pad disc on the plaza in front of the stage (top = plaza + PAD_TOP) with halo ring, emblem, light, light
+-- column and rising motes.
 function ArenaKit.pad(model: Model, def: ArenaDef, name: string, slot: number, color: Color3, attrs: { [string]: any }, emblem: string, caption: string): BasePart
 	local r = Layout.PAD_RADIUS
 	local centre = Layout.padPosition(def, slot)
-	local base = def.floorY - Layout.APRON_DROP
-	local thickness = def.floorY + 0.2 - base
+	local base = -0.2 -- sunk into the paving
+	local thickness = Layout.PAD_TOP - base
 	local pad = Kit.cylinder(model, Vector3.new(centre.X, base + thickness / 2, centre.Z), thickness, r * 2, M.Neon, color, {
 		Name = name,
 		CastShadow = false,
@@ -356,9 +359,10 @@ function ArenaKit.pad(model: Model, def: ArenaDef, name: string, slot: number, c
 	for key, value in attrs do
 		pad:SetAttribute(key, value)
 	end
+	Kit.passThrough(pad)
 	pad:SetAttribute("PadRadius", r)
 	pad:SetAttribute("PadColor", color)
-	local top = def.floorY + 0.2
+	local top = Layout.PAD_TOP
 	local glow = Kit.model(model, name .. "Glow")
 	-- dark glass centre leaves a bright neon rim
 	Kit.cylinder(glow, Vector3.new(centre.X, top + 0.015, centre.Z), 0.03, r * 2 - 1.2, M.Glass, Kit.shade(color, 0.22), {
@@ -369,8 +373,8 @@ function ArenaKit.pad(model: Model, def: ArenaDef, name: string, slot: number, c
 		CastShadow = false,
 		Transparency = 0.12,
 	})
-	-- soft halo on the apron around the pad
-	local halo = Kit.cylinder(glow, Vector3.new(centre.X, base + 0.012, centre.Z), 0.02, r * 2 + 1.6, M.Neon, color, {
+	-- soft halo on the paving round the pad (top 0.11: clear of every paving disc and inlay height)
+	local halo = Kit.cylinder(glow, Vector3.new(centre.X, 0.1, centre.Z), 0.02, r * 2 + 1.6, M.Neon, color, {
 		Name = "Halo",
 		CanCollide = false,
 		CanQuery = false,
@@ -432,10 +436,9 @@ function ArenaKit.pad(model: Model, def: ArenaDef, name: string, slot: number, c
 	return pad
 end
 
--- Invisible marker beside its pad (6 studs further round the stage), on the floor top, facing FightOrigin.
+-- Invisible marker beside its pad (outside it), on the plaza floor, facing FightOrigin.
 function ArenaKit.exit(model: Model, def: ArenaDef, name: string, slot: number): BasePart
 	local pos = Layout.exitPosition(def, slot)
-	pos = Vector3.new(pos.X, def.floorY, pos.Z)
 	local p = Instance.new("Part")
 	p.Name = name
 	p.Size = Vector3.new(2, 0.2, 2)
@@ -451,7 +454,27 @@ function ArenaKit.exit(model: Model, def: ArenaDef, name: string, slot: number):
 	return p
 end
 
--- Standard contract pieces for an arena: pads, exits.
+-- Arrival: where quick travel drops a player who wants to watch or walk in. An invisible, non-colliding marker on the
+-- plaza floor between the two pads (outside the ring, the barrier and the pads), facing the ring; its bottom face
+-- rests on the floor.
+function ArenaKit.arrival(model: Model, def: ArenaDef): BasePart
+	local pos = Layout.arrivalPosition(def) + Vector3.new(0, 0.1, 0)
+	local p = Instance.new("Part")
+	p.Name = "Arrival"
+	p.Size = Vector3.new(4, 0.2, 4)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.CFrame = CFrame.lookAt(pos, Vector3.new(def.origin.X, pos.Y, def.origin.Z))
+	p.Parent = model
+	Kit.stats.parts += 1
+	return p
+end
+
+-- Standard contract pieces for an arena: pads, exits and the Arrival marker.
 function ArenaKit.contractPieces(model: Model, def: ArenaDef)
 	if def.kind == "Practice" then
 		ArenaKit.pad(model, def, "PadTraining", 1, Layout.TRAINING_COLOR, { PadMode = "Training" }, "TRAIN", "PRACTICE")
@@ -464,20 +487,22 @@ function ArenaKit.contractPieces(model: Model, def: ArenaDef)
 		ArenaKit.exit(model, def, "ExitP1", 1)
 		ArenaKit.exit(model, def, "ExitP2", 2)
 	end
+	ArenaKit.arrival(model, def)
 end
 
 -- Name mat at the stair foot (model Gate_<StageId>): a themed inlay centred on the stair, lettered with the arena
 -- name so it reads for someone walking up from the plaza. Flush with the floor, so it never blocks a walkway or a
--- view, and it stays inside its own stair's width (the stairs of neighbouring arenas nearly meet at the gaps).
+-- view, and it stays between the two pads.
 function ArenaKit.gate(model: Model, def: ArenaDef, material: Enum.Material, color: Color3, textColor: Color3?): Model
 	local g = Kit.model(model, "Gate_" .. def.stageId)
-	local width = math.min((def.stairWidth or Layout.STAIR_WIDTH) - 6, 22)
+	local width = 2 * (Layout.PAD_X - Layout.PAD_RADIUS) - 1
 	local depth = 3.6
 	local top = 0.22
 	local centre = Layout.stairFoot(def) + def.inward * (depth / 2 + 0.4) + Vector3.new(0, top - 0.15, 0)
 	-- X runs towards the plaza, so the Top-face canvas reads upright for someone facing the stair
 	local cf = CFrame.fromMatrix(centre, def.inward, Vector3.yAxis)
 	local mat = Kit.block(g, cf, Vector3.new(depth, 0.3, width), material, color, { Name = "NameMat", CastShadow = false })
+	Kit.passThrough(mat)
 	for _, s in { -1, 1 } do
 		Kit.glow(g, cf * CFrame.new(s * (depth / 2 - 0.25), 0.155, 0), Vector3.new(0.16, 0.02, width - 0.6), def.accent, { Name = "NameMatTrim", Transparency = 0.15 })
 	end
@@ -625,9 +650,10 @@ end
 function ArenaKit.stageLight(parent: Instance, def: ArenaDef, angle: number, color: Color3, height: number, strength: number, poleColor: Color3, headColor: Color3?): Model
 	local m = Kit.model(parent, "StageLight")
 	local d = Layout.around(def, angle)
-	local base = def.origin + d * (Layout.STAGE_RADIUS - 1.6)
+	-- on the apron rim, clear of the flat fight floor (radius FLOOR_CLEAR_RADIUS) with its lamp heads too
+	local base = def.origin + d * (Layout.STAGE_RADIUS - 0.8)
 	base = Vector3.new(base.X, def.floorY - Layout.APRON_DROP, base.Z)
-	Kit.cylinder(m, base + Vector3.new(0, 0.3, 0), 0.6, 1.6, M.Metal, Kit.shade(poleColor, 0.8), { Name = "LightBase" })
+	Kit.cylinder(m, base + Vector3.new(0, 0.3, 0), 0.6, 1.2, M.Metal, Kit.shade(poleColor, 0.8), { Name = "LightBase" })
 	Kit.cylinder(m, base + Vector3.new(0, height / 2, 0), height, 0.45, M.Metal, poleColor, { Name = "LightPole" })
 	local headPos = base + Vector3.new(0, height + 0.4, 0)
 	local aim = def.origin + Vector3.new(0, 1, 0)
@@ -686,6 +712,52 @@ function ArenaKit.tagOccluders(def: ArenaDef, roots: { Instance }): number
 		Kit.step()
 	end
 	return count
+end
+
+-- Flat distance from `p` to a part's oriented box (measured at the part's height).
+local function boxFlatDistance(d: BasePart, p: Vector3): number
+	local cf = d.CFrame
+	local q = Vector3.new(p.X, cf.Y, p.Z)
+	local l = cf:PointToObjectSpace(q)
+	local h = d.Size / 2
+	local c = cf:PointToWorldSpace(Vector3.new(math.clamp(l.X, -h.X, h.X), math.clamp(l.Y, -h.Y, h.Y), math.clamp(l.Z, -h.Z, h.Z)))
+	return Vector3.new(c.X - q.X, 0, c.Z - q.Z).Magnitude
+end
+
+-- Whether every piece of `root` that rises above a neighbouring fight floor + OCCLUDER_HEIGHT stays at least
+-- NEIGHBOUR_CLEARANCE (flat, to the piece's oriented box) from that arena's FightOrigin: a fight only fades its own
+-- arena's pieces. Scenery placed round the back of a stage checks this and yields when it would crowd a neighbour.
+function ArenaKit.clearOfNeighbours(def: ArenaDef, root: Instance): boolean
+	local parts: { Instance } = if root:IsA("BasePart") then { root } else root:GetDescendants()
+	for _, other in Layout.ARENAS do
+		if other.id ~= def.id then
+			for _, d in parts do
+				if d:IsA("BasePart") then
+					local _, ey = horizontalExtents(d.CFrame, d.Size)
+					if d.CFrame.Y + ey > other.origin.Y + Layout.OCCLUDER_HEIGHT and boxFlatDistance(d, other.origin) < Layout.NEIGHBOUR_CLEARANCE + 0.5 then
+						return false
+					end
+				end
+			end
+		end
+	end
+	return true
+end
+
+-- Whether nothing of `root` rises inside the flat fight floor's radius (FLOOR_CLEAR_RADIUS; only the edge barrier
+-- stands near the fight). Spreading scenery (trees) checks this and is regrown or moved out when it would.
+function ArenaKit.clearOfFightFloor(def: ArenaDef, root: Instance): boolean
+	local parts: { Instance } = if root:IsA("BasePart") then { root } else root:GetDescendants()
+	for _, d in parts do
+		if d:IsA("BasePart") and d.Transparency < 0.99 then
+			local _, ey = horizontalExtents(d.CFrame, d.Size)
+			local rises = d.CFrame.Y + ey > def.origin.Y + 0.3 and d.CFrame.Y - ey < def.origin.Y + 12
+			if rises and boxFlatDistance(d, def.origin) < Layout.FLOOR_CLEAR_RADIUS + 0.3 then
+				return false
+			end
+		end
+	end
+	return true
 end
 
 return ArenaKit

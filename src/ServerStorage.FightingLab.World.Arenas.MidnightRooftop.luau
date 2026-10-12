@@ -1,5 +1,5 @@
 --!strict
--- Arena: Midnight Rooftop (north). The fight stage is the roof of a round podium building at the head of the plaza:
+-- Arena: Midnight Rooftop (north-north-west). The fight stage is the roof of a round podium building by the plaza:
 -- dark asphalt deck with a pink neon edge line and a cyan neon light-rail on slim posts, reached by a grand stair.
 -- Behind it the city rises: lit towers, neon signs and the Orbit Tower with the arena's big status screen.
 local Kit = require(script.Parent.Parent.Kit)
@@ -34,7 +34,7 @@ local function facade(parent: Instance, def: Layout.ArenaDef)
 	local f = Kit.model(parent, "Facade")
 	local R = Layout.STAGE_RADIUS + 0.02
 	local rng = Kit.rng(41)
-	for a = 28, 332, 11 do
+	for a = 28, 332, 13 do
 		local d = Layout.around(def, a)
 		local p = def.origin + d * R
 		local cf = CFrame.lookAt(Vector3.new(p.X, 2.9, p.Z), Vector3.new(p.X, 2.9, p.Z) + d)
@@ -59,16 +59,16 @@ end
 local function rooftopKit(parent: Instance, def: Layout.ArenaDef)
 	local kit = Kit.model(parent, "RoofKit")
 	local base = def.floorY - Layout.APRON_DROP
-	-- air-handling units on the back corners of the apron (outside the barrier)
+	-- compact air-handling units on the back corners of the apron rim (outside the flat fight floor)
 	for _, a in { 142, -142 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 27.6
+		local p = def.origin + d * 26.0
 		local cf = CFrame.lookAt(Vector3.new(p.X, base, p.Z), Vector3.new(p.X, base, p.Z) + d)
-		Kit.block(kit, cf * CFrame.new(0, 1.2, 0), Vector3.new(5.2, 2.4, 3.2), M.Metal, C.metal, { Name = "HVAC" })
-		for _, fx in { -1.3, 1.3 } do
-			Kit.cylinder(kit, (cf * CFrame.new(fx, 2.45, 0)).Position, 0.12, 2.2, M.Metal, C.metalDark, { Name = "Fan", CanCollide = false })
+		Kit.block(kit, cf * CFrame.new(0, 1.0, 0), Vector3.new(4.4, 2.0, 1.8), M.Metal, C.metal, { Name = "HVAC" })
+		for _, fx in { -1.1, 1.1 } do
+			Kit.cylinder(kit, (cf * CFrame.new(fx, 2.05, 0)).Position, 0.12, 1.5, M.Metal, C.metalDark, { Name = "Fan", CanCollide = false })
 		end
-		local vent = Kit.deco(kit, cf * CFrame.new(-2, 3.0, 0.9), Vector3.new(0.6, 1.2, 0.6), M.Metal, C.metalDark, { Name = "Vent" })
+		local vent = Kit.deco(kit, cf * CFrame.new(-1.6, 2.5, 0.5), Vector3.new(0.5, 1.0, 0.5), M.Metal, C.metalDark, { Name = "Vent" })
 		Kit.emitter(vent, {
 			Name = "Steam",
 			Color = Kit.colors(Color3.fromRGB(220, 220, 230)),
@@ -84,21 +84,21 @@ local function rooftopKit(parent: Instance, def: Layout.ArenaDef)
 			Texture = "rbxasset://textures/particles/smoke_main.dds",
 		})
 	end
-	-- low cable trays and skylights between them (under 1.5 studs)
+	-- low skylights between them (under 1.5 studs)
 	for _, a in { 168, -168 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 27.5
+		local p = def.origin + d * 26.0
 		local cf = CFrame.lookAt(Vector3.new(p.X, base, p.Z), Vector3.new(p.X, base, p.Z) + d)
-		Kit.block(kit, cf * CFrame.new(0, 0.5, 0), Vector3.new(4.4, 1, 3), M.Metal, C.metalDark, { Name = "SkylightFrame" })
-		Kit.deco(kit, cf * CFrame.new(0, 1.03, 0), Vector3.new(3.8, 0.06, 2.4), M.Glass, Color3.fromRGB(255, 220, 170), { Name = "Skylight", Transparency = 0.25 })
+		Kit.block(kit, cf * CFrame.new(0, 0.4, 0), Vector3.new(3.6, 0.8, 1.8), M.Metal, C.metalDark, { Name = "SkylightFrame" })
+		Kit.deco(kit, cf * CFrame.new(0, 0.83, 0), Vector3.new(3.0, 0.06, 1.2), M.Glass, Color3.fromRGB(255, 220, 170), { Name = "Skylight", Transparency = 0.25 })
 	end
 	-- satellite dishes on the sides
 	for _, a in { 100, -100 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 29
+		local p = def.origin + d * 26.3
 		local foot = Vector3.new(p.X, base, p.Z)
 		Kit.cylinder(kit, foot + Vector3.new(0, 1.2, 0), 2.4, 0.4, M.Metal, C.metalDark, { CanCollide = false })
-		Kit.cylinder(kit, CFrame.lookAt(foot + Vector3.new(0, 2.8, 0), foot + Vector3.new(0, 4.5, 0) + d * 2) * CFrame.Angles(math.rad(-90), 0, 0), 0.3, 3.4, M.Metal, Color3.fromRGB(220, 222, 228), { Name = "Dish", CanCollide = false })
+		Kit.cylinder(kit, CFrame.lookAt(foot + Vector3.new(0, 2.8, 0), foot + Vector3.new(0, 4.5, 0) + d * 2) * CFrame.Angles(math.rad(-90), 0, 0), 0.3, 2.4, M.Metal, Color3.fromRGB(220, 222, 228), { Name = "Dish", CanCollide = false })
 	end
 end
 
@@ -111,16 +111,25 @@ local function skyline(model: Model, def: Layout.ArenaDef)
 	for _, lx in { -62, 62 } do
 		Kit.deco(sky, CFrame.new(lx, groundY + 0.03, -205), Vector3.new(0.5, 0.06, 220), M.SmoothPlastic, Color3.fromRGB(230, 200, 90), { Name = "LaneLine" })
 	end
-	-- Orbit Tower carries the arena's status screen on its south face
-	local orbit = Props.tower(sky, Vector3.new(0, groundY, -131), 34, 16, 74, rng, {
+	-- Orbit Tower carries the arena's status screen on its face towards the plaza: built facing south (+Z) round its
+	-- own base, then turned to stand square behind the stage's status board
+	local behind = def.origin - def.inward * (Layout.BOARD_DISTANCE + 9)
+	local towerBase = Vector3.new(behind.X, groundY, behind.Z)
+	local orbit = Props.tower(sky, towerBase, 34, 16, 74, rng, {
 		material = M.Concrete, color = Color3.fromRGB(62, 68, 88), neon = C.violet, lit = 0.28,
 		faces = { Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Back }, crown = false, mast = true,
 	})
 	orbit.Name = "OrbitTower"
-	Props.neonSign(orbit, CFrame.new(0, groundY + 66, -122.6), 22, 4.2, "HOTEL ORBIT", C.violet)
+	Props.neonSign(orbit, CFrame.new(towerBase + Vector3.new(0, 66, 8.4)), 22, 4.2, "HOTEL ORBIT", C.violet)
+	local turn = CFrame.new(towerBase) * CFrame.Angles(0, math.atan2(def.inward.X, def.inward.Z), 0) * CFrame.new(-towerBase)
+	for _, d in orbit:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CFrame = turn * d.CFrame
+		end
+	end
 	-- the rest of the skyline: { x, z, width, depth, height, neon }
 	local towers = {
-		{ -46, -128, 22, 20, 58, C.pink }, { 46, -126, 24, 20, 52, C.cyan }, { -82, -142, 24, 24, 86, C.cyan },
+		{ -6, -128, 22, 20, 58, C.pink }, { 46, -126, 24, 20, 52, C.cyan }, { -82, -142, 24, 24, 86, C.cyan },
 		{ 58, -172, 26, 22, 96, C.pink }, { -26, -176, 26, 24, 110, C.violet }, { 24, -198, 28, 24, 124, C.amber },
 		{ -120, -118, 24, 24, 48, C.amber }, { -140, -170, 28, 26, 92, C.pink }, { 120, -198, 26, 26, 80, C.cyan },
 		{ -70, -222, 30, 26, 132, C.amber }, { 80, -238, 30, 28, 116, C.violet }, { -2, -252, 34, 30, 150, C.cyan },
@@ -138,25 +147,25 @@ local function skyline(model: Model, def: Layout.ArenaDef)
 		Kit.step()
 	end
 	-- signs on the nearer towers, facing the district
-	Props.neonSign(sky, CFrame.new(-46, groundY + 42, -117.6), 16, 4.2, "VOLT CITY", C.cyan)
+	Props.neonSign(sky, CFrame.new(-6, groundY + 42, -117.6), 16, 4.2, "VOLT CITY", C.cyan)
 	Props.neonSign(sky, CFrame.new(46, groundY + 38, -115.6), 16, 4.2, "MIDNIGHT", C.pink)
 	Props.neonSign(sky, CFrame.new(-82, groundY + 60, -129.6), 15, 4, "KUMO KARAOKE", C.violet)
 	Props.neonSign(sky, CFrame.new(58, groundY + 70, -160.6), 15, 4, "NOVA NOODLE", C.amber)
 	-- blade signs down two tower corners
-	for _, b in { { -35.4, -118.5, "NOVA", C.pink }, { 35.4, -116.5, "VOLT", C.cyan } } do
+	for _, b in { { 4.6, -118.5, "NOVA", C.pink }, { 35.4, -116.5, "VOLT", C.cyan } } do
 		local cf = CFrame.new(b[1] :: number, groundY + 24, b[2] :: number)
 		Props.neonSign(sky, cf, 3.4, 15, table.concat(string.split(b[3] :: string, ""), "\n"), b[4] :: Color3, Enum.Font.Sarpanch, false)
 	end
-	-- water tower on the left tower's roof
+	-- water tower on the front tower's roof
 	local wt = Kit.model(sky, "WaterTower")
-	local wtBase = Vector3.new(-50, groundY + 58, -130)
+	local wtBase = Vector3.new(-10, groundY + 58, -130)
 	for _, p in { Vector3.new(-2.6, 0, -2.6), Vector3.new(2.6, 0, -2.6), Vector3.new(-2.6, 0, 2.6), Vector3.new(2.6, 0, 2.6) } do
 		Kit.deco(wt, CFrame.new(wtBase + p + Vector3.new(0, 3, 0)), Vector3.new(0.5, 6, 0.5), M.Metal, C.metalDark)
 	end
 	Kit.cylinder(wt, wtBase + Vector3.new(0, 9.5, 0), 7, 7.6, M.WoodPlanks, Color3.fromRGB(128, 96, 70), { Name = "Tank", CanCollide = false })
 	Kit.cylinder(wt, wtBase + Vector3.new(0, 13.6, 0), 1.2, 5, M.Metal, C.metalDark, { CanCollide = false })
 	-- warm street-level glow along the podium's back (seen through the gaps between towers)
-	for _, x in { -60, -20, 20, 60 } do
+	for _, x in { -98, -30, 20, 60 } do
 		local lamp = Kit.deco(sky, CFrame.new(x, groundY + 5, -110), Vector3.new(0.4, 0.4, 0.4), M.SmoothPlastic, C.warm, { Name = "StreetGlow", Transparency = 1 })
 		Kit.point(lamp, C.warm, 1, 24, false)
 	end

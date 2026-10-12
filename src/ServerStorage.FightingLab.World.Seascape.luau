@@ -1,7 +1,7 @@
 --!strict
--- World.Seascape: the world round the district. The container port on the city quay (north-east, seen behind the
--- Harbor fights), the lighthouse on its rock (east), forests on the southern slopes (snowy pines below the peaks
--- behind the Summit, jungle trees round the Ruins), and palm islets and sailboats on the horizon.
+-- World.Seascape: the world round the district. The container port on the city quay (north-east, behind the plaza
+-- head), the lighthouse on its rock (east-south-east, behind the Harbor fights), forests on the southern slopes (snowy
+-- pines below the peaks behind the Summit, jungle trees round the Ruins), and palm islets and sailboats on the horizon.
 local Kit = require(script.Parent.Kit)
 local Props = require(script.Parent.Props)
 local Layout = require(script.Parent.Layout)

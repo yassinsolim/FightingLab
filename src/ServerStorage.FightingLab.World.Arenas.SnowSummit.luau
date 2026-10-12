@@ -29,20 +29,24 @@ local C = {
 local function outcrop(model: Model, def: Layout.ArenaDef, rng: Random)
 	local crag = Kit.model(model, "Outcrop")
 	local R = Layout.STAGE_RADIUS
-	-- boulders hug the podium wall (not in front of the stair), snow drifts on the ground around it
-	for a = 52, 308, 16 do
+	-- boulders strewn round the back of the podium wall (the sides stay clear: the walkways between the stages pass
+	-- there; and every boulder stays outside the flat fight floor's radius), snow drifts on the ground around it
+	for a = 100, 260, 16 do
 		local d = Layout.around(def, a + rng:NextNumber(-4, 4))
-		local p = def.origin + d * (R + 1.2)
-		local s = rng:NextNumber(4.5, 7)
+		local p = def.origin + d * (R + 4)
+		local s = rng:NextNumber(4, 5.6)
 		Props.rock(crag, Vector3.new(p.X, rng:NextNumber(0.8, 2.2), p.Z), Vector3.new(s * 1.3, s * 0.8, s), rng, Kit.mix(C.rock, C.rockDark, rng:NextNumber()), M.Rock)
+		Kit.keepOut(Vector3.new(p.X, 0, p.Z), s * 0.65)
 	end
-	for a = 64, 296, 29 do
+	for a = 106, 254, 29 do
 		local d = Layout.around(def, a + rng:NextNumber(-8, 8))
 		local p = def.origin + d * (R + rng:NextNumber(4, 7))
 		Kit.blob(crag, CFrame.new(p.X, 0.15, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Vector3.new(rng:NextNumber(7, 11), 1.4, rng:NextNumber(5, 8)), M.Snow, C.snow, { Name = "SnowDrift" })
 	end
-	-- snow ground round the outcrop (a flat disc a hair above the district floor; see Layout.GROUND_SHIFT)
-	Kit.cylinder(crag, Vector3.new(def.origin.X, -0.2, def.origin.Z) - def.inward * Layout.GROUND_SHIFT, 0.44, (R + Layout.GROUND_MARGIN) * 2, M.Snow, C.snow, { Name = "SnowField", CastShadow = false })
+	-- snow ground round the outcrop (a flat disc a hair above the district floor; see Layout.GROUND_SHIFT), marked
+	-- walk-over: PathfindingService would treat its hair-thin rim as a ledge and pinch the walkways beside the stage
+	local field = Kit.cylinder(crag, Vector3.new(def.origin.X, -0.2, def.origin.Z) - def.inward * Layout.GROUND_SHIFT, 0.44, (R + Layout.GROUND_MARGIN) * 2, M.Snow, C.snow, { Name = "SnowField", CastShadow = false })
+	Kit.passThrough(field)
 	-- pines round the back and sides
 	local pines = Kit.model(model, "Pines")
 	for i = 1, 20 do
@@ -64,7 +68,8 @@ local function outcrop(model: Model, def: Layout.ArenaDef, rng: Random)
 end
 
 local function observatoryCentre(def: Layout.ArenaDef): Vector3
-	local c = def.origin + Vector3.new(10, 0, 64)
+	-- behind the outcrop and to one side of the status board (57.7 out, 29.5 to the right)
+	local c = def.origin - def.inward * 57.7 + def.right * 29.5
 	return Vector3.new(c.X, 0, c.Z)
 end
 
@@ -107,15 +112,16 @@ end
 
 local function prayerFlags(model: Model, def: Layout.ArenaDef)
 	local flags = Kit.model(model, "PrayerFlags")
-	local base = def.floorY - Layout.APRON_DROP
+	-- three tall poles standing on the rocks just behind the podium, so the strings stay outside the fight floor
+	local poleTop = def.floorY - Layout.APRON_DROP + 11
 	local poles: { Vector3 } = {}
 	for _, a in { 118, 180, -118 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (Layout.STAGE_RADIUS - 1.1)
-		local foot = Vector3.new(p.X, base, p.Z)
-		Kit.cylinder(flags, foot + Vector3.new(0, 5.5, 0), 11, 0.36, M.Wood, Color3.fromRGB(110, 84, 60), { Name = "FlagPole" })
-		Kit.ball(flags, foot + Vector3.new(0, 11.2, 0), 0.6, M.Metal, Color3.fromRGB(220, 190, 110), { CanCollide = false })
-		table.insert(poles, foot + Vector3.new(0, 10.6, 0))
+		local p = def.origin + d * (Layout.STAGE_RADIUS + 3.5)
+		local foot = Vector3.new(p.X, 0, p.Z)
+		Kit.cylinder(flags, foot + Vector3.new(0, poleTop / 2, 0), poleTop, 0.36, M.Wood, Color3.fromRGB(110, 84, 60), { Name = "FlagPole" })
+		Kit.ball(flags, foot + Vector3.new(0, poleTop + 0.2, 0), 0.6, M.Metal, Color3.fromRGB(220, 190, 110), { CanCollide = false })
+		table.insert(poles, foot + Vector3.new(0, poleTop - 0.4, 0))
 	end
 	for i = 1, #poles - 1 do
 		Props.bunting(flags, poles[i], poles[i + 1], 12, C.flags, 1.8)

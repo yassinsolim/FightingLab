@@ -16,7 +16,7 @@ local Seascape = require(script.Parent.Seascape)
 
 local Builder = {}
 
-Builder.VERSION = "ov6-world-1"
+Builder.VERSION = "ov6-world-5"
 Builder.WORLD_NAME = "FightingLabWorld"
 
 export type Report = {
@@ -63,6 +63,9 @@ function Builder.build(): Report
 		Kit.step()
 	end
 	local seascape = Seascape.build(nil)
+	-- the plaza's paving layers and the grounds' lawns and beds are walk-over for PathfindingService (Kit.passThrough)
+	Kit.walkOverThin(lobby, 0.3)
+	Kit.walkOverThin(grounds, 0.3)
 
 	-- camera occluders: anything taller than floor + 1.5 within radius 46 of a fight centre, from any section
 	local occluders = 0

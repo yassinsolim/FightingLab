@@ -1,5 +1,5 @@
 --!strict
--- Arena: Harbor Dusk (east-north-east). A round timber pier at the district's eastern quay: a canvas fight mat
+-- Arena: Harbor Dusk (east-south-east). A round timber pier by the harbour basin: a canvas fight mat
 -- ringed by an orange edge line and two hemp ropes on dock pilings, sodium floodlights and festoon bulbs above the
 -- back of the deck, moored boats below it and the harbour signal board out on the water.
 local Kit = require(script.Parent.Parent.Kit)
@@ -30,10 +30,11 @@ local function pierDressing(model: Model, def: Layout.ArenaDef, rng: Random)
 	local dock = Kit.model(model, "Dock")
 	local base = def.floorY - Layout.APRON_DROP
 	local R = Layout.STAGE_RADIUS
-	-- pilings round the pier wall, down into the water
+	-- pilings round the back half of the pier wall, down into the water (the sides stay clear: the walkways between
+	-- the stages pass there)
 	for a = 0, 359, 15 do
 		local d = Layout.around(def, a)
-		if math.abs(ArenaKit.angleOf(def, d)) > 31 then
+		if math.abs(ArenaKit.angleOf(def, d)) > 95 then
 			local p = def.origin + d * (R + 0.35)
 			Kit.cylinder(dock, Vector3.new(p.X, -3.2, p.Z), 9.4, 1.3, M.Wood, C.piling, { Name = "Piling" })
 		end
@@ -41,41 +42,45 @@ local function pierDressing(model: Model, def: Layout.ArenaDef, rng: Random)
 	-- bollards and coiled rope on the back half of the apron rim, fenders on the pier wall
 	for _, a in { 100, 130, 160, -160, -130, -100 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (R - 1.4)
+		local p = def.origin + d * (R - 0.8)
 		Props.bollard(dock, Vector3.new(p.X, base, p.Z))
 		local f = def.origin + d * (R + 0.9)
 		Kit.cylinder(dock, CFrame.lookAt(Vector3.new(f.X, -0.6, f.Z), Vector3.new(f.X, -0.6, f.Z) + d) * CFrame.Angles(math.rad(90), 0, 0), 1.6, 1.8, M.Rubber, Color3.fromRGB(30, 30, 32), { Name = "Fender", CanCollide = false })
 	end
 	for _, a in { 115, -145 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (R - 2.2)
-		Kit.cylinder(dock, Vector3.new(p.X, base + 0.25, p.Z), 0.5, 2.2, M.Fabric, C.rope, { Name = "RopeCoil", CanCollide = false })
-		Kit.cylinder(dock, Vector3.new(p.X, base + 0.55, p.Z), 0.3, 1.4, M.Fabric, Kit.shade(C.rope, 0.85), { Name = "RopeCoil", CanCollide = false })
+		local p = def.origin + d * (R - 1.0)
+		Kit.cylinder(dock, Vector3.new(p.X, base + 0.25, p.Z), 0.5, 1.6, M.Fabric, C.rope, { Name = "RopeCoil", CanCollide = false })
+		Kit.cylinder(dock, Vector3.new(p.X, base + 0.55, p.Z), 0.3, 1.0, M.Fabric, Kit.shade(C.rope, 0.85), { Name = "RopeCoil", CanCollide = false })
 	end
 	-- life ring on a short post by each pad
 	for _, a in { 86, -86 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (R - 1.2)
+		local p = def.origin + d * (R - 0.8)
 		local foot = Vector3.new(p.X, base, p.Z)
 		Kit.block(dock, CFrame.new(foot + Vector3.new(0, 1.3, 0)), Vector3.new(0.4, 2.6, 0.4), M.Wood, C.piling, { Name = "RingPost" })
 		Kit.cylinder(dock, CFrame.lookAt(foot + Vector3.new(0, 2.1, 0), foot + Vector3.new(0, 2.1, 0) + def.inward) * CFrame.Angles(0, math.rad(90), 0), 0.3, 1.8, M.SmoothPlastic, C.orange, { Name = "LifeRing", CanCollide = false })
 	end
-	-- crates and a net pile at the back, outside the camera orbit's low zone
+	-- crates at the back of the apron rim, clear of the flat fight floor
 	for _, a in { 148, -150 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * 27.8
-		Props.crate(dock, CFrame.new(p.X, base, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), 1.3)
-		Props.crate(dock, CFrame.new(p.X + 1.6, base, p.Z + 0.8) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), 1.1)
+		local p = def.origin + d * 26.0
+		local along = Vector3.new(-d.Z, 0, d.X)
+		Props.crate(dock, CFrame.new(p.X, base, p.Z) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), 1.1)
+		local q = p + along * 1.5
+		Props.crate(dock, CFrame.new(q.X, base, q.Z) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), 0.95)
 	end
-	-- festoon bulbs strung between the four floodlight poles across the back
+	-- festoon bulbs strung from bracket ends just outside the floodlight poles, along the two back corners
 	local tops: { Vector3 } = {}
 	for _, a in { 122, 154, -154, -122 } do
 		local d = Layout.around(def, a)
-		local p = def.origin + d * (R - 1.6)
+		local p = def.origin + d * (R + 0.2)
+		local pole = def.origin + d * (R - 0.8)
 		table.insert(tops, Vector3.new(p.X, base + 11.2, p.Z))
+		Kit.rod(dock, Vector3.new(pole.X, base + 11.2, pole.Z), Vector3.new(p.X, base + 11.2, p.Z), 0.14, M.Metal, Color3.fromRGB(46, 48, 54), { Name = "FestoonBracket", CanCollide = false })
 	end
-	for i = 1, #tops - 1 do
-		Props.stringLights(dock, tops[i], tops[i + 1], 7, Color3.fromRGB(255, 206, 140), 1.2, 4)
+	for _, pair in { { 1, 2 }, { 3, 4 } } do
+		Props.stringLights(dock, tops[pair[1]], tops[pair[2]], 7, Color3.fromRGB(255, 206, 140), 1.2, 4)
 	end
 	-- moored boats and channel buoys behind the pier
 	local out = -def.inward
@@ -83,8 +88,9 @@ local function pierDressing(model: Model, def: Layout.ArenaDef, rng: Random)
 	local water = Layout.WATER_Y
 	Props.boat(dock, CFrame.lookAt(def.origin + out * 44 + side * 18 + Vector3.new(0, water - def.floorY + 0.9, 0), def.origin + out * 44 + side * 40 + Vector3.new(0, water - def.floorY + 0.9, 0)), Color3.fromRGB(60, 110, 160))
 	Props.boat(dock, CFrame.lookAt(def.origin + out * 46 - side * 20 + Vector3.new(0, water - def.floorY + 0.9, 0), def.origin + out * 52 - side * 40 + Vector3.new(0, water - def.floorY + 0.9, 0)), Color3.fromRGB(170, 60, 50))
-	for i, off in { Vector3.new(50, 0, -20), Vector3.new(62, 0, 18), Vector3.new(44, 0, 46) } do
-		local p = def.origin + off
+	-- channel buoys out in the harbour basin behind the pier ({ out, right } from FightOrigin)
+	for i, off in { { 40, -22 }, { 62, -6 }, { 50, 18 } } do
+		local p = def.origin + out * off[1] + side * off[2]
 		Kit.cylinder(dock, Vector3.new(p.X, water + 0.8, p.Z), 2.6, 1.5, M.SmoothPlastic, if i % 2 == 0 then Color3.fromRGB(60, 170, 80) else Color3.fromRGB(210, 60, 50), { Name = "Buoy", CanCollide = false })
 		local lamp = Kit.glow(dock, CFrame.new(p.X, water + 2.5, p.Z), Vector3.new(0.6, 0.6, 0.6), if i % 2 == 0 then Color3.fromRGB(80, 255, 120) else Color3.fromRGB(255, 80, 60))
 		Kit.tag(lamp, Kit.TAG_BLINK)
