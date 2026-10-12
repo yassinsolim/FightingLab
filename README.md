@@ -125,7 +125,20 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 370 run, 370 passed, 0 failed`
+  Final result: `[SUMMARY] 399 run, 399 passed, 0 failed`
+
+## Update: proportions and smoother animation (2026-10-12)
+
+- Every fighter was measured against real adult proportions (heads tall, head vs shoulder width, neck, hands, hair
+  volume, gear) and corrected: Kael's and Sierra's boxing gloves are real-glove size (they no longer cover the face in
+  guard), Rhys has a smaller head and slimmer hands, Goran's shoulders and lifting belt are less extreme (his knee pads
+  became compression tights), Lumi's hair is less oversized, Nia wears a draped waist wrap, and the women are slightly
+  broader in the shoulders. `CharacterLook_Test` checks all of it; legs are unchanged so every animation still fits.
+- Animation is smoother: hit reactions blend in through the hitstop, transitions no longer snap, elbows and knees no
+  longer flip, gloves and arms stay out of the fighter's own head and torso, fists stop at the opponent's body,
+  face-down knockdowns fall and get up without a 180-degree spin, all 13 throws were re-timed, and the fight camera
+  follows with eased acceleration. `MotionQA_Test` plays every state, move and transition on all six real rigs and
+  checks pops, flips, joint limits and clipping (defects across 598 cases: 12,051 -> 5,599; severe 8,096 -> 2,724).
 
 ## Update: shoes and hair (2026-10-12)
 

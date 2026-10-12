@@ -96,7 +96,7 @@ define({
 	tagline = "Pressure-forged striker with calm, heavy hands", intro = "Keep your guard up. It won't help.",
 	victory = { "That's how the street keeps score.", "Stay down. You earned the rest." },
 	stats = stats({ maxHealth = 100, walkSpeed = 5.0, backSpeed = 4.0, dashDistance = 3.0, dashFrames = 14, backdashDistance = 3.0, backdashFrames = 18, sidestepArc = 1.8, weight = 1.0, height = 5.95, preferredRange = 3.6 }),
-	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
+	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange leather boxing gloves, sleek black leather high-top boxing boots.",
 	primaryColor = Color3.fromRGB(32, 36, 44), accentColor = Color3.fromRGB(238, 105, 48),
 }, {
 	{ key = "Jab", name = "Jab", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 6, height = "High", range = 4.2, width = 1.2, track = 1.5, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -139,7 +139,7 @@ define({
 	tagline = "Precision kickboxer with clean angles and fast exits", intro = "Find your range. I already found mine.",
 	victory = { "Angles beat anger every time.", "Clean work. Next." },
 	stats = stats({ maxHealth = 95, walkSpeed = 5.4, backSpeed = 4.4, dashDistance = 3.3, dashFrames = 14, backdashDistance = 3.2, backdashFrames = 18, sidestepArc = 1.9, weight = 1.05, height = 5.85, preferredRange = 4.4 }),
-	look = "Adult woman, lean kickboxer build, fair skin, platinum high ponytail with swept fringe; teal striped training tank over a black sports bra, deep-teal satin kickboxing trunks with black waistband, brown vintage leather boxing gloves, barefoot.",
+	look = "Adult woman, lean kickboxer build, fair skin, platinum high ponytail with swept fringe; teal striped training tank over a black sports bra, deep-teal satin kickboxing trunks with black waistband, brown leather boxing gloves, barefoot.",
 	primaryColor = Color3.fromRGB(34, 48, 58), accentColor = Color3.fromRGB(77, 219, 205),
 }, {
 	{ key = "Jab", name = "Range Jab", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 5, height = "High", range = 3.95, width = 1.2, track = 1.5, advance = 0.25, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -184,7 +184,7 @@ define({
 	tagline = "Iron-grip powerhouse who walks through punches", intro = "Hit me. Then it's my turn.",
 	victory = { "Mountains don't move.", "You were brave. That's all." },
 	stats = stats({ maxHealth = 120, walkSpeed = 4.3, backSpeed = 3.5, dashDistance = 2.6, dashFrames = 15, backdashDistance = 2.6, backdashFrames = 19, sidestepArc = 1.5, weight = 0.85, height = 6.75, preferredRange = 3.2 }),
-	look = "Adult man, very broad heavyweight build, tan skin, shaved head, trimmed light-brown full beard; deep-red ribbed muscle tank, grey camo fight shorts, black leather lifting belt, black tactical knee pads, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
+	look = "Adult man, very broad heavyweight build, tan skin, shaved head, trimmed light-brown full beard; deep-red ribbed muscle tank, grey camo fight shorts over black compression tights, black leather lifting belt, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
 	primaryColor = Color3.fromRGB(40, 38, 36), accentColor = Color3.fromRGB(190, 40, 48),
 }, {
 	{ key = "Jab", name = "Heavy Jab", input = "LP", notation = "1", startup = 10, active = 2, recovery = 13, damage = 7, height = "High", range = 4.4, width = 1.3, track = 1.5, push = 0.5, onBlock = 1, onHit = 7, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -317,7 +317,7 @@ define({
 	tagline = "Relentless flow fighter who never stops moving", intro = "Breathe in. You won't get another chance.",
 	victory = { "Flow beats force.", "You blinked. That was enough." },
 	stats = stats({ maxHealth = 95, walkSpeed = 5.2, backSpeed = 4.3, dashDistance = 3.2, dashFrames = 14, backdashDistance = 3.2, backdashFrames = 18, sidestepArc = 2.0, weight = 1.05, height = 5.5, preferredRange = 3.8 }),
-	look = "Adult woman, compact athletic build, fair skin, black chin-length bob; black cropped mandarin-collar top with gold embroidery and laced gold bracers, deep-purple wrapped waist sash, purple tapered training pants, soft dark slip-on shoes, open hands. Do NOT use a qipao/cheongsam, buns with ribbons, or pigtails.",
+	look = "Adult woman, compact athletic build, fair skin, black chin-length bob; black cropped mandarin-collar top with gold embroidery and laced gold bracers, deep-purple draped waist wrap, purple tapered training pants, soft dark slip-on shoes, open hands. Do NOT use a qipao/cheongsam, buns with ribbons, or pigtails.",
 	primaryColor = Color3.fromRGB(36, 30, 44), accentColor = Color3.fromRGB(226, 180, 70),
 }, {
 	{ key = "Chop", name = "Knife Hand", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 5, height = "High", range = 3.55, width = 1.2, track = 1.5, advance = 0.65, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "chop", side = "Lead", height = "High" },

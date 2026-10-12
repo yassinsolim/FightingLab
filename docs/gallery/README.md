@@ -121,3 +121,21 @@ Round 3 fix, before (top two rows) vs after (bottom two rows) at the lobby camer
 Side and front close-ups of every fighter's feet, before (left) vs after (right): Kael's chunky white high-tops became sleek black boxing boots, Lumi's bulky sneakers became slim split-toe boots, and Goran's boots are smaller.
 
 ![Slimmer shoes](20-shoes-before-after.jpg)
+
+## Proportions
+
+All six fighters measured against real adult proportions, before (top) and after (bottom): Kael's and Sierra's gloves are real-glove size, Goran is less extreme with a slimmer belt and tights instead of knee pads, Rhys has a smaller head, Lumi's hair is less oversized and Nia wears a draped waist wrap.
+
+![Proportions](21-proportions-before-after.jpg)
+
+## Fight camera: guard, jab, kick, hit
+
+Every fighter on the fight camera after the proportion fix, in guard, at full jab extension, at kick contact and in a hit reaction.
+
+![Fight camera: guard, jab, kick, hit](22-fight-actions-after.jpg)
+
+## Smoother face-down knockdown
+
+Nia's face-down knockdown into the getup: before (top) the body twisted mid-fall and jumped into the getup; after (bottom) it is one continuous fall into the push-up.
+
+![Smoother face-down knockdown](23-facedown-getup-before-after.jpg)
