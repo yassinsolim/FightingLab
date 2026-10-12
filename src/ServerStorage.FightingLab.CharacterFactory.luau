@@ -34,8 +34,12 @@ export type Spec = {
 	fists: FistsSpec?,
 	gear: { GearSpec }?,
 	hideHands: boolean?,
+	-- {x, y, z} multiplies both hand parts (and their rig attachments) after the avatar is built, so a body bundle's
+	-- short or mitt-like hands reach real proportions (length along y from the wrist, breadth across the palm z,
+	-- thickness x). The wrist joint stays where it is; arm length does not change.
+	handScale: { number }?,
 	-- "high" (high-tops/boots), "low" or "barefoot": the shoe-size bounds CharacterLook_Test applies (shoes are gear
-	-- with role "shoe", seat "sole").
+	-- with role "shoe", seat "sole"; boxing gloves are gear with role "glove").
 	shoeStyle: string?,
 	shirt: number?,
 	pants: number?,
@@ -197,6 +201,7 @@ local SOLE_PROXY_ATTRIBUTE = "FightingLabSoleProxy"
 local BARE_FOOT_SIZE_ATTRIBUTE = "FightingLabBareFootSize"
 local GROUND_SIZE_ATTRIBUTE = "FightingLabShoeGroundSize"
 local GROUND_CENTER_ATTRIBUTE = "FightingLabShoeGroundCenter"
+local HAND_SCALE_ATTRIBUTE = "FightingLabHandScale"
 
 local function findPart(model: Model, name: string): BasePart
 	local part = model:FindFirstChild(name) or model:FindFirstChild(name, true)
@@ -402,6 +407,39 @@ local function applyHandVisibility(model: Model, hideHands: boolean?)
 	end
 end
 
+-- Hand proportions (Spec.handScale). Scales each hand part and its attachments about the hand centre, re-expresses the
+-- wrist Motor6D from the scaled wrist attachment (the wrist joint stays put, the hand grows or shrinks away from it)
+-- and scales the Humanoid's OriginalSize / OriginalPosition values, so automatic Humanoid rescaling keeps the change.
+-- The applied factor is kept in the FightingLabHandScale attribute: re-applying the same factor is a no-op and a
+-- different factor (re-dressing a live character as another fighter) first undoes the previous one.
+local function scaleHands(model: Model, handScale: { number }?)
+	local target = vectorFromArray(handScale, Vector3.one, "handScale")
+	for _, side in { "Left", "Right" } do
+		local found = model:FindFirstChild(side .. "Hand")
+		if not found or not found:IsA("BasePart") then continue end
+		local hand = found :: BasePart
+		local previous = hand:GetAttribute(HAND_SCALE_ATTRIBUTE)
+		local current = if typeof(previous) == "Vector3" then previous else Vector3.one
+		if (current - target).Magnitude < 1e-4 then continue end
+		local s = target / current
+		local originalSize = hand:FindFirstChild("OriginalSize")
+		for _, a in hand:GetChildren() do
+			if a:IsA("Attachment") then
+				a.Position = a.Position * s
+				local originalPosition = a:FindFirstChild("OriginalPosition")
+				if originalPosition and originalPosition:IsA("Vector3Value") then originalPosition.Value = originalPosition.Value * s end
+			end
+		end
+		hand.Size = hand.Size * s
+		if originalSize and originalSize:IsA("Vector3Value") then originalSize.Value = originalSize.Value * s end
+		local wrist = hand:FindFirstChild(side .. "WristRigAttachment")
+		for _, d in model:GetDescendants() do
+			if d:IsA("Motor6D") and d.Part1 == hand and wrist and wrist:IsA("Attachment") then d.C1 = wrist.CFrame end
+		end
+		hand:SetAttribute(HAND_SCALE_ATTRIBUTE, if target == Vector3.one then nil else target)
+	end
+end
+
 -- Maps each applied catalog accessory back to its instance through the Humanoid's applied HumanoidDescription.
 local function appliedAccessories(model: Model): { [number]: { Accessory } }
 	local map: { [number]: { Accessory } } = {}
@@ -457,6 +495,7 @@ local function applyTints(model: Model, accessories: { Accessory }?): number
 end
 
 local function applyExtras(model: Model, spec: Spec): { number }
+	scaleHands(model, spec.handScale)
 	addFists(model, spec.fists)
 	local skipped = addGear(model, spec.gear)
 	applyHandVisibility(model, spec.hideHands)
@@ -466,6 +505,7 @@ end
 
 local function extrasSignature(spec: Spec): string
 	local parts = { spec.id, if spec.hideHands then "hidden-hands" else "hands", if spec.fists then "fists" else "no-fists" }
+	if spec.handScale then table.insert(parts, "handScale:" .. table.concat(spec.handScale, ",")) end
 	for _, g in spec.gear or {} do
 		table.insert(parts, string.format("%s@%s", if g.assetId then tostring(g.assetId) else "band:" .. tostring(g.name), g.target))
 	end

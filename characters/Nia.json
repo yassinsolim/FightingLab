@@ -20,9 +20,9 @@
   ],
   "scales": {
     "Height": 0.86,
-    "Width": 0.8,
+    "Width": 0.89,
     "Depth": 0.8,
-    "Head": 0.75,
+    "Head": 0.74,
     "BodyType": 1.0,
     "Proportion": 0.5
   },
@@ -39,9 +39,9 @@
       "AssetId": 126833710732978,
       "AccessoryType": "Hair",
       "Scale": [
+        0.87,
         0.9,
-        0.9,
-        0.9
+        0.88
       ]
     },
     {
@@ -64,13 +64,11 @@
       ]
     },
     {
-      "AssetId": 15502016508,
-      "AccessoryType": "Waist",
-      "Scale": [
-        0.74,
-        0.85,
-        0.74
-      ]
+      "AssetId": 93954966441244,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 5,
+      "Puffiness": 0.5
     }
   ],
   "sourceAssets": [
@@ -159,14 +157,14 @@
       "kind": "Layered tapered training pants (tinted)"
     },
     {
-      "id": 15502016508,
-      "name": "Purple Pirate's Waist Sash",
-      "creator": "Рort Royal",
-      "kind": "Wrapped waist sash"
+      "id": 93954966441244,
+      "name": "Elegant Waist Wrap Drape (Purple)",
+      "creator": "GAULTIER",
+      "kind": "Layered waist wrap (sash)"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with gold brush embroidery and laced gold bracers, deep-purple wrapped waist sash, purple tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
+  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with gold brush embroidery and laced gold bracers, deep-purple draped waist wrap, purple tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
   "bodyColors": {
     "Head": [
       236,
@@ -237,5 +235,10 @@
     }
   ],
   "hideHands": false,
-  "shoeStyle": "low"
+  "shoeStyle": "low",
+  "handScale": [
+    1.0,
+    1.13,
+    1.0
+  ]
 }

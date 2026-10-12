@@ -20,7 +20,7 @@
   ],
   "scales": {
     "Height": 0.93,
-    "Width": 0.96,
+    "Width": 0.92,
     "Depth": 0.92,
     "Head": 0.7,
     "BodyType": 1.0,
@@ -67,18 +67,6 @@
       "IsLayered": true,
       "Order": 3,
       "Puffiness": 0.3
-    },
-    {
-      "AssetId": 101503419947939,
-      "AccessoryType": "Jacket",
-      "IsLayered": true,
-      "Order": 20,
-      "Puffiness": 0.08,
-      "Tint": [
-        238,
-        105,
-        48
-      ]
     }
   ],
   "sourceAssets": [
@@ -149,10 +137,16 @@
       "kind": "Layered boxing trunks"
     },
     {
-      "id": 101503419947939,
-      "name": "Boxing Gloves",
-      "creator": "Deki’s UGC",
-      "kind": "Layered boxing gloves (tinted)"
+      "id": 14775127400,
+      "name": "Boxing Glove Right White",
+      "creator": "VochtigDoekje",
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
+    },
+    {
+      "id": 14775131832,
+      "name": "Boxing Glove Left White",
+      "creator": "VochtigDoekje",
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
     },
     {
       "id": 203322574255359,
@@ -210,9 +204,63 @@
         -0.012
       ],
       "hideTarget": true
+    },
+    {
+      "assetId": 14775131832,
+      "name": "LeftGlove",
+      "target": "LeftHand",
+      "role": "glove",
+      "scale": [
+        0.845,
+        0.845,
+        0.845
+      ],
+      "rotation": [
+        -90,
+        81.3,
+        110.35
+      ],
+      "offset": [
+        -0.02,
+        0.217,
+        0.027
+      ],
+      "tint": [
+        238,
+        105,
+        48
+      ],
+      "hideTarget": true
+    },
+    {
+      "assetId": 14775127400,
+      "name": "RightGlove",
+      "target": "RightHand",
+      "role": "glove",
+      "scale": [
+        0.845,
+        0.845,
+        0.845
+      ],
+      "rotation": [
+        -90,
+        -81.3,
+        -110.3
+      ],
+      "offset": [
+        0.02,
+        0.217,
+        0.027
+      ],
+      "tint": [
+        238,
+        105,
+        48
+      ],
+      "hideTarget": true
     }
   ],
-  "look": "Adult street boxer with medium-olive realistic face and tight cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
+  "look": "Adult street boxer with medium-olive realistic face and tight cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange leather boxing gloves, sleek black leather high-top boxing boots.",
   "bodyColors": {
     "Head": [
       255,
