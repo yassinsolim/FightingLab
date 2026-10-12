@@ -18,9 +18,11 @@ Controls.practice = {
 	keyboard = { reset = "R", switchMode = "T", easy = "One", normal = "Two", hard = "Three", dummy = "Y", pause = "P", leave = "Backspace" },
 	gamepad = { pause = "ButtonStart" },
 }
+-- Lobby (round 5): the bottom action bar has a key for each button (PLAY, FIGHTERS, MENU), sprint is held (keyboard)
+-- or clicked on (gamepad left-stick press, stays on until you stop moving).
 Controls.lobby = {
-	keyboard = { interact = "E", menu = "Tab", jump = "Space" },
-	gamepad = { interact = "ButtonX", menu = "ButtonY", jump = "ButtonA" },
+	keyboard = { interact = "E", menu = "Tab", jump = "Space", play = "F", fighters = "C", sprint = "LeftShift" },
+	gamepad = { interact = "ButtonX", menu = "ButtonY", jump = "ButtonA", play = "ButtonR1", fighters = "ButtonL1", sprint = "ButtonL3" },
 }
 -- Genre notation: buttons 1-4 = left punch, right punch, left kick, right kick.
 Controls.notation = { lp = "1", rp = "2", lk = "3", rk = "4", throw = "1+3" }
@@ -42,6 +44,7 @@ Controls.actionText = {
 	reset = "Reset positions", switchMode = "Training / Versus CPU", easy = "CPU Easy", normal = "CPU Normal", hard = "CPU Hard",
 	dummy = "Dummy: stand / guard / fight back", pause = "Pause", leave = "Leave practice",
 	interact = "Interact", menu = "Menu", jump = "Jump",
+	play = "Play: Quick Duel, Fight CPU, Practice, Arenas", fighters = "Change fighter", sprint = "Sprint",
 }
 
 local KEY_LABELS: { [string]: string } = {
@@ -49,7 +52,7 @@ local KEY_LABELS: { [string]: string } = {
 	Space = "SPACE", Tab = "TAB", Backspace = "BACKSPACE", Return = "ENTER", Escape = "ESC", LeftShift = "SHIFT",
 	ButtonX = "X", ButtonY = "Y", ButtonA = "A", ButtonB = "B", ButtonR1 = "RB", ButtonL1 = "LB", ButtonR2 = "RT", ButtonL2 = "LT",
 	ButtonStart = "START", ButtonSelect = "SELECT", DPadRight = "→", DPadLeft = "←", DPadUp = "↑", DPadDown = "↓",
-	Thumbstick1 = "LS", Thumbstick2 = "RS",
+	Thumbstick1 = "LS", Thumbstick2 = "RS", ButtonL3 = "L3", ButtonR3 = "R3",
 }
 
 local function normDevice(device: string?): string
@@ -108,13 +111,14 @@ end
 local LEGENDS: { [string]: { string } } = {
 	fight = { "forward", "back", "dash", "backdash", "sidestepIn", "sidestepOut", "crouch", "lp", "rp", "lk", "rk", "throw", "throw1", "throw2", "breakThrow", "guide" },
 	practice = { "reset", "switchMode", "easy", "normal", "hard", "dummy", "pause", "leave" },
-	lobby = { "interact", "menu", "jump" },
+	lobby = { "play", "fighters", "sprint", "interact", "menu", "jump" },
 }
 function Controls.legend(group: string, device: string?): { { action: string, keys: string, text: string } }
 	local rows = {}
 	for _, action in LEGENDS[group] or {} do
 		local keys = Controls.label(group, action, device)
 		if action == "sidestepOut" then keys ..= " (tap)" elseif action == "crouch" then keys ..= " (hold)" elseif action == "sidestepIn" then keys ..= " (tap)" end
+		if group == "lobby" and action == "sprint" and keys ~= "" then keys ..= if normDevice(device) == "gamepad" then " (press)" else " (hold)" end
 		if keys ~= "" and not string.match(keys, "^ %(") then
 			table.insert(rows, { action = action, keys = keys, text = Controls.actionText[action] or action })
 		end

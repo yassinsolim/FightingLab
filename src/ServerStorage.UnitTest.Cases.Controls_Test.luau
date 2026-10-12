@@ -115,4 +115,41 @@ return function(t)
 			end
 		end
 	end)
+
+	test("round 5 lobby keys: PLAY, FIGHTERS and sprint on both devices, one job each, shown in the lobby legend", function()
+		local k, g = Controls.lobby.keyboard, Controls.lobby.gamepad
+		expect.equal(k.play, "F")
+		expect.equal(k.fighters, "C")
+		expect.equal(k.sprint, "LeftShift")
+		expect.equal(g.play, "ButtonR1")
+		expect.equal(g.fighters, "ButtonL1")
+		expect.equal(g.sprint, "ButtonL3")
+		expect.equal(Controls.label("lobby", "sprint"), "SHIFT")
+		expect.equal(Controls.label("lobby", "sprint", "gamepad"), "L3")
+		expect.equal(Controls.label("lobby", "play", "gamepad"), "RB")
+		for _, device in { "keyboard", "gamepad" } do
+			local seen: { [string]: string } = {}
+			for action, key in (Controls.lobby :: any)[device] do
+				expect.truthy(seen[key] == nil, device .. " lobby key " .. key .. " bound to " .. tostring(seen[key]) .. " and " .. action)
+				seen[key] = action
+			end
+			local rows = Controls.legend("lobby", device)
+			local listed: { [string]: string } = {}
+			for _, row in rows do listed[row.action] = row.keys end
+			for _, action in { "play", "fighters", "sprint", "interact", "menu", "jump" } do
+				expect.truthy(listed[action] ~= nil, device .. " lobby legend lists " .. action)
+			end
+			expect.truthy(string.find(listed.sprint, if device == "gamepad" then "press" else "hold", 1, true) ~= nil, device .. " sprint says how")
+		end
+		-- Keyboard lobby keys never collide with fight or practice keys (the bar is hidden there, but no key should
+		-- teach two meanings); the WASD walk keys are the fight movement keys on purpose.
+		local fightOrPractice: { [string]: boolean } = {}
+		for _, group in { "fight", "practice" } do
+			for _, key in (Controls :: any)[group].keyboard do fightOrPractice[key] = true end
+		end
+		for action, key in Controls.lobby.keyboard do
+			expect.falsy(fightOrPractice[key], "lobby." .. action .. " (" .. key .. ") is also a fight/practice key")
+		end
+		expect.truthy(#Controls.actionText.play > 0 and #Controls.actionText.fighters > 0 and #Controls.actionText.sprint > 0)
+	end)
 end
