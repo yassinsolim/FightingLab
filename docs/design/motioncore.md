@@ -559,11 +559,12 @@ transition on the real fighter rigs, fixed the root causes in the runtime first,
   it POSTs one JSON per fighter to a local sink), then
   `python tools/mocap/motionqa_report.py --reports <dir> --tag <tag> --baseline <tag> --out <md> --json <json>`
   (ranked defects: fighter · case · frame · metric · value, counts per category and fighter, glove-vs-head table).
-- `ServerStorage.UnitTest.Cases.MotionQA_Test` (6 tests, ~13 s) asserts the targets on a sample: loops of all six
+- `ServerStorage.UnitTest.Cases.MotionQA_Test` (7 tests, ~16 s) asserts the targets on a sample: loops of all six
   (no pop, flip, limit or jitter; glove/hand vs head <= 0.03, other self-intersection <= 0.05), standing transitions
   of all six (no joint > 15 deg in a frame at a switch, no pop or flip outside an attack's own clip), strikes resting
-  on the opponent (<= 0.15 deep at contact) and throw tracks without teleports. Tolerated defects are listed in its
-  `EXCEPTIONS` table with the reason; a new defect or a known one getting worse fails.
+  on the opponent (<= 0.15 deep at contact), face-down knockdowns/getups/KO without a 90-degree whip, and throw
+  tracks without teleports. Tolerated defects are listed in its `EXCEPTIONS` table with the reason; a new defect or a
+  known one getting worse fails.
 
 ### 13.2 Runtime changes (MotionPlayer, ClipPlayer, BodyShape, CameraDirector)
 
@@ -577,9 +578,10 @@ transition on the real fighter rigs, fixed the root causes in the runtime first,
 | round reset | the cut is also detected from the newest entry's position jump (> `TeleportDistance` and faster than 1.5 studs/frame; the renderers interpolate across the reset), and the new round's intro pose is shown at the new mark until the interpolation arrives there (no in-between frame) | `ResetSnapWindow` 0.5 |
 | blockstun | ducking or standing up during a blockstun crossfades between the standing and crouching clip (own key, same stun clock) instead of swapping in one frame | `MotionRequest.timeKey` |
 | IK poles | the bend plane keeps the previous frame's direction as the clip's pole hint weakens, and turns at most 30 deg/frame (no elbow/knee flips) | `PoleContinuity`, `PoleMaxStep` |
-| feet | heel drop rate-limited, soft floor and soft reach limits (C1), rise-on-ball eased in with the contact and never more than the rise that lifts the ankle, median-filtered clip contacts, lying-leg ramps | `FlattenRate` 0.15, `SoftFloor` / `SoftReach` 0.06, `LyingLegsRamp` 0.1 |
+| feet | heel drop rate-limited, soft floor and soft reach limits (C1), rise-on-ball eased in with the contact and never more than the rise that lifts the ankle, median-filtered clip contacts, lying-leg ramps; a lying body's relaxed feet (toes laid out, sole up) come and go over a real-time ramp (a roll getup snapped the ankle 66 deg tucking the toes again) | `FlattenRate` 0.15, `SoftFloor` / `SoftReach` 0.06, `LyingLegsRamp` 0.1, `RelaxFeetRamp` 0.25 |
 | strike contact | a hand/foot (and its forearm/shin) sinking into the opponent's head/chest/pelvis is drawn back along its reach to the surface (elbow/knee bends, flex-limited), released gradually; throws and grab moves exempt | `StrikeContact`, `ContactAllowance` 0.05, `ContactMaxRetract` 0.85, `ContactMaxFlex` 135, `ContactRelease` 0.1 |
-| self clearance | in guard, movement, block and hit reactions a glove/hand inside the own head or torso, or an arm through the torso, is pushed out along the surface normal (rate-limited, in heading space); also after a contact retraction | `SelfClearance`, `SelfHeadAllowance` 0.015, `SelfBodyAllowance` 0.03, `SelfPushRate` 0.05 |
+| self clearance | in guard, movement, block and hit reactions a glove/hand inside the own head or torso, or an arm through the torso, is pushed out along the surface normal (rate-limited, in heading space); also after a contact retraction, on its own channel for only the arms the contact drew back (rate-limited from zero); the push is measured from a base that eases between the IK goal and the solved tip, so a pass switching on or off does not re-land the arm elsewhere | `SelfClearance`, `SelfHeadAllowance` 0.015, `SelfBodyAllowance` 0.03, `SelfPushRate` 0.05, `SelfBaseFrames` 6 |
+| IK pole clock | the pole-continuity reference advances with the shown frames (real time), not the animation clock: through a hitstop freeze the impact fade keeps moving the pose (Kael's KO arm spun 153 deg in one frame when the freeze ended) | `ContinuityRealTime` |
 | grips | throw grips fade in/out over a minimum time | `GripFadeInMin` 0.05, `GripReleaseMin` 0.15 |
 | guard trims | per-fighter hand offsets in the guard states: Kael's rear (camera-side) glove sits 0.1 lower so his profile eye reads from the player's own camera | `GuardTrim` |
 | body shapes | `Motion.BodyShape`: profiled hulls of the real parts, rigid glove capsules (round-4 gloves), `handCapsule`, `coreDistance` — shared by the runtime and the harness | — |
@@ -590,35 +592,51 @@ transition on the real fighter rigs, fixed the root causes in the runtime first,
 - `tools/mocap/retime.py` re-times fast segments of built clips in place (anchors at start, contact/impact, recover and
   end stay exact; slow holds play a little faster, snaps a little slower; poses unchanged). All 13 FLThrow1 throws were
   re-timed: fastest body point 0.87-2.06 -> 0.46-0.54 studs/frame; grips remapped; break tracks untouched.
+- `FallFront` and `KOFront` (hand-keyed, `specs/core-keyed.json`) pitched forward with the head toward the opponent and
+  then, in their last 0.1-0.15 s, landed in `FallFrontAir`'s prone pose — head AWAY from the opponent: a 180-degree turn
+  between two keys (feet flipping 150-163 deg in a frame at the floor contact, Kael's KO foot 177 deg), and the face-down
+  getup (`GetupFront`, which starts head toward) turned the body back with a 178-degree leg whip. Both now land in
+  `GetupFront`'s first frame (the pelvis no longer drifts forward and slides back), and `Motion.States` starts every
+  getup from a grounded face-down knockdown with `GetupFront` (rolls push up while the sim slides the body). Prone
+  orientation per clip: face up = head away everywhere; face down = head toward after a grounded fall or KO, head away
+  after a juggle (`FallFrontAir`; its getups are unchanged, see 13.4). The `:Air` suffix on getup keys keeps the choice.
 
-### 13.4 Results (all six fighters, merged round-4 rigs; distinct defects main -> branch, report r18 vs base7)
+### 13.4 Results (all six fighters, merged round-4 rigs; distinct defects main -> branch, report r27 vs base7)
 
-| category | main -> branch | of which >= 2x the limit |
-|---|---|---|
-| rotation pops | 5226 -> 2005 | 3723 -> 1391 |
-| limb-tip speed pops | 1988 -> 767 | 1665 -> 488 |
-| transition jumps (> 15 deg/frame at a switch) | 777 -> 231 | 560 -> 128 |
-| elbow/knee bend-plane flips | 471 -> 247 | 173 -> 14 |
-| joint limits | 1576 -> 1502 | 391 -> 366 |
-| glove/hand in own head | 27 -> 48 | 21 -> 34 |
-| glove/hand in own torso | 194 -> 113 | 155 -> 85 |
-| arm through own torso | 1360 -> 911 | 1057 -> 438 |
-| legs through each other | 266 -> 228 | 241 -> 202 |
-| strike depth at contact | 76 -> 36 | 56 -> 17 |
-| strike through the opponent | 83 -> 32 | 52 -> 19 |
-| bodies overlapping | 4 -> 6 | 2 -> 2 |
-| jitter (loops) | 3 -> 2 | 0 -> 0 |
+598 cases, 65,237 frames per run. A defect is a distinct (fighter, case, metric, part), counted at its worst frame.
 
-Guard, movement and hit reactions: every glove clears the own head for all six (Kael's left glove -0.07). The
-glove-in-head count rose only in face-down getups/rolls (up to 0.42 for 1-2 frames: the hand targets blend around the
-shoulder — the arc that removed 140-180 deg arm whips elsewhere — and pass under the face as the hands leave the floor;
-a straight-line blend there was measured and rejected: joint jumps up to 152 deg, deeper torso clipping) and Lumi
-PalmHeel (0.05). Real-play emulation (four CPU fights, 2000 frames each, rendered
-between sim frames like practice): isolated root jumps 88 -> 13 (3 are the intended round-reset cuts, the other 10 are
-<= 0.15 studs; main's worst non-reset jump was 0.57), isolated limb/head jumps 566 -> 199. What remains is clip content: fast strike/spin arcs, getups and rolls (gloves through the
-head/torso while rolling, up to 0.4-0.7), ankle/knee direction mismatches in a few clips, point-blank strikes limited
-by the flex cap, and the counter-hit entries listed OPEN in `MotionQA_Test`.
+| category | main -> branch | of which >= 2x the limit | worst main -> branch |
+|---|---|---|---|
+| rotation pops | 5226 -> 1842 | 3723 -> 1247 | 179.3 -> 179.6 deg |
+| limb-tip speed pops | 1988 -> 720 | 1665 -> 445 | 3.49 -> 2.68 studs/frame |
+| transition jumps (> 15 deg/frame at a switch) | 777 -> 254 | 560 -> 127 | 179.1 -> 91.5 deg |
+| elbow/knee bend-plane flips | 471 -> 162 | 173 -> 3 | 178.6 -> 154.4 deg |
+| joint limits | 1576 -> 1366 | 391 -> 265 | |
+| glove/hand in own head | 27 -> 26 | 21 -> 14 | 0.36 -> 0.29 studs |
+| glove/hand in own torso | 194 -> 93 | 155 -> 70 | |
+| arm through own torso | 1360 -> 902 | 1057 -> 379 | 0.79 -> 0.46 studs |
+| legs through each other | 266 -> 158 | 241 -> 136 | |
+| strike depth at contact | 76 -> 36 | 56 -> 17 | 0.71 -> 0.57 studs |
+| strike through the opponent | 83 -> 32 | 52 -> 19 | |
+| bodies overlapping | 4 -> 6 | 2 -> 2 | |
+| jitter (loops) | 3 -> 2 | 0 -> 0 | |
 
+Knockdowns (distinct defects of all six, worst rotation pop): face-down KO 183 (162 deg) -> 41 (46), face-down stand-up
+204 (167) -> 105 (66), face-down rolls ~228 (166-179) -> ~121 (66), face-up cases 120-210 -> 60-143 (worst 87). Guard,
+movement and hit reactions: every glove clears the own head for all six. Glove/hand in the head now comes from strikes
+and round-end poses only (Kael BodyBlow 0.155, Sierra DuckJab 0.135, Lumi defeat 0.14); the face-down getups' 0.18-0.42
+is gone. Real-play emulation (measured on bd10d27; four CPU fights, 2000 frames each, rendered between sim frames
+like practice): isolated root jumps 88 -> 13 (3 are the intended round-reset cuts, the other 10 are <= 0.15 studs;
+main's worst non-reset jump was 0.57), isolated limb/head jumps 566 -> 199.
+
+Not fixed:
+- A juggle ending face down (FallFrontAir, head away) still turns the body 180 degrees in the stand-up getup's
+  crossfade (launch>fallFaceDown>getup, worst 180 deg): no getup clip starts head away. A side roll from its prone
+  half turn was measured and rejected (arms swing through the shoulder, 116-131 deg; more defects). Needs a new clip.
+- Prone legs twist 30-65 deg/frame for a few frames after landing (the knee floor lift turns the bend plane).
+- Clip content: fast strike/spin arcs, getups and rolls (gloves through the torso while rolling, up to 0.7), ankle/knee
+  direction mismatches in a few clips, point-blank strikes limited by the flex cap, and the counter-hit entries listed
+  OPEN in MotionQA_Test.
 ### 13.5 For clip authors
 
 - Run `MotionQA_Test` and the report after changing a clip; fix pops by re-keying or `retime.py`, keep contact
