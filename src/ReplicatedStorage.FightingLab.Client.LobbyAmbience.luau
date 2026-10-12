@@ -2,8 +2,10 @@
 -- Client-only life for the lobby world (started by LightingProfile.apply at client start): duel pads breathe,
 -- beacons blink, fires and lanterns flicker, the Ember Beacon's orbit rings and the lighthouse beam turn, and each
 -- arena gets a positional ambient loop (re-using the stage ambience sounds already in the game). Pad light columns
--- hide near the camera, on occupied pads and while their arena's station is mid-match. Cosmetic only.
+-- hide near the camera, on occupied pads, while their arena's station is mid-match and while the local player fights
+-- or practises. Cosmetic only.
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -109,11 +111,11 @@ local function startSounds(world: Instance)
 			s.Name = "LobbyAmbience"
 			s.Looped = true
 			s.Volume = math.clamp(source.Volume * 2.2, 0.2, 0.7)
-			-- compact ring (arenas ~70 studs from the plaza centre): each loop is full on its own stage and has faded
-			-- out before the plaza centre and the neighbouring stages, so the five loops never pile up
+			-- compact horseshoe (stages 66 studs from the plaza centre, 62 apart): each loop is full on its own stage and
+			-- has faded out before the plaza centre and the neighbouring stages, so the five loops never pile up
 			s.RollOffMode = Enum.RollOffMode.InverseTapered
-			s.RollOffMinDistance = 16
-			s.RollOffMaxDistance = 80
+			s.RollOffMinDistance = 14
+			s.RollOffMaxDistance = 52
 			s.Parent = origin
 			s:Play()
 			table.insert(sounds, s)
@@ -122,13 +124,17 @@ local function startSounds(world: Instance)
 end
 
 -- Whether a pad's light column shows: never while its arena is mid-match or someone holds the pad (the free pad keeps
--- beckoning an opponent), and not when the camera is close to it.
-function M.columnVisible(state: string?, occupied: boolean, flatDistance: number, heightDelta: number): boolean
-	if (state and BUSY_STATES[state]) or occupied then
+-- beckoning an opponent), not when the camera is close to it, and none at all while the local player fights or
+-- practises (the stages are close together, so other arenas' columns would stand in the fight camera's background).
+function M.columnVisible(state: string?, occupied: boolean, flatDistance: number, heightDelta: number, localFight: boolean?): boolean
+	if localFight or (state and BUSY_STATES[state]) or occupied then
 		return false
 	end
 	return flatDistance > COLUMN_HIDE_DISTANCE or math.abs(heightDelta) > 14
 end
+
+-- The local player's duel states in which the fight camera is up.
+local LOCAL_FIGHT_STATES = { Fighting = true, Results = true, Practice = true }
 
 local function station(arenaId: string?): Instance?
 	local stations = lab and lab:FindFirstChild("Stations")
@@ -139,6 +145,9 @@ local function step(now: number)
 	local camera = workspace.CurrentCamera
 	if camera then
 		local cam = camera.CFrame.Position
+		local player = Players.LocalPlayer
+		local duel = player and player:GetAttribute("DuelState")
+		local localFight = typeof(duel) == "string" and LOCAL_FIGHT_STATES[duel] == true
 		for _, c in columns do
 			local st = station(c.arenaId)
 			local state = st and st:GetAttribute("State")
@@ -148,7 +157,8 @@ local function step(now: number)
 				if typeof(state) == "string" then state else nil,
 				typeof(occupant) == "number" and occupant ~= 0,
 				flat,
-				cam.Y - c.at.Y
+				cam.Y - c.at.Y,
+				localFight
 			)
 			if c.beam.Enabled ~= show then
 				c.beam.Enabled = show
