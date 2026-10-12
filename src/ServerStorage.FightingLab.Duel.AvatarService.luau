@@ -332,11 +332,36 @@ function AvatarService:unfreeze(player: Player, at: CFrame?)
 	self:apply(player)
 end
 
--- Publishes the dressed character's accessory and wrap-layer counts (NetProtocol.appearanceCounts) as attributes.
+-- Publishes the dressed character's accessory, wrap-layer and rigid-extra counts (NetProtocol.appearanceCounts) as
+-- attributes: clients keep the character hidden until all of them arrived (Client.AvatarGate).
 function AvatarService.publishAppearance(character: Model)
-	local accessories, wrapLayers = NetProtocol.appearanceCounts(character)
-	character:SetAttribute(NetProtocol.AccessoryCountAttribute, accessories)
+	local accessories, wrapLayers, extras = NetProtocol.appearanceCounts(character)
+	character:SetAttribute(NetProtocol.ExtraCountAttribute, extras)
 	character:SetAttribute(NetProtocol.WrapLayerCountAttribute, wrapLayers)
+	-- AccessoryCount last: clients read the set as soon as it appears.
+	character:SetAttribute(NetProtocol.AccessoryCountAttribute, accessories)
+end
+
+-- Quick play / quick travel (DuelService): moves a lobby avatar. A loading avatar is placed there once loaded, a
+-- frozen one (fighting / practising) stays put, a dead one respawns there.
+function AvatarService:teleport(player: Player, at: CFrame)
+	local rec = self:record(player)
+	if rec.loading then
+		rec.spawnAt = at
+		return
+	end
+	if rec.frozen then return end
+	local character = player.Character
+	if not character or not character.Parent or not aliveHumanoid(character) then
+		task.spawn(function() self:spawn(player, at) end)
+		return
+	end
+	local root = rootOf(character)
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+	AvatarService.placeAt(character, at)
 end
 
 -- Players who fall off the world are put back on a lobby spawn (no reload, no refit).

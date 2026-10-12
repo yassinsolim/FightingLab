@@ -193,4 +193,58 @@ return function(t)
 		gui:Destroy()
 		if not ok then error(err, 0) end
 	end)
+
+	-- Round 5: the round-4 rigs wear rigid welded gloves, shoes and belts (CharacterFactory extras). They replicate as
+	-- plain parts, so the gate counts them too, and it waits until every mesh is fetched (no texture mid-fetch).
+	t.test("the character gate waits for the rigid welded gear and for every asset to be fetched", function()
+		local model, torso = body()
+		model.Parent = workspace
+		local now = 0
+		local ready = false
+		local gate = AvatarGate.track(model, {
+			manual = true, clock = function() return now end, preload = function() end,
+			hide = AvatarGate.hideCharacter, show = AvatarGate.showCharacter,
+			expected = NetProtocol.expectedAppearance, needExpected = true, settleSeconds = AvatarGate.CharacterSettleSeconds,
+			contentReady = function() return ready end,
+		})
+		local ok, err = pcall(function()
+			accessory("Shirt", true).Parent = model
+			model:SetAttribute(NetProtocol.ExtraCountAttribute, 2)
+			model:SetAttribute(NetProtocol.WrapLayerCountAttribute, 1)
+			model:SetAttribute(NetProtocol.AccessoryCountAttribute, 1)
+			now = 0.1
+			t.expect.falsy(gate:poll(now), "no gloves yet: hidden")
+			local left = Instance.new("Part"); left.Name = "LeftGlove"; left:SetAttribute(NetProtocol.ExtraAttribute, true); left.Parent = torso
+			now = 0.2
+			t.expect.falsy(gate:poll(now), "one glove still missing")
+			t.expect.equal(left.LocalTransparencyModifier, 1, "late gear is hidden too")
+			local right = Instance.new("Part"); right.Name = "RightGlove"; right:SetAttribute(NetProtocol.ExtraAttribute, true); right.Parent = torso
+			now = 0.3
+			t.expect.falsy(gate:poll(now), "everything there: the preload starts")
+			now = 0.9
+			t.expect.falsy(gate:poll(now), "assets still being fetched")
+			t.expect.equal(torso.LocalTransparencyModifier, 1)
+			ready = true
+			now = 1.0
+			t.expect.falsy(gate:poll(now), "settling once everything is fetched")
+			now = 1.0 + AvatarGate.CharacterSettleSeconds + 0.01
+			t.expect.truthy(gate:poll(now), "shown")
+			t.expect.equal(torso.LocalTransparencyModifier, 0)
+			t.expect.equal(gate.reason, "release")
+		end)
+		model:Destroy()
+		if not ok then error(err, 0) end
+	end)
+
+	t.test("the server publishes the rigid gear count with the other appearance counts", function()
+		local model, torso = body()
+		accessory("Hair", false).Parent = model
+		local glove = Instance.new("Part"); glove:SetAttribute(NetProtocol.ExtraAttribute, true); glove.Parent = torso
+		AvatarService.publishAppearance(model)
+		local a, w, e = NetProtocol.expectedAppearance(model)
+		t.expect.equal(a, 1)
+		t.expect.equal(w, 0)
+		t.expect.equal(e, 1)
+		model:Destroy()
+	end)
 end

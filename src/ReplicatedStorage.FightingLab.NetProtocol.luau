@@ -37,10 +37,30 @@ NetProtocol.Difficulties = { "Easy", "Normal", "Hard" }
 NetProtocol.FightCommands = { Move = true, Block = true, Crouch = true, Attack = true }
 NetProtocol.DuelStates = { Lobby = true, Queued = true, Countdown = true, Fighting = true, Results = true, Practice = true }
 NetProtocol.StationStates = { Open = true, Waiting = true, Countdown = true, Fighting = true, Results = true }
-NetProtocol.LobbyKinds = { SelectFighter = true, RequestCpu = true, StartPractice = true, EndPractice = true, LeaveFight = true }
-NetProtocol.DuelKinds = { Countdown = true, CountdownCancelled = true, MatchStart = true, MatchEnd = true, Rejected = true }
+NetProtocol.LobbyKinds = {
+	SelectFighter = true, RequestCpu = true, StartPractice = true, EndPractice = true, LeaveFight = true,
+	-- Round 5 PLAY panel: Quick Duel queue / Fight CPU / Practice (QuickPlay), leaving the queue, quick travel.
+	QuickPlay = true, CancelQueue = true, Travel = true,
+}
+NetProtocol.DuelKinds = { Countdown = true, CountdownCancelled = true, MatchStart = true, MatchEnd = true, Rejected = true, Teleport = true }
 
-NetProtocol.PlayerDefaults = { FighterId = "Kael", DuelState = "Lobby", ArenaId = "", PadSide = 0, MatchId = "" }
+-- PLAY panel (round 5). QuickPlay modes: "Duel" joins the matchmaking queue (paired players are teleported onto a free
+-- duel arena's PadP1 / PadP2, or onto the free circle of a player already waiting there), "Cpu" teleports onto a free
+-- arena's PadP1 and starts a CPU match at once, "Practice" teleports onto the dojo pad and starts practice.
+NetProtocol.QuickModes = { Duel = true, Cpu = true, Practice = true }
+-- After this long in the Quick Duel queue the PLAY panel offers "Fight CPU instead".
+NetProtocol.QuickCpuOfferSeconds = 12
+-- The server tells a client it is about to be moved (Teleport), then pivots its character this much later: the
+-- client's fade-out covers the jump.
+NetProtocol.TeleportDelay = 0.2
+-- Pads keep the claim of a player the server just teleported onto them for this long (the client's physics may
+-- still report the old position for a few frames).
+NetProtocol.TravelGraceSeconds = 1.5
+NetProtocol.TravelCooldown = 1
+NetProtocol.QuickPlayCooldown = 0.6
+NetProtocol.PlazaTravel = "Plaza"
+
+NetProtocol.PlayerDefaults = { FighterId = "Kael", DuelState = "Lobby", ArenaId = "", PadSide = 0, MatchId = "", QuickQueue = 0, QuickStatus = "" }
 NetProtocol.StationDefaults = {
 	ArenaId = "", StageId = "", DisplayName = "", Kind = "Duel", State = "Open",
 	P1UserId = 0, P2UserId = 0, P1Name = "", P2Name = "", P1Fighter = "", P2Fighter = "",
@@ -112,6 +132,22 @@ function NetProtocol.parseLobby(kind: unknown, payload: unknown): (string?, { [s
 		local mode = p.mode
 		if mode ~= "Training" and mode ~= "Cpu" then return nil, nil end
 		return kind, { mode = mode, difficulty = NetProtocol.validDifficulty(p.difficulty) or "Normal", opponent = NetProtocol.validFighter(p.opponent) }
+	elseif kind == "QuickPlay" then
+		local mode = p.mode
+		if typeof(mode) ~= "string" or NetProtocol.QuickModes[mode] ~= true then return nil, nil end
+		local clean: { [string]: any } = { mode = mode, difficulty = NetProtocol.validDifficulty(p.difficulty) or "Normal" }
+		if mode == "Practice" then
+			local practice = p.practice
+			if practice ~= "Training" and practice ~= "Cpu" then return nil, nil end
+			clean.practice = practice
+			clean.opponent = NetProtocol.validFighter(p.opponent)
+		end
+		return kind, clean
+	elseif kind == "Travel" then
+		-- An arena id (letters, digits, underscores) or "Plaza"; the service checks that the arena exists.
+		local to = p.to
+		if typeof(to) ~= "string" or #to == 0 or #to > 48 or string.find(to, "[^%w_]") then return nil, nil end
+		return kind, { to = to }
 	end
 	return kind, {}
 end
@@ -475,28 +511,35 @@ function NetProtocol.timerSeconds(frames: number?): number
 end
 
 -- Avatar appearance handshake (anti "naked flash"): after dressing a character the server publishes how many
--- accessories and layered-clothing wrap layers it has; clients keep the character hidden until theirs match.
+-- accessories, layered-clothing wrap layers and rigid extras (the welded gloves, shoes, belts and fists CharacterFactory
+-- marks FightingLabExtra) it has; clients keep the character hidden until theirs match.
 NetProtocol.AccessoryCountAttribute = "AccessoryCount"
 NetProtocol.WrapLayerCountAttribute = "WrapLayerCount"
+NetProtocol.ExtraCountAttribute = "ExtraCount"
+NetProtocol.ExtraAttribute = "FightingLabExtra"
 
-function NetProtocol.appearanceCounts(model: Instance): (number, number)
-	local accessories, wrapLayers = 0, 0
+function NetProtocol.appearanceCounts(model: Instance): (number, number, number)
+	local accessories, wrapLayers, extras = 0, 0, 0
 	for _, d in model:GetDescendants() do
 		if d:IsA("Accoutrement") then
 			accessories += 1
 		elseif d:IsA("WrapLayer") then
 			wrapLayers += 1
+		elseif d:IsA("BasePart") and d:GetAttribute(NetProtocol.ExtraAttribute) == true then
+			extras += 1
 		end
 	end
-	return accessories, wrapLayers
+	return accessories, wrapLayers, extras
 end
 
--- Expected counts published by the server, or nil while they are not known yet.
-function NetProtocol.expectedAppearance(model: Instance): (number?, number?)
+-- Expected counts published by the server, or nil while they are not known yet (extras: 0 when a server without the
+-- attribute published).
+function NetProtocol.expectedAppearance(model: Instance): (number?, number?, number?)
 	local accessories = model:GetAttribute(NetProtocol.AccessoryCountAttribute)
 	local wrapLayers = model:GetAttribute(NetProtocol.WrapLayerCountAttribute)
-	if typeof(accessories) ~= "number" then return nil, nil end
-	return accessories, if typeof(wrapLayers) == "number" then wrapLayers else 0
+	local extras = model:GetAttribute(NetProtocol.ExtraCountAttribute)
+	if typeof(accessories) ~= "number" then return nil, nil, nil end
+	return accessories, if typeof(wrapLayers) == "number" then wrapLayers else 0, if typeof(extras) == "number" then extras else 0
 end
 
 return NetProtocol

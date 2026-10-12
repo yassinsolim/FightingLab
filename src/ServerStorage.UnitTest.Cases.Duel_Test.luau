@@ -85,6 +85,56 @@ local function startPvp(h: Harness): (any, any)
 	return a, b
 end
 
+-- Round 5 PLAY panel harness: records teleports, has a plaza spawn and (optionally) an Arrival on the duel arena.
+local PLAZA = CFrame.new(0, 0, 0)
+local function quickHarness(arrival: CFrame?): Harness
+	local clock = { t = 1000 }
+	local sent, snapshots, avatarCalls = {}, {}, {}
+	local stations = Instance.new("Folder")
+	local loading: { [any]: boolean } = {}
+	local world = fakeWorld()
+	world.arenas.Arena_Test.arrival = arrival
+	local service = DuelService.new({
+		world = world,
+		now = function() return clock.t end,
+		serverTime = function() return clock.t + 5000 end,
+		send = function(player: any, kind: string, payload: any) table.insert(sent, { player = player, kind = kind, payload = payload }) end,
+		sendSnapshot = function(player: any, packed: any) table.insert(snapshots, { player = player, packed = packed }) end,
+		avatars = {
+			freeze = function(_, p: any) table.insert(avatarCalls, { op = "freeze", player = p }) end,
+			unfreeze = function(_, p: any, at: CFrame?) table.insert(avatarCalls, { op = "unfreeze", player = p, at = at }) end,
+			reload = function(_, p: any) table.insert(avatarCalls, { op = "reload", player = p }) end,
+			isLoading = function(_, p: any): boolean return loading[p] == true end,
+			teleport = function(_, p: any, at: CFrame)
+				table.insert(avatarCalls, { op = "teleport", player = p, at = at })
+				p.position = at.Position + Vector3.new(0, 3, 0)
+			end,
+		},
+		stations = stations,
+		random = Random.new(11),
+		spawnFrame = function() return PLAZA end,
+	})
+	local h: any = { service = service, clock = clock, sent = sent, snapshots = snapshots, avatarCalls = avatarCalls, stations = stations }
+	h.loading = loading
+	return h
+end
+
+local function countSent(h: Harness, player: any, kind: string): number
+	local n = 0
+	for _, m in h.sent do if m.player == player and m.kind == kind then n += 1 end end
+	return n
+end
+
+-- Lets the pending server moves run (TeleportDelay) and the pad poll / matchmaking tick.
+local function settle(h: Harness)
+	h.clock.t += NetProtocol.TeleportDelay + 0.01
+	h.service:update(1 / NetProtocol.PadPollHz)
+end
+
+local function near(a: Vector3, b: Vector3): boolean
+	return (a - b).Magnitude < 0.01
+end
+
 return function(t)
 	t.test("world index reads arenas, pads, exits and spawns from the contract layout", function()
 		local world = Instance.new("Folder")
@@ -432,5 +482,239 @@ return function(t)
 		local rejected = 0
 		for _, m in h.sent do if m.player == a and m.kind == "Rejected" then rejected += 1 end end
 		t.expect.equal(rejected, NetProtocol.LobbyBurst)
+	end)
+
+	-- Round 5: PLAY panel (server matchmaking queue, Fight CPU, Practice, quick travel) ----------------------------------
+	t.test("Quick Duel pairs two searchers: both are teleported onto PadP1 / PadP2 and the countdown starts", function()
+		local h = quickHarness()
+		local a, b = stub(1, Vector3.new(0, 3, 0), "Kael"), stub(2, Vector3.new(4, 3, 0), "Goran")
+		h.service:addPlayer(a)
+		h.service:addPlayer(b)
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel" })
+		local ra, rb = h.service:recordOf(a), h.service:recordOf(b)
+		t.expect.truthy(ra.quick ~= nil, "a is searching")
+		t.expect.equal(ra.quickStatus, "Searching")
+		t.expect.equal(ra.state, "Lobby", "searchers stay in the lobby (they can walk, change fighter)")
+		t.expect.equal(h.stations:GetAttribute("QuickSearching"), 1)
+		t.expect.equal(h.stations:GetAttribute("FreeArenas"), 1)
+		h.service:onLobby(b, "QuickPlay", { mode = "Duel" })
+		t.expect.equal(ra.quickStatus, "Matched")
+		t.expect.equal(rb.quickStatus, "Matched")
+		local ta = lastSent(h, a, "Teleport")
+		t.expect.truthy(ta ~= nil and lastSent(h, b, "Teleport") ~= nil, "both are told before the move")
+		t.expect.equal(ta.arenaId, "Arena_Test")
+		t.expect.equal(ta.delay, NetProtocol.TeleportDelay)
+		t.expect.truthy(h.service:station("Arena_Test").reserved, "the arena is held for them")
+		-- Someone walking onto the circle meanwhile cannot take it.
+		local walker = stub(3, onPad(1))
+		h.service:addPlayer(walker)
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(walker).state, "Lobby", "a reserved arena takes no walk-in claims")
+		h.service:removePlayer(walker)
+		settle(h)
+		t.expect.truthy(near(a.position, onPad(1)), "a on PadP1")
+		t.expect.truthy(near(b.position, onPad(2)), "b on PadP2")
+		t.expect.equal(ra.state, "Countdown")
+		t.expect.equal(rb.state, "Countdown")
+		t.expect.equal(ra.padSide, 1)
+		t.expect.equal(rb.padSide, 2)
+		t.expect.equal(ra.quick, nil)
+		t.expect.truthy(lastSent(h, a, "Countdown") ~= nil and lastSent(h, b, "Countdown") ~= nil)
+		t.expect.falsy(h.service:station("Arena_Test").reserved)
+		-- A client still reporting its old spot for a moment does not cancel the countdown.
+		a.position = Vector3.new(0, 3, 0)
+		h.service:pollPads()
+		t.expect.equal(ra.state, "Countdown", "teleport grace keeps the claim")
+		a.position = onPad(1)
+		h.clock.t += NetProtocol.CountdownSeconds
+		h.service:update(0)
+		local sa, sb = lastSent(h, a, "MatchStart"), lastSent(h, b, "MatchStart")
+		t.expect.truthy(sa ~= nil and sb ~= nil, "the duel starts")
+		t.expect.equal(sa.cpu, false)
+		t.expect.equal(sa.slot, 1)
+		t.expect.equal(sb.slot, 2)
+		t.expect.equal(sa.p2.fighter, "Goran")
+	end)
+
+	t.test("Quick Duel sends a searcher to a player already waiting alone on a duel circle", function()
+		local h = quickHarness()
+		local waiter = stub(1, onPad(1), "Nia")
+		h.service:addPlayer(waiter)
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(waiter).state, "Queued")
+		local s = stub(2, Vector3.new(0, 3, 0), "Rhys")
+		h.service:addPlayer(s)
+		h.service:onLobby(s, "QuickPlay", { mode = "Duel" })
+		t.expect.truthy(lastSent(h, s, "Teleport") ~= nil)
+		settle(h)
+		t.expect.truthy(near(s.position, onPad(2)))
+		t.expect.equal(h.service:recordOf(s).state, "Countdown")
+		t.expect.equal(h.service:recordOf(waiter).state, "Countdown")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Countdown")
+	end)
+
+	t.test("Fight CPU from PLAY: teleported onto a free arena's PadP1 and the CPU match starts at once", function()
+		local h = quickHarness()
+		local a = stub(1, Vector3.new(0, 3, 0), "Lumi")
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "QuickPlay", { mode = "Cpu", difficulty = "Hard" })
+		t.expect.truthy(lastSent(h, a, "Teleport") ~= nil)
+		t.expect.equal(lastSent(h, a, "MatchStart"), nil, "the move comes first")
+		settle(h)
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil, "CPU match started")
+		t.expect.equal(start.cpu, true)
+		t.expect.equal(start.slot, 1)
+		t.expect.equal(start.difficulty, "Hard")
+		t.expect.equal(start.p1.fighter, "Lumi")
+		t.expect.equal(start.p2.userId, NetProtocol.CpuUserId)
+		t.expect.truthy(near(a.position, onPad(1)))
+		local station = h.service:station("Arena_Test")
+		t.expect.equal(station.state, "Fighting")
+		t.expect.equal(station.host.runner.human[2], false)
+		t.expect.equal(station.host.runner.match.difficulty, "Hard")
+		t.expect.equal(h.service:recordOf(a).state, "Fighting")
+		local teleports = 0
+		for _, call in h.avatarCalls do if call.op == "teleport" then teleports += 1 end end
+		t.expect.equal(teleports, 1)
+		t.expect.equal(h.avatarCalls[#h.avatarCalls].op, "freeze", "frozen for the fight after the move")
+	end)
+
+	t.test("Practice from PLAY: teleported onto the dojo pad, practice (or the Versus CPU) starts", function()
+		local h = quickHarness()
+		local a = stub(1, Vector3.new(0, 3, 0), "Rhys")
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "QuickPlay", { mode = "Practice", practice = "Cpu", difficulty = "Easy", opponent = "Nia" })
+		settle(h)
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil)
+		t.expect.equal(start.authority, "Local")
+		t.expect.equal(start.practice, "Cpu")
+		t.expect.equal(start.difficulty, "Easy")
+		t.expect.equal(start.p2.fighter, "Nia")
+		t.expect.truthy(near(a.position, DOJO_ORIGIN + Vector3.new(27, 3, 0)), "on the Versus CPU pad")
+		t.expect.equal(h.service:recordOf(a).state, "Practice")
+		h.service:onLobby(a, "EndPractice", {})
+		h.clock.t += 2
+		h.service:onLobby(a, "QuickPlay", { mode = "Practice", practice = "Training" })
+		settle(h)
+		local again = lastSent(h, a, "MatchStart")
+		t.expect.equal(again.practice, "Training")
+		t.expect.truthy(near(a.position, DOJO_ORIGIN + Vector3.new(-27, 3, 0)), "on the Training pad")
+	end)
+
+	t.test("quick travel: an arena's Arrival part, else 6 studs behind PadP1 / PadTraining, and back to the plaza", function()
+		local h = quickHarness()
+		local a = stub(1, Vector3.new(0, 3, 0))
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "Travel", { to = "Arena_Test" })
+		t.expect.equal(lastSent(h, a, "Teleport").reason, "Travel")
+		settle(h)
+		t.expect.truthy(near(a.position, DUEL_ORIGIN + Vector3.new(-27 - WorldIndex.ArrivalFallbackDistance, 3, 0)), "fallback: behind PadP1, away from the ring")
+		local arrivalAt = h.avatarCalls[#h.avatarCalls].at :: CFrame
+		t.expect.truthy(arrivalAt.LookVector:Dot(Vector3.xAxis) > 0.99, "facing the ring")
+		t.expect.equal(h.service:recordOf(a).state, "Lobby", "travel never claims a circle")
+		h.service:onLobby(a, "Travel", { to = "Arena_Dojo" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "TooFast", "travel cooldown")
+		h.clock.t += NetProtocol.TravelCooldown
+		h.service:onLobby(a, "Travel", { to = "Arena_Dojo" })
+		settle(h)
+		t.expect.truthy(near(a.position, DOJO_ORIGIN + Vector3.new(-27 - WorldIndex.ArrivalFallbackDistance, 3, 0)), "dojo: behind PadTraining")
+		h.clock.t += NetProtocol.TravelCooldown
+		h.service:onLobby(a, "Travel", { to = "Plaza" })
+		settle(h)
+		t.expect.truthy(near(a.position, PLAZA.Position + Vector3.new(0, 3, 0)), "back on the plaza")
+		h.clock.t += NetProtocol.TravelCooldown
+		h.service:onLobby(a, "Travel", { to = "Arena_Nowhere" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "NoArena")
+		h.service:onLobby(a, "Travel", { to = "../Plaza" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "Invalid")
+		-- With the world's Arrival part.
+		local h2 = quickHarness(CFrame.new(DUEL_ORIGIN + Vector3.new(0, 0.5, 40)))
+		local b = stub(2, Vector3.new(0, 3, 0))
+		h2.service:addPlayer(b)
+		h2.service:onLobby(b, "Travel", { to = "Arena_Test" })
+		settle(h2)
+		t.expect.truthy(near(b.position, DUEL_ORIGIN + Vector3.new(0, 3.5, 40)), "Arrival part")
+		local at = h2.avatarCalls[#h2.avatarCalls].at :: CFrame
+		t.expect.truthy(at.LookVector:Dot(Vector3.new(0, 0, -1)) > 0.99, "facing the ring")
+	end)
+
+	t.test("edge cases: busy arenas queue searchers, a leaver frees the partner, fighter changes keep the place, spam is capped", function()
+		local h = quickHarness()
+		-- The only duel arena is busy: searchers queue as Busy and Fight CPU explains.
+		local a, b = startPvp(h)
+		local c, d, e = stub(3, Vector3.new(0, 3, 0), "Sierra"), stub(4, Vector3.new(2, 3, 0), "Nia"), stub(5, Vector3.new(-2, 3, 0))
+		for _, p in { c, d, e } do h.service:addPlayer(p) end
+		h.service:onLobby(c, "QuickPlay", { mode = "Duel" })
+		h.service:onLobby(d, "QuickPlay", { mode = "Duel" })
+		t.expect.equal(h.service:recordOf(c).quickStatus, "Busy")
+		t.expect.equal(h.service:recordOf(d).quickStatus, "Busy")
+		t.expect.equal(h.stations:GetAttribute("FreeArenas"), 0)
+		h.service:onLobby(e, "QuickPlay", { mode = "Cpu" })
+		t.expect.equal(lastSent(h, e, "Rejected").reason, "ArenasBusy")
+		-- The match ends: the queue moves at once.
+		h.service:finishMatch(h.service:station("Arena_Test"), "Debug", 1)
+		a.position = DUEL_ORIGIN + Vector3.new(-33, 3, 0)
+		b.position = DUEL_ORIGIN + Vector3.new(33, 3, 0)
+		h.service:update(1 / NetProtocol.PadPollHz)
+		t.expect.equal(h.service:recordOf(c).quickStatus, "Matched")
+		-- d leaves before the move: c goes back to the front of the queue and the arena is free again.
+		h.service:removePlayer(d)
+		settle(h)
+		local rc = h.service:recordOf(c)
+		t.expect.equal(rc.state, "Lobby")
+		t.expect.truthy(rc.quick ~= nil, "c is searching again")
+		t.expect.falsy(h.service:station("Arena_Test").reserved)
+		t.expect.equal(h.service:station("Arena_Test").state, "Open")
+		-- A fighter change while searching keeps the place; the avatar reload is waited for.
+		local f = stub(6, Vector3.new(0, 3, 0), "Kael")
+		h.service:addPlayer(f)
+		h.clock.t += 1
+		h.service:onLobby(c, "SelectFighter", { id = "Goran" })
+		h.loading[c] = true
+		h.service:onLobby(f, "QuickPlay", { mode = "Duel" })
+		h.service:update(1 / NetProtocol.PadPollHz)
+		t.expect.truthy(rc.quick ~= nil and rc.quickStatus ~= "Matched", "not paired while the avatar reloads")
+		t.expect.equal(h.service:recordOf(f).quickStatus, "Searching")
+		t.expect.equal(rc.fighterId, "Goran")
+		h.loading[c] = nil
+		h.service:update(1 / NetProtocol.PadPollHz)
+		t.expect.equal(rc.quickStatus, "Matched", "paired once loaded (still first in line)")
+		settle(h)
+		t.expect.equal(rc.state, "Countdown")
+		t.expect.equal(h.service:recordOf(f).state, "Countdown")
+		-- Spam: cooldown per player, then the lobby token bucket drops floods without replies.
+		local g = stub(7, Vector3.new(0, 3, 0))
+		h.service:addPlayer(g)
+		h.service:onLobby(g, "QuickPlay", { mode = "Duel" })
+		h.service:onLobby(g, "QuickPlay", { mode = "Duel" })
+		t.expect.equal(lastSent(h, g, "Rejected").reason, "TooFast")
+		h.service:onLobby(g, "CancelQueue", {})
+		t.expect.equal(h.service:recordOf(g).quick, nil)
+		t.expect.equal(h.service:recordOf(g).quickStatus, "")
+		local before = countSent(h, g, "Rejected")
+		for _ = 1, 40 do h.service:onLobby(g, "Travel", { to = "Arena_Test" }) end
+		t.expect.truthy(countSent(h, g, "Rejected") - before <= NetProtocol.LobbyBurst, "a flood is mostly dropped")
+		-- Players in a fight cannot use PLAY.
+		h.service:onLobby(c, "QuickPlay", { mode = "Practice", practice = "Training" })
+		t.expect.equal(lastSent(h, c, "Rejected").reason, "Busy")
+	end)
+
+	t.test("PLAY while waiting on a circle: Quick Duel says so, Fight CPU joins right there", function()
+		local h = quickHarness()
+		local a = stub(1, onPad(2), "Goran")
+		h.service:addPlayer(a)
+		h.service:pollPads()
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "OnCircle")
+		h.clock.t += 1
+		h.service:onLobby(a, "QuickPlay", { mode = "Cpu", difficulty = "Easy" })
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil, "no wait for the circle's CPU offer")
+		t.expect.equal(start.slot, 2)
+		t.expect.equal(start.cpu, true)
+		t.expect.equal(start.difficulty, "Easy")
+		t.expect.equal(lastSent(h, a, "Teleport"), nil, "no move needed")
 	end)
 end
