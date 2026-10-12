@@ -20,9 +20,9 @@
   ],
   "scales": {
     "Height": 0.9,
-    "Width": 0.76,
+    "Width": 0.84,
     "Depth": 0.78,
-    "Head": 0.72,
+    "Head": 0.71,
     "BodyType": 1.0,
     "Proportion": 0.8
   },
@@ -67,13 +67,6 @@
         104,
         112
       ]
-    },
-    {
-      "AssetId": 81319860328594,
-      "AccessoryType": "Jacket",
-      "IsLayered": true,
-      "Order": 20,
-      "Puffiness": 0.08
     }
   ],
   "sourceAssets": [
@@ -144,10 +137,16 @@
       "kind": "Layered kickboxing trunks (tinted)"
     },
     {
-      "id": 81319860328594,
-      "name": "Boxing Gloves",
-      "creator": "Deki’s UGC",
-      "kind": "Layered boxing gloves"
+      "id": 14775127400,
+      "name": "Boxing Glove Right White",
+      "creator": "VochtigDoekje",
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
+    },
+    {
+      "id": 14775131832,
+      "name": "Boxing Glove Left White",
+      "creator": "VochtigDoekje",
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
     },
     {
       "id": 5227532062,
@@ -157,8 +156,63 @@
     }
   ],
   "mood": 14618207727,
-  "gear": [],
-  "look": "Adult lean kickboxer with fair realistic face and a platinum high ponytail with swept fringe; teal striped training tank over a sports bra, deep-teal satin kickboxing trunks with black waistband, brown vintage leather boxing gloves, barefoot.",
+  "gear": [
+    {
+      "assetId": 14775131832,
+      "name": "LeftGlove",
+      "target": "LeftHand",
+      "role": "glove",
+      "scale": [
+        0.72,
+        0.72,
+        0.72
+      ],
+      "rotation": [
+        -90,
+        81.3,
+        110.35
+      ],
+      "offset": [
+        -0.017,
+        0.245,
+        0.023
+      ],
+      "tint": [
+        150,
+        88,
+        52
+      ],
+      "hideTarget": true
+    },
+    {
+      "assetId": 14775127400,
+      "name": "RightGlove",
+      "target": "RightHand",
+      "role": "glove",
+      "scale": [
+        0.72,
+        0.72,
+        0.72
+      ],
+      "rotation": [
+        -90,
+        -81.3,
+        -110.3
+      ],
+      "offset": [
+        0.017,
+        0.245,
+        0.023
+      ],
+      "tint": [
+        150,
+        88,
+        52
+      ],
+      "hideTarget": true
+    }
+  ],
+  "look": "Adult lean kickboxer with fair realistic face and a platinum high ponytail with swept fringe; teal striped training tank over a sports bra, deep-teal satin kickboxing trunks with black waistband, brown leather boxing gloves, barefoot.",
   "bodyColors": {
     "Head": [
       255,

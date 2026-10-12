@@ -20,9 +20,9 @@
   ],
   "scales": {
     "Height": 0.95,
-    "Width": 0.86,
+    "Width": 0.865,
     "Depth": 0.86,
-    "Head": 0.72,
+    "Head": 0.7,
     "BodyType": 1.0,
     "Proportion": 0.6
   },
@@ -187,5 +187,10 @@
   "face": 0,
   "gear": [],
   "hideHands": false,
-  "shoeStyle": "barefoot"
+  "shoeStyle": "barefoot",
+  "handScale": [
+    1.0,
+    1.0,
+    0.88
+  ]
 }

@@ -20,8 +20,8 @@
   ],
   "scales": {
     "Height": 0.85,
-    "Width": 1.12,
-    "Depth": 1.12,
+    "Width": 0.91,
+    "Depth": 0.98,
     "Head": 0.81,
     "BodyType": 1.0,
     "Proportion": 0.0
@@ -71,11 +71,10 @@
       "Puffiness": 0.1
     },
     {
-      "AssetId": 114155090849709,
-      "AccessoryType": "Shorts",
+      "AssetId": 15824475572,
+      "AccessoryType": "Pants",
       "IsLayered": true,
-      "Order": 6,
-      "Puffiness": 0.15
+      "Order": 2
     }
   ],
   "sourceAssets": [
@@ -134,6 +133,12 @@
       "kind": "Layered fight shorts"
     },
     {
+      "id": 15824475572,
+      "name": "black leggings",
+      "creator": "WhoseTouz",
+      "kind": "Layered compression tights (under the shorts)"
+    },
+    {
       "id": 17697195879,
       "name": "Red Sports Wrist Sweatbands",
       "creator": "NINET9 Clothing",
@@ -174,12 +179,6 @@
       "name": "Tight Muscle Tank Top (Dark Red)",
       "creator": "GALLIANO",
       "kind": "Layered muscle tank"
-    },
-    {
-      "id": 114155090849709,
-      "name": "(3.0) Black Tactical Knee Pads",
-      "creator": "SonokoToume",
-      "kind": "Layered knee pads"
     }
   ],
   "mood": 14618207727,
@@ -189,14 +188,14 @@
       "name": "LiftingBelt",
       "target": "LowerTorso",
       "fit": [
-        1.12,
-        0.6,
-        1.14
+        1.15,
+        0.297,
+        1.25
       ],
       "offset": [
         0,
-        0.06,
-        0
+        0.04,
+        0.01
       ]
     },
     {
@@ -208,7 +207,7 @@
       "fit": [
         1.1842,
         1.4692,
-        0.9788
+        1.06
       ],
       "offset": [
         0,
@@ -226,7 +225,7 @@
       "fit": [
         1.1842,
         1.1397,
-        0.9788
+        1.06
       ],
       "offset": [
         0,
@@ -236,7 +235,7 @@
       "hideTarget": true
     }
   ],
-  "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts, black leather lifting belt, black tactical knee pads, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
+  "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts over black compression tights, black leather lifting belt, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
   "bodyColors": {
     "Head": [
       184,
@@ -271,5 +270,10 @@
   },
   "face": 0,
   "hideHands": false,
-  "shoeStyle": "high"
+  "shoeStyle": "high",
+  "handScale": [
+    0.88,
+    1.18,
+    0.76
+  ]
 }
