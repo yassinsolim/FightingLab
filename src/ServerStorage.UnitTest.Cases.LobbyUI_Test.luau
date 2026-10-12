@@ -13,6 +13,7 @@ local FighterSelect = require(Client:WaitForChild("FighterSelect"))
 local StationBoards = require(Client:WaitForChild("StationBoards"))
 local Leaderboard = require(Client:WaitForChild("Leaderboard"))
 local Roster = require(Lab:WaitForChild("Roster"))
+local LobbySprintModule = require(Client:WaitForChild("LobbySprint"))
 local Runner = require(game:GetService("ServerStorage").UnitTest.RunUnitTest)
 
 local function fakePlayer(attrs: { [string]: any }): Folder
@@ -31,7 +32,7 @@ end
 
 type Mounted = { ctl: any, player: Folder, holder: Folder, stations: Folder, remote: any, session: any, rejected: BindableEvent, arenas: { string }, setPad: (string?) -> (), destroy: () -> () }
 
-local function mount(attrs: { [string]: any }, keyboard: boolean?): Mounted
+local function mount(attrs: { [string]: any }, keyboard: boolean?, extra: { [string]: any }?): Mounted
 	local holder = Instance.new("Folder")
 	local player = fakePlayer(attrs)
 	local stations = Instance.new("Folder")
@@ -49,11 +50,13 @@ local function mount(attrs: { [string]: any }, keyboard: boolean?): Mounted
 	function session.isFightActive() return false end
 	local pad: string? = nil
 	local arenas: { string } = {}
-	local ctl = LobbyUI.mount({
+	local env: any = {
 		player = player, parent = holder, session = session, remote = remote, onLocalArena = function(id: string?) table.insert(arenas, id or "") end,
 		stations = function() return stations end, world = function() return nil end, serverNow = function() return 1000 end,
 		practicePad = function() return pad end, previews = false, live = false, keyboard = if keyboard == nil then true else keyboard,
-	})
+	}
+	for k, v in extra or {} do env[k] = v end
+	local ctl = LobbyUI.mount(env)
 	return {
 		ctl = ctl, player = player, holder = holder, stations = stations, remote = remote, session = session, rejected = rejected, arenas = arenas,
 		setPad = function(v: string?) pad = v end,
@@ -62,8 +65,8 @@ local function mount(attrs: { [string]: any }, keyboard: boolean?): Mounted
 end
 
 -- Runs `body` with a mounted lobby UI and always tears it down (and restores the CPU offer delay).
-local function withLobby(attrs: { [string]: any }, body: (Mounted) -> (), keyboard: boolean?)
-	local m = mount(attrs, keyboard)
+local function withLobby(attrs: { [string]: any }, body: (Mounted) -> (), keyboard: boolean?, extra: { [string]: any }?)
+	local m = mount(attrs, keyboard, extra)
 	local saved = UIState.CPU_OFFER_DELAY
 	local ok, err = pcall(body, m)
 	UIState.CPU_OFFER_DELAY = saved
@@ -86,7 +89,7 @@ return function(t: Runner.T)
 	t.test("lobby prompt text follows the duel state", function()
 		local v = UIState.lobbyView({ duelState = "Lobby" })
 		t.expect.equal(v.mode, "Lobby")
-		t.expect.equal(v.title, "WALK INTO A GLOWING CIRCLE TO DUEL")
+		t.expect.equal(v.title, "PRESS PLAY TO FIGHT")
 		v = UIState.lobbyView({ duelState = "Queued", arenaName = "Harbor Dusk", padSide = 2, queuedSeconds = 1 })
 		t.expect.equal(v.mode, "Waiting")
 		t.expect.equal(v.title, "WAITING FOR A CHALLENGER")
@@ -130,7 +133,7 @@ return function(t: Runner.T)
 	t.test("mounted lobby HUD shows identity and prompts and hides during fights", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Sierra" }, function(m)
 			local title = m.ctl.promptText()
-			t.expect.equal(title, "WALK INTO A GLOWING CIRCLE TO DUEL")
+			t.expect.equal(title, "PRESS PLAY TO FIGHT")
 			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
 			t.expect.equal(stage.Identity.Fighter.Text, "SIERRA")
 			t.expect.equal(stage.Identity.Stats.WINS.Value.Text, "3")
@@ -153,19 +156,31 @@ return function(t: Runner.T)
 		end)
 	end)
 
-	t.test("the lobby has no hotkeys of its own: C, F and 1-3 do nothing outside practice", function()
+	t.test("lobby hotkeys are only the action bar's Controls keys: PLAY and FIGHTERS; 1-3, E and Q do nothing", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
-			for _, k in { Enum.KeyCode.C, Enum.KeyCode.F, Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.E, Enum.KeyCode.Q } do
+			for _, k in { Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.E, Enum.KeyCode.Q, Enum.KeyCode.R, Enum.KeyCode.T } do
 				t.expect.falsy(m.ctl.handleKey(k), k.Name .. " is not a lobby hotkey")
 			end
+			t.expect.equal(#m.remote.calls, 0)
+			t.expect.truthy(m.ctl.handleKey(key("lobby", "play")), "the PLAY key opens the PLAY panel")
+			t.expect.truthy(m.ctl.isPlayOpen())
+			t.expect.truthy(m.ctl.handleKey(key("lobby", "play")), "and closes it again")
+			t.expect.falsy(m.ctl.isPlayOpen())
+			t.expect.truthy(m.ctl.handleKey(key("lobby", "fighters")), "the FIGHTERS key opens the fighter select")
+			t.expect.truthy(m.ctl.fighterSelect().isOpen())
+			m.ctl.fighterSelect().close()
 			UIState.CPU_OFFER_DELAY = 0
 			setDuel(m, "Queued", "Arena_MidnightRooftop", 1)
 			t.expect.equal(m.ctl.view().mode, "CpuOffer")
-			for _, k in { Enum.KeyCode.F, Enum.KeyCode.One, Enum.KeyCode.Three } do
-				t.expect.falsy(m.ctl.handleKey(k), k.Name .. " no longer calls a CPU")
+			for _, k in { Enum.KeyCode.One, Enum.KeyCode.Three } do
+				t.expect.falsy(m.ctl.handleKey(k), k.Name .. " never calls a CPU")
 			end
 			t.expect.equal(#m.remote.calls, 0)
-			t.expect.falsy(m.ctl.fighterSelect().isOpen(), "C no longer opens the fighter select")
+			-- Never in fights or practice.
+			setDuel(m, "Fighting", "Arena_MidnightRooftop", 1)
+			t.expect.falsy(m.ctl.handleKey(key("lobby", "play")), "no PLAY panel in a fight")
+			t.expect.falsy(m.ctl.handleKey(key("lobby", "fighters")), "no fighter select in a fight")
+			t.expect.falsy(m.ctl.isPlayOpen())
 		end)
 	end)
 
@@ -793,7 +808,7 @@ return function(t: Runner.T)
 
 	t.test("lobby modules require without side effects", function()
 		local before = #workspace:GetChildren()
-		for _, name in { "LobbyUI", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController" } do
+		for _, name in { "LobbyUI", "LobbyPrompts", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController", "LobbySprint", "FlashDetector" } do
 			local module = Client:FindFirstChild(name)
 			t.expect.truthy(module ~= nil and module:IsA("ModuleScript"), name .. " exists")
 			require(module :: ModuleScript)
@@ -801,5 +816,292 @@ return function(t: Runner.T)
 		t.expect.equal(#workspace:GetChildren(), before)
 		local frontEnd = require(Client:WaitForChild("FrontEnd")) :: any
 		for _, fn in { "init", "start", "onSnapshot", "update" } do t.expect.equal(typeof(frontEnd[fn]), "function", "FrontEnd." .. fn) end
+	end)
+
+	-- Round 5 ------------------------------------------------------------------------------------------------------------
+	local function station(m: Mounted, id: string, kind: string, order: number, state: string?): Configuration
+		local c = Instance.new("Configuration")
+		c.Name = id
+		c:SetAttribute("ArenaId", id)
+		c:SetAttribute("DisplayName", string.gsub(id, "_", " "))
+		c:SetAttribute("Kind", kind)
+		c:SetAttribute("Order", order)
+		c:SetAttribute("State", state or "Open")
+		c.Parent = m.stations
+		return c
+	end
+	local function rowIds(m: Mounted): { [string]: { string } }
+		local out = {}
+		for _, row in m.ctl.playRows() do
+			local ids = {}
+			for _, item in row.items do table.insert(ids, item.id) end
+			out[row.id] = ids
+		end
+		return out
+	end
+	local function lastCall(m: Mounted): any
+		return m.remote.calls[#m.remote.calls]
+	end
+
+	t.test("action bar: PLAY, FIGHTERS and MENU in the lobby with their Controls keys; hidden in fights, countdowns and practice", function()
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
+			local barFrame = stage.ActionBar
+			t.expect.truthy(m.ctl.barVisible(), "bar shown in the lobby")
+			for name, action in { Play = "play", Fighters = "fighters", Menu = "menu" } do
+				local b = barFrame:FindFirstChild(name)
+				t.expect.truthy(b ~= nil, name .. " button")
+				t.expect.truthy(b:FindFirstChild("Key_" .. UIHelpers.keyLabel("lobby", action), true) ~= nil, name .. " shows its Controls key")
+			end
+			t.expect.equal(stage:FindFirstChild("MenuButtonHolder"), nil, "the old top-left MENU button is gone (the bar has it)")
+			t.expect.truthy(m.ctl.firstHintVisible(), "first-time hint points at PLAY")
+			t.expect.truthy(string.find(stage.FirstHint.Text.Text, "PLAY", 1, true) ~= nil)
+			t.expect.falsy(stage.Prompt.Visible, "the first-time hint stands in for the objective pill (no overlap)")
+			-- The objective pill sits above the bar.
+			t.expect.truthy(stage.Prompt.Position.Y.Offset < -stage.ActionBar.Size.Y.Offset, "hint above the bar")
+			m.ctl.openPlay()
+			t.expect.falsy(m.ctl.barVisible(), "bar hidden behind the PLAY panel")
+			m.ctl.closePlay()
+			t.expect.falsy(m.ctl.firstHintVisible(), "the first-time hint is gone once PLAY was opened")
+			t.expect.truthy(stage.Prompt.Visible, "then the objective pill is back")
+			t.expect.truthy(m.ctl.barVisible())
+			m.ctl.openMenu(nil)
+			t.expect.falsy(m.ctl.barVisible(), "hidden behind the menu")
+			m.ctl.closeMenu()
+			m.ctl.sessionChanged("Countdown", { arenaId = "Arena_A", endsAt = 1002, side = 1 })
+			t.expect.falsy(m.ctl.barVisible(), "hidden in a countdown")
+			m.ctl.sessionChanged("Lobby", nil)
+			setDuel(m, "Fighting", "Arena_A", 1)
+			t.expect.falsy(m.ctl.barVisible(), "hidden in a fight")
+			setDuel(m, "Lobby")
+			m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
+			t.expect.falsy(m.ctl.barVisible(), "hidden in practice")
+			t.expect.falsy(m.ctl.openPlay(), "no PLAY panel in practice")
+			m.ctl.sessionChanged("Lobby", nil)
+			t.expect.truthy(m.ctl.barVisible(), "back in the lobby")
+			-- The bar's buttons work (mouse / touch).
+			local fightersButton = barFrame.Fighters :: TextButton
+			t.expect.truthy(m.ctl.openFighterSelect(nil) and m.ctl.fighterSelect().isOpen(), "FIGHTERS opens the showcase select anywhere")
+			t.expect.falsy(m.ctl.barVisible(), "hidden behind the select")
+			m.ctl.fighterSelect().close()
+			t.expect.truthy(fightersButton ~= nil)
+		end)
+	end)
+
+	t.test("PLAY panel: Quick Duel, Fight CPU, Practice and every arena are one pick after PLAY", function()
+		local now = 0
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1)
+			station(m, "Arena_B", "Duel", 2, "Fighting")
+			station(m, "Arena_Dojo", "Practice", 5)
+			m.stations:SetAttribute("FreeArenas", 1)
+			t.expect.truthy(m.ctl.openPlay())
+			local ids = rowIds(m)
+			t.expect.equal(table.concat(ids.duel, ","), "quick")
+			t.expect.equal(table.concat(ids.cpu, ","), "cpu:Easy,cpu:Normal,cpu:Hard")
+			t.expect.equal(table.concat(ids.practice, ","), "practice:Training,practice:Lesson,practice:Cpu")
+			t.expect.equal(table.concat(ids.travel, ","), "travel:Arena_A,travel:Arena_B,travel:Arena_Dojo")
+			t.expect.equal(table.concat(ids.travel2, ","), "travel:Plaza", "three destinations per line so every name fits")
+			local panel = m.holder:FindFirstChild("FightingLabPlay") :: ScreenGui
+			t.expect.truthy(panel and panel.Enabled, "panel shown")
+			t.expect.truthy(panel:FindFirstChild("Item_cpu:Hard", true) ~= nil, "items are buttons")
+			-- Every item maps to a server request: two steps to anything.
+			for _, row in m.ctl.playRows() do
+				for _, item in row.items do t.expect.truthy(UIState.playRequest(item.id, "Normal") ~= nil, item.id .. " sends a request") end
+			end
+			-- Keyboard: Enter on the default focus (Quick Duel).
+			t.expect.equal(m.ctl.playFocus().row, 1)
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Return))
+			t.expect.equal(lastCall(m).kind, "QuickPlay")
+			t.expect.equal(lastCall(m).payload.mode, "Duel")
+			t.expect.falsy(m.ctl.isPlayOpen(), "the panel closes after a pick")
+			-- A second request right away is debounced.
+			m.ctl.openPlay()
+			t.expect.falsy(m.ctl.playSelect("cpu:Hard"), "debounced while the server answers")
+			now += LobbyUI.PLAY_PENDING_SECONDS + 0.1
+			-- Arrow keys (and WASD) move the focus; Enter fights a Hard CPU.
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Down))
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.D))
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Right))
+			t.expect.equal(m.ctl.playFocus().row, 2)
+			t.expect.equal(m.ctl.playFocus().col, 3)
+			m.ctl.handleKey(Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).kind, "QuickPlay")
+			t.expect.equal(lastCall(m).payload.mode, "Cpu")
+			t.expect.equal(lastCall(m).payload.difficulty, "Hard")
+			now += 2
+			-- Mouse: one click on Guided Lesson starts practice and then the lesson.
+			m.ctl.openPlay()
+			local lesson = panel:FindFirstChild("Item_practice:Lesson", true) :: TextButton
+			t.expect.truthy(lesson ~= nil)
+			m.ctl.playAction("Set:3:2")
+			m.ctl.playAction("Confirm")
+			t.expect.equal(lastCall(m).payload.mode, "Practice")
+			t.expect.equal(lastCall(m).payload.practice, "Training")
+			m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
+			task.wait()
+			t.expect.truthy(m.ctl.lesson() ~= nil, "the guided lesson starts with the practice")
+			m.ctl.sessionChanged("Lobby", nil)
+			now += 2
+			-- Quick travel to an arena and back to the plaza.
+			t.expect.truthy(m.ctl.playSelect("travel:Arena_B"))
+			t.expect.equal(lastCall(m).kind, "Travel")
+			t.expect.equal(lastCall(m).payload.to, "Arena_B")
+			now += 2
+			t.expect.truthy(m.ctl.playSelect("travel:Plaza"))
+			t.expect.equal(lastCall(m).payload.to, "Plaza")
+			now += 2
+			-- Every arena busy: Fight CPU is greyed out (Quick Duel still queues).
+			m.stations:SetAttribute("FreeArenas", 0)
+			m.ctl.openPlay()
+			local calls = #m.remote.calls
+			t.expect.falsy(m.ctl.playSelect("cpu:Normal"), "no CPU while every arena is busy")
+			t.expect.equal(#m.remote.calls, calls)
+			t.expect.truthy(string.find(m.ctl.playRows()[2].items[1].sub, "busy", 1, true) ~= nil)
+			t.expect.truthy(m.ctl.playRows()[1].items[1].enabled, "Quick Duel still queues")
+			m.ctl.closePlay()
+			-- Already waiting on a circle: Quick Duel is the circle itself, Fight CPU joins right there.
+			setDuel(m, "Queued", "Arena_A", 1)
+			m.ctl.openPlay()
+			t.expect.falsy(m.ctl.playRows()[1].items[1].enabled)
+			t.expect.truthy(m.ctl.playRows()[2].items[2].enabled)
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Backspace), "Backspace closes the panel")
+			t.expect.falsy(m.ctl.isPlayOpen())
+		end, true, { clock = function() return now end })
+	end)
+
+	t.test("Quick Duel queue: clock on the hint and the PLAY button, CANCEL, FIGHT CPU INSTEAD after 12 s", function()
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			m.stations:SetAttribute("FreeArenas", 2)
+			m.player:SetAttribute("QuickQueue", 1000 - 3)
+			m.player:SetAttribute("QuickStatus", "Searching")
+			m.ctl.refresh()
+			local v = m.ctl.view()
+			t.expect.equal(v.mode, "Searching")
+			t.expect.truthy(string.find(v.title, "SEARCHING", 1, true) == 1)
+			t.expect.truthy(string.find(v.title, "0:03", 1, true) ~= nil, "queue clock")
+			t.expect.falsy(v.cpuInstead)
+			t.expect.truthy(v.canChooseFighter, "fighter changes stay allowed while searching")
+			t.expect.truthy(m.ctl.promptSpecs().kiosk.enabled, "the kiosk works while searching")
+			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
+			t.expect.truthy(stage.Prompt.Pill.Actions.Visible, "CANCEL on the hint")
+			t.expect.falsy(stage.Prompt.Pill.Actions.FightCpu.Visible)
+			m.ctl.tick(0.11)
+			t.expect.equal(stage.ActionBar.Play.Row.Label.Text, "SEARCHING 0:03", "the PLAY button shows the queue clock")
+			-- PLAY while searching: CANCEL is focused (FIGHT CPU INSTEAD not offered yet).
+			m.ctl.openPlay()
+			t.expect.equal(table.concat(rowIds(m).duel, ","), "cpuInstead,cancel")
+			t.expect.falsy(m.ctl.playRows()[1].items[1].enabled)
+			t.expect.equal(m.ctl.playFocus().col, 2)
+			m.ctl.handleKey(Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).kind, "CancelQueue")
+			-- 12 s alone: Fight CPU instead.
+			m.player:SetAttribute("QuickQueue", 1000 - UIState.QUICK_CPU_OFFER - 1)
+			m.ctl.refresh()
+			v = m.ctl.view()
+			t.expect.truthy(v.cpuInstead)
+			t.expect.truthy(stage.Prompt.Pill.Actions.FightCpu.Visible, "FIGHT CPU on the hint")
+			m.ctl.openPlay()
+			t.expect.truthy(m.ctl.playRows()[1].items[1].enabled)
+			t.expect.equal(m.ctl.playFocus().col, 1, "FIGHT CPU INSTEAD focused")
+			m.ctl.handleKey(Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.mode, "Cpu")
+			t.expect.equal(lastCall(m).payload.difficulty, "Normal")
+			-- All arenas busy while queued.
+			m.player:SetAttribute("QuickStatus", "Busy")
+			m.ctl.refresh()
+			t.expect.truthy(string.find(m.ctl.view().subtitle, "busy", 1, true) ~= nil or m.ctl.view().cpuInstead == true)
+			m.player:SetAttribute("QuickQueue", 1000 - 2)
+			m.ctl.refresh()
+			t.expect.truthy(string.find(m.ctl.view().subtitle, "All arenas are busy", 1, true) ~= nil)
+			-- Rejections from the PLAY requests read as toasts.
+			m.rejected:Fire({ request = "QuickPlay", reason = "ArenasBusy" })
+			t.expect.equal(m.ctl.toastCount(), 1)
+			-- Matched: heading to the arena.
+			m.player:SetAttribute("QuickStatus", "Matched")
+			m.ctl.refresh()
+			t.expect.equal(m.ctl.view().title, "OPPONENT FOUND")
+			m.player:SetAttribute("QuickQueue", 0)
+			m.player:SetAttribute("QuickStatus", "")
+			m.ctl.refresh()
+			t.expect.equal(m.ctl.view().mode, "Lobby")
+		end)
+	end)
+
+	t.test("sprint: lobby only, 16 -> 28 studs/s with a smooth ramp and a small FOV ease; never in fights, practice or overlays", function()
+		local model = Instance.new("Model")
+		local humanoid = Instance.new("Humanoid")
+		humanoid.WalkSpeed = 16
+		humanoid.Parent = model
+		local camera = Instance.new("Camera")
+		camera.FieldOfView = 70
+		camera.CameraType = Enum.CameraType.Custom
+		local moving = true
+		local ok, err = pcall(function()
+			withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+				local sprint = m.ctl.sprint()
+				t.expect.truthy(m.ctl.sprintAllowed())
+				sprint.setHeld(true)
+				local speeds = {}
+				for _ = 1, 6 do
+					m.ctl.tick(0.07)
+					table.insert(speeds, humanoid.WalkSpeed)
+				end
+				for i = 2, #speeds do t.expect.truthy(speeds[i] >= speeds[i - 1], "speed ramps up smoothly") end
+				t.expect.truthy(speeds[1] > 16 and speeds[1] < 22, "first step is a ramp, not a jump: " .. speeds[1])
+				t.expect.near(humanoid.WalkSpeed, 28, 0.01)
+				t.expect.near(camera.FieldOfView, 70 + LobbySprintModule.FOV_BOOST, 0.01)
+				-- Standing still does not sprint.
+				moving = false
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01)
+				t.expect.near(camera.FieldOfView, 70, 0.01)
+				moving = true
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 28, 0.01)
+				-- An overlay stops it at once (the fighter select must never capture the boosted FOV).
+				m.ctl.openPlay()
+				m.ctl.tick(0.016)
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01)
+				t.expect.near(camera.FieldOfView, 70, 0.01)
+				m.ctl.closePlay()
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 28, 0.01)
+				m.ctl.openFighterSelect(nil)
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01, "cancelled before the select saves the camera")
+				t.expect.near(camera.FieldOfView, 70, 0.01)
+				m.ctl.fighterSelect().close()
+				-- Never in practice or fights.
+				m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01, "no sprint in practice")
+				t.expect.falsy(m.ctl.sprintAllowed())
+				m.ctl.sessionChanged("Lobby", nil)
+				setDuel(m, "Fighting", "Arena_A", 1)
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01, "no sprint in a fight")
+				setDuel(m, "Lobby")
+				sprint.setHeld(false)
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01)
+				-- Gamepad / touch toggle: armed while you reach for the stick, then on until you stop moving.
+				moving = false
+				sprint.setToggle(true)
+				for _ = 1, 20 do m.ctl.tick(0.07) end
+				t.expect.truthy(sprint.toggled(), "a tap on SPRINT waits for the first step (1.4 s still)")
+				moving = true
+				for _ = 1, 6 do m.ctl.tick(0.07) end
+				t.expect.near(humanoid.WalkSpeed, 28, 0.01)
+				moving = false
+				for _ = 1, 12 do m.ctl.tick(0.07) end
+				t.expect.falsy(sprint.toggled(), "the toggle switches off after standing still")
+				t.expect.near(humanoid.WalkSpeed, 16, 0.01)
+				sprint.setToggle(true)
+				for _ = 1, math.ceil(LobbySprintModule.ARM_SECONDS / 0.07) + 1 do m.ctl.tick(0.07) end
+				t.expect.falsy(sprint.toggled(), "never moving after the tap: off after ARM_SECONDS")
+			end, true, { humanoid = function() return humanoid end, camera = function() return camera end, moving = function() return moving end })
+		end)
+		model:Destroy(); camera:Destroy()
+		if not ok then error(err, 0) end
 	end)
 end

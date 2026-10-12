@@ -2,26 +2,9 @@
 local TweenService = game:GetService("TweenService")
 local M = {}
 export type ComboState = { attacker: number, hits: number, damage: number, shown: boolean, expiresAt: number, counterUntil: number }
-export type MenuState = {
-	screen: string,
-	selected: number,
-	p1: number,
-	p2: number,
-	stage: number,
-	mode: string,
-	difficulty: string,
-	arcadeFight: number,
-	arcadeWins: number,
-	arcadeContinues: number,
-	pausedFrom: string?,
-	moveListCharacter: string?,
-	resultWinner: number,
-}
 export type Rect = { x: number, y: number, w: number, h: number }
-export type Counts = { characters: number, stages: number }
 export type ViewportFramePlan = { pivot: CFrame, cameraCFrame: CFrame, fieldOfView: number, facingDot: number, verticalFit: number }
 
-local DIFFICULTIES = { "Easy", "Normal", "Hard" }
 -- Only notable events get callouts; plain hits, blocks and whiffs would spam the screen every exchange.
 local POPUPS = {
 	ThrowBreak = "THROW ESCAPE",
@@ -93,131 +76,6 @@ function M.anyOverlap(targets: { Rect }, hudRects: { Rect }, padding: number?): 
 	return false
 end
 
-function M.initialMenuState(): MenuState
-	return { screen = "Title", selected = 1, p1 = 1, p2 = 2, stage = 1, mode = "Arcade", difficulty = "Normal", arcadeFight = 1, arcadeWins = 0, arcadeContinues = 0, resultWinner = 0 }
-end
-
-local function wrap(value: number, count: number): number
-	if count <= 0 then return 1 end
-	return ((value - 1) % count) + 1
-end
-
-local function diffIndex(value: string): number
-	for i, name in DIFFICULTIES do if name == value then return i end end
-	return 2
-end
-
-function M.menuReduce(state: MenuState, action: string, counts: Counts): MenuState
-	local s: MenuState = table.clone(state)
-	local chars = math.max(1, counts.characters)
-	local stages = math.max(1, counts.stages)
-	if s.screen == "Title" then
-		if action ~= "None" then s.screen = "Main"; s.selected = 1 end
-	elseif s.screen == "Main" then
-		if action == "Up" then s.selected = wrap(s.selected - 1, 8)
-		elseif action == "Down" then s.selected = wrap(s.selected + 1, 8)
-		elseif action == "Confirm" then
-			if s.selected == 1 then s.mode = "Arcade"; s.screen = "Character"; s.selected = s.p1; s.arcadeFight = 1; s.arcadeWins = 0
-			elseif s.selected == 2 then s.screen = "Difficulty"; s.selected = diffIndex(s.difficulty)
-			elseif s.selected == 3 then s.mode = "TwoPlayer"; s.screen = "Character"; s.selected = s.p1
-			elseif s.selected == 4 then s.mode = "Practice"; s.screen = "Character"; s.selected = s.p1
-			elseif s.selected == 5 then s.screen = "MoveList"; s.moveListCharacter = nil; s.selected = s.p1
-			elseif s.selected == 6 then s.screen = "Controls"; s.selected = 1
-			elseif s.selected == 7 then s.screen = "Credits"; s.selected = 1
-			else s.screen = "Title"; s.selected = 1 end
-		elseif action == "Back" then s.screen = "Title"; s.selected = 1 end
-	elseif s.screen == "Difficulty" then
-		if action == "Up" then s.selected = wrap(s.selected - 1, #DIFFICULTIES)
-		elseif action == "Down" then s.selected = wrap(s.selected + 1, #DIFFICULTIES)
-		elseif action == "Confirm" then s.difficulty = DIFFICULTIES[s.selected]; s.mode = "Versus"; s.screen = "Character"; s.selected = s.p1
-		elseif action == "Back" then s.screen = "Main"; s.selected = 2 end
-	elseif s.screen == "Controls" then
-		if action == "Back" or action == "Confirm" then s.screen = "Main"; s.selected = 6 end
-	elseif s.screen == "Credits" then
-		if action == "Back" or action == "Confirm" then s.screen = "Main"; s.selected = 7 end
-	elseif s.screen == "Character" then
-		local max = chars + 1
-		if action == "Left" or action == "Up" then s.selected = wrap(s.selected - 1, max)
-		elseif action == "Right" or action == "Down" then s.selected = wrap(s.selected + 1, max)
-		elseif action == "MoveList" then s.moveListCharacter = nil; s.screen = "MoveList"
-		elseif action == "Back" then s.screen = "Main"; s.selected = if s.mode == "Practice" then 4 elseif s.mode == "TwoPlayer" then 3 elseif s.mode == "Versus" then 2 else 1
-		elseif action == "Confirm" then
-			s.p1 = s.selected
-			if s.p1 > chars then s.p1 = 0 end
-			s.p2 = if s.mode == "Practice" or s.mode == "TwoPlayer" then wrap((if s.p1 == 0 then 1 else s.p1) + 1, chars) else wrap((if s.p1 == 0 then 1 else s.p1) + s.arcadeFight, chars)
-			s.screen = if s.mode == "Practice" then "Dummy" elseif s.mode == "TwoPlayer" then "CharacterP2" elseif s.mode == "Versus" then "CpuRoulette" else "Stage"
-			s.selected = if s.mode == "Practice" or s.mode == "TwoPlayer" then s.p2 else s.stage
-		end
-	elseif s.screen == "CpuRoulette" then
-		if action == "Back" then s.screen = "Character"; s.selected = if s.p1 == 0 then chars + 1 else s.p1 end
-	elseif s.screen == "CharacterP2" then
-		local max = chars + 1
-		if action == "Left" or action == "Up" then s.selected = wrap(s.selected - 1, max)
-		elseif action == "Right" or action == "Down" then s.selected = wrap(s.selected + 1, max)
-		elseif action == "Back" then s.screen = "Character"; s.selected = if s.p1 == 0 then chars + 1 else s.p1
-		elseif action == "MoveList" then s.moveListCharacter = nil; s.screen = "MoveList"
-		elseif action == "Confirm" then s.p2 = if s.selected > chars then 0 else s.selected; s.screen = "Stage"; s.selected = s.stage end
-	elseif s.screen == "Dummy" then
-		if action == "Left" or action == "Up" then s.selected = wrap(s.selected - 1, chars)
-		elseif action == "Right" or action == "Down" then s.selected = wrap(s.selected + 1, chars)
-		elseif action == "Back" then s.screen = "Character"; s.selected = if s.p1 == 0 then chars + 1 else s.p1
-		elseif action == "MoveList" then s.moveListCharacter = nil; s.screen = "MoveList"
-		elseif action == "Confirm" then s.p2 = s.selected; s.screen = "Stage"; s.selected = s.stage end
-	elseif s.screen == "Stage" then
-		local max = stages + 1
-		if action == "Left" or action == "Up" then s.selected = wrap(s.selected - 1, max)
-		elseif action == "Right" or action == "Down" then s.selected = wrap(s.selected + 1, max)
-		elseif action == "Back" then s.screen = if s.mode == "Practice" then "Dummy" elseif s.mode == "TwoPlayer" then "CharacterP2" else "Character"; s.selected = if s.mode == "Practice" or s.mode == "TwoPlayer" then s.p2 else (if s.p1 == 0 then chars + 1 else s.p1)
-		elseif action == "Confirm" then s.stage = if s.selected > stages then 0 else s.selected; s.screen = if s.mode == "Arcade" then "ArcadeProgress" else "VS"; s.selected = 1 end
-	elseif s.screen == "MoveList" then
-		if action == "Left" or action == "Up" then s.selected = wrap(s.selected - 1, chars)
-		elseif action == "Right" or action == "Down" then s.selected = wrap(s.selected + 1, chars)
-		elseif action == "Back" or action == "Confirm" then s.screen = "Main"; s.selected = 5 end
-	elseif s.screen == "ArcadeProgress" then
-		if action == "Confirm" then s.screen = "VS" end
-	elseif s.screen == "VS" then
-		if action == "Confirm" then s.screen = "Fight" end
-	elseif s.screen == "Fight" then
-		if action == "Pause" then s.pausedFrom = "Fight"; s.screen = "Pause"; s.selected = 1 end
-	elseif s.screen == "Pause" then
-		if action == "Up" then s.selected = wrap(s.selected - 1, 4)
-		elseif action == "Down" then s.selected = wrap(s.selected + 1, 4)
-		elseif action == "Back" then s.screen = s.pausedFrom or "Fight"; s.selected = 1
-		elseif action == "Confirm" then if s.selected == 1 then s.screen = "Fight" elseif s.selected == 2 then s.screen = "MoveList" elseif s.selected == 3 then s.screen = "Controls" else s.screen = "Main" end end
-	elseif s.screen == "Continue" then
-		if action == "Up" or action == "Down" then s.selected = wrap(s.selected + 1, 2)
-		elseif action == "Confirm" then if s.selected == 1 then s.arcadeContinues += 1; s.screen = "ArcadeProgress" else s.screen = "Main" end end
-	elseif s.screen == "Champion" then
-		if action == "Confirm" or action == "Back" then s.screen = "Main"; s.selected = 1 end
-	elseif s.screen == "Results" then
-		if action == "Up" then s.selected = wrap(s.selected - 1, 3)
-		elseif action == "Down" then s.selected = wrap(s.selected + 1, 3)
-		elseif action == "Back" then s.screen = "Main"; s.selected = 1
-		elseif action == "Confirm" then
-			if s.selected == 1 then s.screen = if s.mode == "Arcade" then "ArcadeProgress" else "VS"; s.selected = 1
-			elseif s.selected == 2 then s.screen = "Character"; s.selected = if s.p1 == 0 then chars + 1 else s.p1
-			else s.screen = "Main"; s.selected = 1 end
-		end
-	end
-	return s
-end
-
-function M.isValidPauseCommand(kind: unknown, value: unknown): boolean
-	return kind == "Pause" and typeof(value) == "boolean"
-end
-
-function M.characterIndexToId(order: { string }, index: number, randomSeed: number): string
-	if #order == 0 then error("Roster order is empty") end
-	if index <= 0 or index > #order then return order[((randomSeed - 1) % #order) + 1] end
-	return order[index]
-end
-
-function M.stageIndexToId(stages: { any }, index: number, randomSeed: number): string
-	if #stages == 0 then error("Roster stages are empty") end
-	if index <= 0 or index > #stages then return stages[((randomSeed - 1) % #stages) + 1].id end
-	return stages[index].id
-end
-
 function M.viewportFramePlan(modelPivot: CFrame, minBound: Vector3, maxBound: Vector3, bust: boolean, yawDegrees: number): ViewportFramePlan
 	if minBound.X > maxBound.X or minBound.Y > maxBound.Y or minBound.Z > maxBound.Z then
 		error("viewportFramePlan requires valid model bounds")
@@ -242,19 +100,6 @@ function M.viewportFramePlan(modelPivot: CFrame, minBound: Vector3, maxBound: Ve
 		facingDot = facingDot,
 		verticalFit = verticalFit,
 	}
-end
-
-function M.makeProtocol(kind: string, a: any?, b: any?): { kind: string, a: any?, b: any? }
-	if kind == "SelectCharacters" then
-		if typeof(a) ~= "string" or typeof(b) ~= "string" then error("SelectCharacters requires two ids") end
-	elseif kind == "SelectStage" then
-		if typeof(a) ~= "string" then error("SelectStage requires stage id") end
-	elseif kind == "SetMode" then
-		if a ~= "Match" and a ~= "Training" then error("SetMode requires Match or Training") end
-	elseif kind == "Attack" then
-		if a ~= "LeadPunch" and a ~= "RearPunch" and a ~= "LeadKick" and a ~= "RearKick" and a ~= "Throw" then error("invalid attack button") end
-	end
-	return { kind = kind, a = a, b = b }
 end
 
 function M.popupForEvent(e: any): string?
@@ -487,7 +332,10 @@ local FALLBACK = {
 		keyboard = { reset = "R", switchMode = "T", easy = "One", normal = "Two", hard = "Three", dummy = "Y", pause = "P", leave = "Backspace" },
 		gamepad = { pause = "ButtonStart" },
 	},
-	lobby = { keyboard = { interact = "E", menu = "Tab", jump = "Space" }, gamepad = { interact = "ButtonX", menu = "ButtonY", jump = "ButtonA" } },
+	lobby = {
+		keyboard = { interact = "E", menu = "Tab", jump = "Space", play = "F", fighters = "C", sprint = "LeftShift" },
+		gamepad = { interact = "ButtonX", menu = "ButtonY", jump = "ButtonA", play = "ButtonR1", fighters = "ButtonL1", sprint = "ButtonL3" },
+	},
 	notation = { lp = "1", rp = "2", lk = "3", rk = "4" },
 }
 local KEY_TEXT: { [string]: string } = {
@@ -495,7 +343,7 @@ local KEY_TEXT: { [string]: string } = {
 	LeftShift = "SHIFT", RightShift = "SHIFT", LeftControl = "CTRL", Escape = "ESC",
 	ButtonX = "X", ButtonY = "Y", ButtonA = "A", ButtonB = "B", ButtonR1 = "RB", ButtonL1 = "LB", ButtonR2 = "RT", ButtonL2 = "LT",
 	ButtonStart = "START", ButtonSelect = "SELECT", DPadLeft = "←", DPadRight = "→", DPadUp = "↑", DPadDown = "↓",
-	Left = "←", Right = "→", Up = "↑", Down = "↓", Thumbstick1 = "LS", Thumbstick2 = "RS",
+	Left = "←", Right = "→", Up = "↑", Down = "↓", Thumbstick1 = "LS", Thumbstick2 = "RS", ButtonL3 = "L3", ButtonR3 = "R3",
 }
 M.KEY_TEXT = KEY_TEXT
 
@@ -530,10 +378,11 @@ local FALLBACK_TEXT: { [string]: string } = {
 	reset = "Reset positions", switchMode = "Training / Versus CPU", easy = "CPU Easy", normal = "CPU Normal", hard = "CPU Hard",
 	dummy = "Dummy: stand / guard / fight back", pause = "Pause", leave = "Leave practice",
 	interact = "Interact", menu = "Menu", jump = "Jump",
+	play = "Play: Quick Duel, Fight CPU, Practice, Arenas", fighters = "Change fighter", sprint = "Sprint",
 }
 local FALLBACK_LEGEND: { [string]: { string } } = {
 	practice = { "reset", "switchMode", "easy", "normal", "hard", "dummy", "pause", "leave" },
-	lobby = { "interact", "menu", "jump" },
+	lobby = { "play", "fighters", "sprint", "interact", "menu", "jump" },
 }
 function M.actionText(action: string): string
 	local c = M.controls()
@@ -882,7 +731,7 @@ function M.playerListHeld(): boolean return playerListHolds > 0 end
 local FACE_COLORS: { [string]: Color3 } = {
 	A = Color3.fromRGB(96, 214, 108), B = Color3.fromRGB(255, 90, 82), X = Color3.fromRGB(78, 156, 255), Y = Color3.fromRGB(255, 206, 64),
 }
-local PAD_PILLS: { [string]: boolean } = { LB = true, RB = true, LT = true, RT = true, MENU = true, VIEW = true, LS = true, RS = true, START = true, SELECT = true }
+local PAD_PILLS: { [string]: boolean } = { LB = true, RB = true, LT = true, RT = true, MENU = true, VIEW = true, LS = true, RS = true, START = true, SELECT = true, L3 = true, R3 = true }
 local ARROW_GLYPHS: { [string]: boolean } = { ["←"] = true, ["→"] = true, ["↑"] = true, ["↓"] = true }
 
 -- A key glyph: keyboard key cap, gamepad face button (coloured ring), shoulder/menu pill or D-pad arrow tile.

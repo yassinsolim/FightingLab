@@ -5,11 +5,10 @@ local Client = Lab:WaitForChild("Client")
 local UIHelpers = require(Client:WaitForChild("UIHelpers"))
 local UIState = require(Client:WaitForChild("UIState"))
 local MoveList = require(Client:WaitForChild("MoveList"))
-local ArcadeMode = require(Client:WaitForChild("ArcadeMode"))
 local Roster = require(Lab:WaitForChild("Roster"))
 
 return function(t)
-	t.test("HUD utility math validates timer pips overlap and pause payloads", function()
+	t.test("HUD utility math validates timer, pips and overlap", function()
 		t.expect.equal(UIHelpers.damageTrail(80, 95, 0.016, 100), 95)
 		local trailed = UIHelpers.damageTrail(100, 60, 0.1, 100)
 		t.expect.truthy(trailed < 100 and trailed > 60)
@@ -20,8 +19,6 @@ return function(t)
 		t.expect.falsy(pips[2])
 		t.expect.falsy(UIHelpers.anyOverlap({ { x = 500, y = 180, w = 90, h = 220 } }, { { x = 20, y = 12, w = 460, h = 34 } }, 0))
 		t.expect.truthy(UIHelpers.anyOverlap({ { x = 500, y = 180, w = 90, h = 220 } }, { { x = 520, y = 150, w = 200, h = 100 } }, 0))
-		t.expect.truthy(UIState.validPause("Pause", true))
-		t.expect.falsy(UIState.validPause("Pause", "true"))
 	end)
 
 	t.test("combo tracker shows attacker side damage and expiry", function()
@@ -35,56 +32,6 @@ return function(t)
 		t.expect.truthy(UIHelpers.comboVisible(state, 10.3))
 		t.expect.falsy(UIHelpers.comboVisible(state, 12))
 		t.expect.truthy(state.counterUntil > 10.2)
-	end)
-
-	t.test("menu state machine covers arcade ladder continue and practice dummy", function()
-		local counts = { characters = #Roster.order, stages = #Roster.stages }
-		local s = UIState.initial()
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "Main")
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.mode, "Arcade")
-		t.expect.equal(s.screen, "Character")
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "Stage")
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "ArcadeProgress")
-		s.screen = "Continue"; s.selected = 1
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "ArcadeProgress")
-		s = UIState.initial(); s.screen = "Main"; s.selected = 4
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.mode, "Practice")
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "Dummy")
-	end)
-
-	t.test("two-player versus routes P1 then P2 character select before stage", function()
-		local counts = { characters = #Roster.order, stages = #Roster.stages }
-		local s = UIState.initial()
-		s.screen = "Main"; s.selected = 3
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.mode, "TwoPlayer")
-		t.expect.equal(s.screen, "Character")
-		s.selected = 1
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "CharacterP2")
-		t.expect.equal(s.p1, 1)
-		s.selected = 2
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.p2, 2)
-		t.expect.equal(s.screen, "Stage")
-	end)
-
-	t.test("credits main-menu route returns to credits selection", function()
-		local counts = { characters = #Roster.order, stages = #Roster.stages }
-		local s = UIState.initial()
-		s.screen = "Main"; s.selected = 7
-		s = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(s.screen, "Credits")
-		s = UIState.reduce(s, "Back", counts)
-		t.expect.equal(s.screen, "Main")
-		t.expect.equal(s.selected, 7)
 	end)
 
 	t.test("move-list notation formats every roster move for keyboard and gamepad", function()
@@ -122,16 +69,7 @@ return function(t)
 		t.expect.truthy(bustPlan.cameraCFrame.Position.Z > 0)
 	end)
 
-	t.test("protocol message construction and HUD popup mapping cover v2 fields", function()
-		local selectChars = UIHelpers.makeProtocol("SelectCharacters", "Kael", "Sierra")
-		t.expect.equal(selectChars.kind, "SelectCharacters")
-		t.expect.equal(selectChars.a, "Kael")
-		t.expect.equal(selectChars.b, "Sierra")
-		t.expect.equal(UIHelpers.makeProtocol("SelectStage", Roster.stages[1].id).a, Roster.stages[1].id)
-		t.expect.equal(UIHelpers.makeProtocol("SetMode", "Match").a, "Match")
-		t.expect.throws(function() UIHelpers.makeProtocol("SetMode", "Arcade") end)
-		t.expect.equal(UIHelpers.makeProtocol("Attack", "Throw").a, "Throw")
-		t.expect.throws(function() UIHelpers.makeProtocol("Attack", "RearThrow") end)
+	t.test("HUD popup mapping covers the notable combat events", function()
 		t.expect.equal(UIHelpers.popupForEvent({ kind = "Hit", counter = true }), "COUNTER HIT")
 		t.expect.equal(UIHelpers.popupForEvent({ kind = "ThrowBreak" }), "THROW ESCAPE")
 		t.expect.equal(UIHelpers.popupForEvent({ kind = "Parry" }), "PARRY")
@@ -139,28 +77,20 @@ return function(t)
 		t.expect.equal(UIHelpers.popupForEvent({ kind = "Crush" }), "CRUSH")
 	end)
 
-	t.test("arcade ladder chooses four different opponents when possible", function()
-		local ladder = ArcadeMode.buildLadder(Roster.order, "Kael", 4, 2)
-		t.expect.equal(#ladder, 4)
-		for _, id in ladder do t.expect.truthy(id ~= "Kael") end
-		t.expect.equal(ArcadeMode.afterResult(4, true), "Champion")
-		t.expect.equal(select(1, ArcadeMode.afterResult(2, false)), "Continue")
-	end)
-
-	-- Results confirmation routes each option to its promised destination.
-	t.test("results menu confirm supports rematch select and main menu", function()
-		local counts = { characters = #Roster.order, stages = #Roster.stages }
-		local s = UIState.initial()
-		s.screen = "Results"; s.mode = "Versus"; s.selected = 1
-		t.expect.equal(UIState.reduce(s, "Confirm", counts).screen, "VS")
-		s.selected = 2
-		local selectState = UIState.reduce(s, "Confirm", counts)
-		t.expect.equal(selectState.screen, "Character")
-		t.expect.equal(selectState.selected, s.p1)
-		s.selected = 3
-		t.expect.equal(UIState.reduce(s, "Confirm", counts).screen, "Main")
-		s.selected = 1; s.mode = "Arcade"
-		t.expect.equal(UIState.reduce(s, "Confirm", counts).screen, "ArcadeProgress")
-		t.expect.equal(UIState.reduce(s, "Back", counts).screen, "Main")
+	-- Round 5: the pre-lobby front end (title screen -> Arcade / Versus CPU / Practice state machine and the arcade
+	-- ladder) is gone; the game starts in the lobby and only the lobby UI remains.
+	t.test("the legacy title / arcade / versus menu code is deleted", function()
+		t.expect.equal(Client:FindFirstChild("ArcadeMode"), nil, "ArcadeMode module removed")
+		for _, name in { "initialMenuState", "menuReduce", "isValidPauseCommand", "characterIndexToId", "stageIndexToId", "makeProtocol" } do
+			t.expect.equal((UIHelpers :: any)[name], nil, "UIHelpers." .. name .. " removed")
+		end
+		for _, name in { "initial", "reduce", "validPause" } do
+			t.expect.equal((UIState :: any)[name], nil, "UIState." .. name .. " removed")
+		end
+		-- Everything the lobby still uses stays.
+		for _, name in { "lobbyView", "prompts", "pickerNew", "pickerAction", "tutorialNew", "tutorialObserve" } do
+			t.expect.equal(typeof((UIState :: any)[name]), "function", "UIState." .. name .. " kept")
+		end
+		t.expect.truthy(Client:FindFirstChild("SelectScene") ~= nil, "SelectScene (fighter select studio) kept")
 	end)
 end
