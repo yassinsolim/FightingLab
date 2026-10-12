@@ -537,6 +537,11 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	end
 	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.
 	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or string.find(ctx.key, ":Air", 1, true) ~= nil)
+	-- Two prone poses: a grounded fall or KO lands face down with the head toward the opponent (FallFront/KOFront end on
+	-- GetupFront's first frame), and every getup from it starts with GetupFront (a 180-degree turn into the other prone
+	-- pose whipped the legs and arms up to 178 degrees a frame). A body falling out of a juggle lands face down with the
+	-- head away (FallFrontAir), the pose the side roll passes at its half turn; `:Air` in the getup key keeps the choice.
+	local airProne = knockdown == "FaceDown" and fromAirKey
 	if state == "Landing" or state == "Knockdown" then
 		local total = if type(config.LandingFrames) == "number" then config.LandingFrames else 34
 		local elapsed = if type(view.stun) == "number" then math.clamp(total - stun, 0, total) else elapsedFrames
@@ -547,7 +552,8 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		-- the short Getup state shows a believable rise instead of a jump to the feet.
 		local kind = view.getupKind
 		if (kind == nil or kind == "Stand") and elapsed >= total - lead then
-			return { key = "Getup:" .. knockdown .. ":Stand", clip = if knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
+			return { key = "Getup:" .. knockdown .. ":Stand" .. (if airProne then ":Air" else ""),
+				clip = if knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
 				timeMode = "progress", progress = (elapsed - (total - lead)) / (lead + getupFrames),
 				keyframe = States.getup(0, scale, knockdown), fade = 0.12, styled = false, settle = "ground" }
 		end
@@ -563,11 +569,16 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		local total = getupFrames + (if kind ~= "Stand" then 10 else 0)
 		local done = math.clamp(total - stun, 0, total)
 		local progress = if kind == "Stand" then (lead + done) / (lead + getupFrames) else done / math.max(total, 1)
-		local clip = if kind == "BackRoll" then States.CLIPS.BackRoll elseif kind == "SideRoll" then States.CLIPS.SideRoll elseif knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp
+		-- Face down with the head toward the opponent (a grounded fall), every getup rises with GetupFront (a roll pushes
+		-- up while the sim slides the body back or aside). Out of a juggle (head away) the rolls play as before.
+		local groundProne = knockdown == "FaceDown" and not airProne
+		local clip = if groundProne then States.CLIPS.GetupFaceDown
+			elseif kind == "BackRoll" then States.CLIPS.BackRoll elseif kind == "SideRoll" then States.CLIPS.SideRoll
+			elseif knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp
 		-- Side roll: a log roll whose chest turns toward the travel side first. Face up it is one full turn from the
 		-- clip's first frame (the lying pose itself, so a short fade); face down (prone) it is the second half turn.
-		local sideRoll = kind == "SideRoll"
-		return { key = "Getup:" .. knockdown .. ":" .. kind, clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
+		local sideRoll = clip == States.CLIPS.SideRoll
+		return { key = "Getup:" .. knockdown .. ":" .. kind .. (if airProne then ":Air" else ""), clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
 			startTag = if sideRoll and knockdown == "FaceDown" then "proneStart" else nil,
 			keyframe = States.getup(math.clamp(done / math.max(total, 1), 0, 1) * 32, scale, knockdown),
 			fade = if sideRoll then (if knockdown == "FaceDown" then 0.06 else 0.03) else 0.08, styled = false,

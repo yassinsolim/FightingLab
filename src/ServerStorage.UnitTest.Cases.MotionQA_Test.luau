@@ -146,6 +146,22 @@ return function(t)
 		end)
 	end
 
+	t.test("face-down knockdowns, their getups and the face-down KO (all six fighters): no body part turns 90 degrees in a frame", function()
+		-- FallFront/KOFront used to land in the other prone pose (head away from the opponent) and the face-down getup to
+		-- turn the body back: feet, thighs and arms whipped 150-178 degrees in one frame. Now 46-70 at worst (the prone
+		-- legs still twist after the landing: see motioncore.md 13.4).
+		local wanted = { ["knockdownFaceDown>Stand>idle"] = true, ["knockdownFaceDown>BackRoll>idle"] = true, ["knockdownFaceDown>SideRollL>idle"] = true, ["idle>KOFaceDown"] = true }
+		local cases = {}
+		for _, id in QA.Roster.order do
+			for _, c in QA.stateCases(id) do
+				if wanted[c.label] then table.insert(cases, c) end
+			end
+		end
+		t.expect.truthy(#cases == 4 * #QA.Roster.order, "every fighter has the face-down cases")
+		local bad = violations(cases, { "pop.rot" }, { ["pop.rot"] = 90 })
+		t.expect.truthy(#bad == 0, "face-down whips: " .. report(bad))
+	end)
+
 	t.test("throw tracks never teleport a body part (both roles, all six fighters)", function()
 		local cases = {}
 		for _, id in QA.Roster.order do

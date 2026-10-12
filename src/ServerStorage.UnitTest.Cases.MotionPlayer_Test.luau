@@ -322,7 +322,7 @@ return function(t)
 		t.expect.truthy(cutBody < 1e-3 and cutHands < 1e-3, "first intro frame = the intro pose itself")
 	end)
 
-	t.test("side roll: a log roll that turns toward its travel (full turn face up, half turn face down)", function()
+	t.test("side roll: face up a log roll that turns toward its travel; face down it rises from the prone pose it lies in", function()
 		if not ClipLibrary.get("SideRoll") then return end
 		local L, G, R = Config.LandingFrames or 34, Config.GetupFrames or 26, Config.RollFrames or 10
 		-- Chest direction in heading space (lying body: rootRot's look vector); rollDir +1 travels to the fighter's left (-X).
@@ -333,6 +333,8 @@ return function(t)
 				MotionPlayer.reset(72)
 				local towardMax, towardMin, firstChestY = -2, 2, nil
 				local towardAtTurn = nil
+				local prevRot: CFrame? = nil
+				local maxTurn = 0
 				for f = 1, L + R do
 					local v = view("Kael", nil, 0, if f <= L then "Landing" else "Getup")
 					v.knockdown = face
@@ -347,6 +349,12 @@ return function(t)
 						if f <= L + 8 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
 						if f == L + 3 then towardAtTurn = toward end
 					end
+					local rot = pose.rootRot or CFrame.identity
+					if prevRot and f >= L - 2 then
+						local _, a = (prevRot :: CFrame):ToObjectSpace(rot):ToAxisAngle()
+						maxTurn = math.max(maxTurn, math.deg(math.abs(a)))
+					end
+					prevRot = rot
 				end
 				local tag = string.format("%s rollDir %+d", face, dir)
 				if face == "FaceUp" then
@@ -354,8 +362,11 @@ return function(t)
 					t.expect.truthy((towardAtTurn or -1) > 0.6, string.format("%s: the chest turns toward the travel side first (%.2f)", tag, towardAtTurn or -1))
 					t.expect.truthy(towardMax > 0.85, string.format("%s: quarter turn reached (%.2f)", tag, towardMax))
 				else
+					-- A grounded face-down knockdown lies head toward the opponent (FallFront lands in GetupFront's first
+					-- frame) and rises with GetupFront while the sim slides the body aside: the log roll's prone half turn
+					-- lies head away, and starting it from this pose turned the body 180 degrees within the crossfade.
 					t.expect.truthy(firstChestY < -0.5, string.format("%s starts on its belly (%.2f)", tag, firstChestY))
-					t.expect.truthy(towardMax < 0.35 and towardMin < -0.85, string.format("%s: the back leads the roll (toward %.2f..%.2f)", tag, towardMin, towardMax))
+					t.expect.truthy(maxTurn < 20, string.format("%s: the pelvis turns %.1f degrees in one frame as the roll starts", tag, maxTurn))
 				end
 			end
 		end
