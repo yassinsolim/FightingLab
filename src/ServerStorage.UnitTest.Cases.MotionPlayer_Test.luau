@@ -361,4 +361,92 @@ return function(t)
 		end
 		MotionPlayer.reset(72)
 	end)
+
+	-- Round 4 (real play): the renderers interpolate the sim position (practice between two sim frames, server duels
+	-- between two snapshots), so a hit push and a round reset reach MotionPlayer over two render frames. Shown position =
+	-- view position + the pose's root offset (heading space: +Z forward, +X right).
+	local function shownX(v: any, pose: any): number
+		local facing = v.facing.Unit
+		local right = facing:Cross(Vector3.yAxis)
+		return v.pos.X + right.X * pose.rootOffset.X + facing.X * pose.rootOffset.Z
+	end
+
+	t.test("a hit push that arrives over two render frames glides instead of jumping on the second one", function()
+		MotionPlayer.reset(73)
+		local v = view("Kael", nil, 0, "Idle")
+		v.guard = "Stand"
+		local now, prevX = 0, nil
+		local worst = 0
+		for f = 1, 50 do
+			now += 1 / 60
+			if f >= 20 then
+				v.state = "Blockstun"
+				v.stun = 12
+				v.lastHit = { kind = "Block", height = "Mid", tier = "Medium", counter = false, frame = 20, move = "Jab", limb = "LeadArm", side = 1 }
+			end
+			-- the sim pushes 0.6 studs on frame 20; the renderer shows half of it on frame 20, the rest on frame 21
+			if f == 20 then v.pos = Vector3.new(-0.3, 0, 0) elseif f >= 21 then v.pos = Vector3.new(-0.6, 0, 0) end
+			local pose = MotionPlayer.sample(Config, v, { now = now, dt = 1 / 60, hitstop = 0, phase = "Fight", winner = 0 }, 73)
+			local x = shownX(v, pose)
+			if prevX and f >= 18 then worst = math.max(worst, math.abs(x - prevX)) end
+			prevX = x
+		end
+		MotionPlayer.reset(73)
+		-- The glide itself peaks at ~0.13 studs/frame for a 0.6-stud push (the whole push used to land in 0.34 + 0.3).
+		t.expect.truthy(worst < 0.16, string.format("the pushed body moved %.3f studs in one frame (glide expected)", worst))
+	end)
+
+	t.test("a round reset the renderer interpolates shows no in-between frame (the intro starts on the new mark)", function()
+		-- Slot 2 (the presenter's slots are 1 and 2; the newest entry's fighters are indexed by slot).
+		MotionPlayer.reset(2)
+		local v = view("Goran", nil, 0, "KO")
+		v.knockdown = "FaceUp"
+		v.pos = Vector3.new(-4, 0, 0)
+		local entry = { fighters = { { pos = Vector3.new(4, 0, 0) }, { pos = v.pos } } }
+		local now = 0
+		for _ = 1, 40 do
+			now += 1 / 60
+			MotionPlayer.sample(Config, v, { now = now, dt = 1 / 60, hitstop = 0, phase = "RoundOver", winner = 1, entry = entry }, 2)
+		end
+		-- New round: the newest sim entry is on the new mark (7.1 studs away); the render interpolation shows the view at an
+		-- in-between spot on the first frame (below TeleportDistance) and on the mark from the next frame on.
+		local mark = Vector3.new(3.1, 0, 0)
+		local fresh = view("Goran", nil, 0, "Idle")
+		local newEntry = { fighters = { { pos = Vector3.new(-3.1, 0, 0) }, { pos = mark } } }
+		local shown = {}
+		for f = 1, 4 do
+			now += 1 / 60
+			fresh.pos = if f == 1 then Vector3.new(-4, 0, 0):Lerp(mark, 0.4) else mark
+			local pose = MotionPlayer.sample(Config, fresh, { now = now, dt = 1 / 60, hitstop = 0, phase = "Ready", winner = 0, entry = newEntry }, 2)
+			shown[f] = shownX(fresh, pose)
+		end
+		MotionPlayer.reset(2)
+		t.expect.truthy(math.abs(shown[1] - mark.X) < 0.6, string.format("first intro frame shown at %.2f, the new mark is %.2f", shown[1], mark.X))
+		t.expect.truthy(math.abs(shown[2] - shown[1]) < 0.6, string.format("the body jumped %.2f studs on the frame after the reset", math.abs(shown[2] - shown[1])))
+	end)
+
+	t.test("ducking during a blockstun crossfades to the crouching clip on the same stun clock", function()
+		MotionPlayer.reset(75)
+		local v = view("Kael", nil, 0, "Idle")
+		v.guard = "Stand"
+		local now = 0
+		local prevY, worst, keys = nil, 0, {}
+		for f = 1, 40 do
+			now += 1 / 60
+			if f >= 10 then
+				v.state = "Blockstun"
+				v.stun = 20
+				v.lastHit = { kind = "Block", height = "Mid", tier = "Medium", counter = false, frame = 10, move = "Jab", limb = "LeadArm", side = 1 }
+			end
+			if f >= 18 then v.crouched = true; v.guard = "Crouch" end
+			local pose = MotionPlayer.sample(Config, v, { now = now, dt = 1 / 60, hitstop = 0, phase = "Fight", winner = 0 }, 75)
+			keys[f] = MotionPlayer._slotState(75).key
+			local y = pose.rootOffset.Y
+			if prevY and f >= 16 and f <= 30 then worst = math.max(worst, math.abs(y - prevY)) end
+			prevY = y
+		end
+		MotionPlayer.reset(75)
+		t.expect.truthy(keys[17] ~= keys[18], "ducking changes the blockstun request")
+		t.expect.truthy(worst < 0.25, string.format("the pelvis dropped %.3f studs in one frame when ducking in blockstun", worst))
+	end)
 end

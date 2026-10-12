@@ -102,12 +102,17 @@ type SlotState = {
 	-- that starts during the hitstop freeze); hitStamp/hitSeen: the last hit seen; glide: world offset (studs, XZ) that
 	-- holds the body where it was when the sim pushed it on a hit, released over glideDur of animation time.
 	real: number, fadeReal: boolean?, fadeLinear: boolean?, hitStamp: string?, hitSeen: boolean?, glide: Vector3?, glideStart: number?, glideDur: number?,
+	absorbUntil: number?, timeKey: string?, resetSnapUntil: number?, entryPos: Vector3?, entryFrame: number?,
 }
 local slots: { [number]: SlotState } = {}
 local FINAL_HIT_HOLD = 1.1
 -- A sim position jump larger than this in one frame is a round reset (fighters back on their marks), never movement
 -- (dashes travel ~0.2 studs per frame, throw pushes 0.6): the pose cuts instead of crossfading.
 MotionPlayer.TeleportDistance = 3
+-- Real-time window after a hit or a throw exit in which the sim's push is absorbed into the glide (see sample).
+MotionPlayer.PushAbsorbWindow = 2.5 / 60
+-- Real-time window after a round reset in which the body is shown at the newest entry's position (see sample).
+MotionPlayer.ResetSnapWindow = 0.5
 -- Impact entries (a reaction, knockdown, launch, KO or throw that starts on a hit): the crossfade from whatever the
 -- fighter was doing runs on real time, so it plays during the hitstop freeze; its length follows how far the pose has to
 -- travel (ImpactDegPerFrame of joint turn per frame), between ImpactFadeMin and ImpactFadeMax seconds.
@@ -118,6 +123,10 @@ MotionPlayer.ImpactDegPerFrame = 8
 MotionPlayer.CrossfadeDegPerFrame = 9
 MotionPlayer.CrossfadeMax = 0.3
 MotionPlayer.GetupCrossfadeMax = 0.1
+-- An attack's fade-in stretches at most MoveFadeMax (and always ends before its first active frame): a longer blend from
+-- the guard into a wind-up dragged the hand target through the chest and right past the shoulder, where the folded arm
+-- spun 170+ degrees in one frame (Lumi PalmHeel); 8 frames still spread the guard-to-chamber turn.
+MotionPlayer.MoveFadeMax = 8 / 60
 local resolvedCache: { [string]: ResolvedMove } = {}
 local LEGACY_TO_ROSTER: { [string]: string } = { Jab = "Jab", Heavy = "Cross", Kick = "Roundhouse", LeadKick = "FrontKick", DuckJab = "DuckJab", BodyPunch = "BodyBlow", ShinTap = "ShinKick", Sweep = "LowSweep", Rise = "RisingUppercut" }
 local DEFAULT_IDS = { "Kael", "Sierra" }
@@ -898,9 +907,10 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		local style = if Roster.has(characterId) then Roster.get(characterId).stanceStyle else "boxer"
 		local req = States.request(view, frame, s, characterId, scale, { clock = st.clock, keyStarted = st.keyStarted, key = st.key, settling = settling, config = config, legLength = legLength })
 		if req.key ~= st.key then
-			st.keyStarted = st.clock
+			if req.timeKey == nil or req.timeKey ~= st.timeKey then st.keyStarted = st.clock end
 			if req.restart then st.travel = 0 end
 		end
+		st.timeKey = req.timeKey
 		pose = resolveRequest(req, st, style, scale, legLength)
 		key, fade = req.key, req.fade or 0.12
 		local trim = MotionPlayer.GuardTrim[characterId]
@@ -919,7 +929,22 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	local leavingThrow = st.key ~= nil and string.sub(st.key, 1, 5) == "Throw" and string.sub(key, 1, 5) ~= "Throw"
 	-- A new round (the sim puts both fighters back on their marks; the KO'd loser is standing again) is a clean cut:
 	-- crossfading from the lying/celebrating pose at the new spot would show a body morphing upright.
+	-- The renderers interpolate the position between two sim frames (or snapshots), so the reset can arrive as an
+	-- in-between position below TeleportDistance with the new round's key one frame before the jump: the newest
+	-- entry's own position jump counts too (faster than anything the sim moves: a long snapshot gap is not a reset).
+	local entry = if type(frame) == "table" and type(frame.entry) == "table" then frame.entry else nil
+	local entryFighter = if entry and type(entry.fighters) == "table" then entry.fighters[s] else nil
+	local entryPos: Vector3? = if type(entryFighter) == "table" and typeof(entryFighter.pos) == "Vector3" then entryFighter.pos else nil
+	local entryFrame: number? = if entry and type(entry.frame) == "number" then entry.frame else nil
+	local entryJump = false
+	if entryPos and st.entryPos then
+		local dist = ((entryPos :: Vector3) - (st.entryPos :: Vector3)).Magnitude
+		local frames = if entryFrame and st.entryFrame then math.max((entryFrame :: number) - (st.entryFrame :: number), 1) else 1
+		entryJump = dist > MotionPlayer.TeleportDistance and dist / frames > 1.5
+	end
+	st.entryPos, st.entryFrame = entryPos, entryFrame
 	local roundReset = (prevPos ~= nil and typeof(view.pos) == "Vector3" and (view.pos - prevPos).Magnitude > MotionPlayer.TeleportDistance)
+		or entryJump
 		or (key == "Intro" and st.key ~= nil and (string.sub(st.key, 1, 3) == "KO:" or st.key == "Victory" or st.key == "Defeat"))
 	-- A new hit on this fighter (hit, block, counter): CombatSim pushes the defender back by up to ~1.8 studs on the hit
 	-- frame. The body is held where it stood and released over a few frames of animation time (it stays put through the
@@ -927,18 +952,25 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	local stamp = hitStampOf(view)
 	local newHit = st.hitSeen == true and stamp ~= nil and stamp ~= st.hitStamp
 	st.hitStamp, st.hitSeen = stamp, true
+	-- Practice renders between two sim frames and server duels between two snapshots: a push the sim applies in one
+	-- frame reaches the screen over the next render frames too, so displacement within PushAbsorbWindow (real time)
+	-- after the hit, or after leaving a throw, is absorbed into the same glide (it used to show as a 0.3-stud jump on
+	-- the frame after the hit).
+	local absorbing = st.absorbUntil ~= nil and st.real <= (st.absorbUntil :: number)
 	if roundReset then
 		st.glide = nil
-	elseif newHit and prevPos and typeof(view.pos) == "Vector3" then
+		st.absorbUntil = nil
+	elseif (newHit or absorbing) and prevPos and typeof(view.pos) == "Vector3" then
 		local d = view.pos - prevPos
 		d = Vector3.new(d.X, 0, d.Z)
 		if d.Magnitude > 0.05 and d.Magnitude < 2.5 then
 			local remaining = if st.glide and st.glideStart and st.glideDur then (st.glide :: Vector3) * (1 - smoothstep((st.clock - st.glideStart) / st.glideDur)) else Vector3.zero
 			st.glide = remaining - d
 			st.glideStart = st.clock
-			st.glideDur = math.clamp(0.08 + d.Magnitude * 0.06, 0.08, 0.2)
+			st.glideDur = math.clamp(0.08 + (remaining - d).Magnitude * 0.06, 0.08, 0.2)
 		end
 	end
+	if not roundReset and (newHit or leavingThrow) then st.absorbUntil = st.real + MotionPlayer.PushAbsorbWindow end
 	if st.key ~= key then
 		-- An impact entry (a new key on a hit or during the hitstop freeze): the crossfade runs on real time so the
 		-- impact pose arrives during the freeze, long enough that no joint turns more than ImpactDegPerFrame per frame.
@@ -974,7 +1006,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 				-- frames turned 1.5x faster and showed as a jump into quick strikes).
 				st.fadeLinear = false
 				if moveStartup then
-					local cap = math.max(fade, (moveStartup - 2) / 60)
+					local cap = math.max(fade, math.min((moveStartup - 2) / 60, MotionPlayer.MoveFadeMax))
 					if dur > cap then dur, st.fadeLinear = cap, true end
 				end
 				st.fadeDur = dur
@@ -1005,6 +1037,26 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 			result = table.clone(result)
 			result.rootOffset += Vector3.new(g:Dot(right), 0, g:Dot(facing))
 		end
+	end
+	-- A round reset the renderer interpolates (practice lerps between two sim frames, server duels between two snapshots;
+	-- both only skip that beyond RenderBuffer.TeleportDistance) showed the body at an in-between spot on the cut frame and
+	-- jumped up to 3 studs on the next one. For ResetSnapWindow (real time) the new round's intro pose is shown at the
+	-- newest entry's position (the new mark; nobody moves during Ready): an offset that vanishes as the interpolation
+	-- arrives there. A body still shown in the old round (a server duel renders behind the newest snapshot) is left alone.
+	if roundReset then st.resetSnapUntil = st.real + MotionPlayer.ResetSnapWindow end
+	if st.resetSnapUntil and st.real <= (st.resetSnapUntil :: number) then
+		if key == "Intro" and entryPos and typeof(view.pos) == "Vector3" then
+			local d = (entryPos :: Vector3) - view.pos
+			d = Vector3.new(d.X, 0, d.Z)
+			if d.Magnitude > 1e-3 and d.Magnitude < 8 then
+				local facing = if view.facing.Magnitude > 0.001 then view.facing.Unit else Vector3.xAxis
+				local right = facing:Cross(Vector3.yAxis)
+				result = table.clone(result)
+				result.rootOffset += Vector3.new(d:Dot(right), 0, d:Dot(facing))
+			end
+		end
+	else
+		st.resetSnapUntil = nil
 	end
 	validatePose(result)
 	result.clock = st.clock

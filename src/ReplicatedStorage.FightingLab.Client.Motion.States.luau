@@ -196,6 +196,9 @@ export type MotionRequest = {
 	key: string, clip: string?, keyframe: Keyframe?, timeMode: string?, progress: number?, seconds: number?, rate: number?,
 	phase: number?, mirror: boolean?, fade: number?, restart: boolean?, styled: boolean?, ground: number?,
 	frames: number?, impactFrames: number?, fromContact: boolean?, startTag: string?,
+	-- timeKey: requests with the same timeKey continue one clock (`elapsed` time is not restarted) when only their key
+	-- changes, e.g. a blockstun switching between its standing and crouching clip.
+	timeKey: string?,
 	-- settle: a lying body relaxes onto the floor (pelvis, head and feet rest on it). true = from the clip's floor contact
 	-- (knockdown/KO), "ground" = wherever the clip's own floor-support weight says the body lies (standing getups).
 	settle: (boolean | string)?,
@@ -475,7 +478,10 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	local crouchGuard = view.guard == "Crouch" or view.crouched == true or state == "Crouch" or state == "CrouchBlock"
 	if state == "Blockstun" then
 		local low = view.guard == "Crouch" or view.crouched == true or hitHeight == "Low"
-		return { key = "Blockstun:" .. hitStamp(hit), clip = if low then States.CLIPS.CrouchBlockstun else States.CLIPS.Blockstun, timeMode = "elapsed",
+		-- Ducking or standing up during the stun swaps the clip: a key of its own crossfades it (the same key used to swap
+		-- in one frame, a 0.9-stud drop), on the same stun clock.
+		return { key = "Blockstun:" .. hitStamp(hit) .. (if low then ":Low" else ""), timeKey = "Blockstun:" .. hitStamp(hit),
+			clip = if low then States.CLIPS.CrouchBlockstun else States.CLIPS.Blockstun, timeMode = "elapsed",
 			keyframe = if low then States.pose(characterId, "CrouchGuard", scale, now) else States.blockstun(hitHeight, scale, hitSide), fade = 0.04, adjust = if low then crouchReactArms else reactArms }
 	end
 	if state == "Block" or state == "Guard" or state == "CrouchBlock" then
