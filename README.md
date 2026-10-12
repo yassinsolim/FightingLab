@@ -15,8 +15,16 @@ fighter specs, the build tools and the design docs. More screenshots: [docs/gall
    the Studio window. (A phone preset shrinks the game, adds a phone frame and touch buttons.)
 3. To try player-vs-player in Studio, use Test > Clients and Servers with 2 players (solo Play has one player).
 
-The lobby ("Ember Square"): walk around the plaza, follow the signposts and floor guide lines to the five arenas, and
-use the on-screen E prompts for everything. Change fighter at the Fighter Kiosk (E) or in the Tab menu.
+The lobby ("Ember Square"): every arena is a short walk from the spawn (at most about 33 studs). The bar at the bottom
+does everything in two clicks or presses:
+- **PLAY** (F, or RB on a gamepad): Quick Duel (matchmaking against another player, with "Fight CPU instead" after
+  12 s alone), Fight CPU (Easy / Normal / Hard), Practice (free training, guided lesson or Versus CPU) or Go To any
+  arena or the plaza. You are taken straight there and the fight starts.
+- **FIGHTERS** (C, or LB): change fighter from anywhere (the Fighter Kiosk still works too).
+- **MENU** (Tab, or Y): Fighters, How to Play, Move List, Settings, Credits.
+- Hold **Shift** to sprint in the lobby (L3 on a gamepad, an on-screen toggle on touch).
+
+You can still walk instead:
 - Duel arenas (Midnight Rooftop, Harbor Dusk, Jungle Ruins, Summit Observatory): two glowing circles each. Stand on
   one to wait; when someone stands on the other a countdown starts and you fight there, best of 3 rounds. Waiting
   alone? After a few seconds a "Fight CPU" prompt appears: press E and pick Easy / Normal / Hard.
@@ -25,8 +33,7 @@ use the on-screen E prompts for everything. Change fighter at the Fighter Kiosk 
 - Wins and streaks go on the Hall of Champions board, and each arena's status board shows who is fighting.
 
 ## Controls
-Lobby: WASD walk, Space jump, E interact (kiosk, circles, dojo), Tab lobby menu (Fighters, How to Play, Move List,
-Settings, Credits).
+Lobby: WASD walk, Shift sprint, Space jump, F PLAY, C FIGHTERS, Tab MENU, E interact (kiosk, circles, dojo).
 
 Fighting (keyboard). The same scheme is shown in the fight (G), in How to Play and taught in the guided lesson:
 - D walk forward, A walk back. Holding A (or standing still) is your standing guard: it blocks highs and mids.
@@ -125,7 +132,17 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 399 run, 399 passed, 0 failed`
+  Final result: `[SUMMARY] 423 run, 423 passed, 0 failed`
+
+## Update: easier lobby and a compact map (2026-10-12)
+
+- A bottom bar with PLAY, FIGHTERS and MENU: PLAY takes you straight into a Quick Duel (server matchmaking), a CPU
+  fight, practice or any arena, with no walking (a CPU fight starts about 0.3 s after the click).
+- Sprint in the lobby (Shift / L3 / touch toggle, 16 -> 28 studs/s with a smooth ramp).
+- The map is compact: the worst walk from a spawn to any arena's circles dropped from 87.6 to 33.4 studs.
+- The legacy pre-lobby main menu code (title screen, Arcade) is gone, and an automated detector (`FlashDetector`)
+  proves that no fighter model is ever shown half-dressed or snapping in the fighter select, portraits or lobby avatar
+  swaps (53 bare frames found before, 0 after).
 
 ## Update: proportions and smoother animation (2026-10-12)
 
