@@ -24,6 +24,8 @@ local side = Vector3.new(0, 0, -1)
 local shake = 0
 local impactPush = 0
 local impactTilt = 0
+-- Shown (eased) versions of the shake, impact push/tilt and hitstop lean (see M.update).
+local shakeShown, pushShown, tiltShown, hitLean = 0, 0, 0, 0
 local koPresentationUntil = 0
 local koPresentationStarted = 0
 local orbit = 0
@@ -162,6 +164,20 @@ end
 
 local function smooth(current: Vector3, target: Vector3, dt: number, rate: number): Vector3
 	return current:Lerp(target, 1 - math.exp(-dt * rate))
+end
+
+-- The camera's follow: this frame's first-order step toward the shot (`want`), with the camera's velocity changing by
+-- at most MaxCameraAccel (studs/s^2). A shot that jumps (KO framing, throw orbit, a long dash) used to start the camera
+-- from rest to 45 studs/s in one frame — a visible jerk; now it takes off over ~4 frames and catches up.
+M.MaxCameraAccel = 600
+local camVel, lookVel = Vector3.zero, Vector3.zero
+local function follow(pos: Vector3, vel: Vector3, want: Vector3, dt: number): (Vector3, Vector3)
+	if dt <= 0 then return want, vel end
+	local v = (want - pos) / dt
+	local dv = v - vel
+	local maxDv = M.MaxCameraAccel * dt
+	if dv.Magnitude > maxDv then v = vel + dv.Unit * maxDv end
+	return pos + v * dt, v
 end
 
 local function rotateFlat(v: Vector3, radians: number): Vector3
@@ -311,6 +327,8 @@ function M.beginFight(newOrigin: Vector3, slot: number?)
 	requestedMode = "Fight"
 	side = initialSide(viewSlot)
 	shake, impactPush, impactTilt, koPresentationUntil = 0, 0, 0, 0
+	shakeShown, pushShown, tiltShown, hitLean = 0, 0, 0, 0
+	camVel, lookVel = Vector3.zero, Vector3.zero
 	lastPhase, lastPlan = nil, nil
 	table.clear(lastPos)
 	local cam = workspace.CurrentCamera
@@ -372,6 +390,8 @@ function M.update(f: RenderFrame)
 	if reset then
 		-- New round: nothing carries over from the KO/victory shot (shake, push, tilt, slow-mo framing).
 		shake, impactPush, impactTilt, koPresentationUntil = 0, 0, 0, 0
+		shakeShown, pushShown, tiltShown, hitLean = 0, 0, 0, 0
+		camVel, lookVel = Vector3.zero, Vector3.zero
 	end
 	local a, b = p1, p2
 	local winner = f.winner
@@ -387,34 +407,43 @@ function M.update(f: RenderFrame)
 	plan.focus += origin
 	plan.position += origin
 	if f.hitstop and f.hitstop > 0 and effectiveMode == "Fight" then
-		plan.position += side * 0.65
 		plan.fov = math.min(plan.fov, 33)
 	end
+	-- The hitstop lean-in and the impact push/tilt ease in and out over a few frames: a target that steps in one frame
+	-- gave the first-order camera follow a velocity jump (a jerk on every hit).
+	local leanTarget = if f.hitstop and f.hitstop > 0 and effectiveMode == "Fight" then 1 else 0
+	hitLean += (leanTarget - hitLean) * (1 - math.exp(-f.dt * 22))
+	pushShown += (impactPush - pushShown) * (1 - math.exp(-f.dt * 24))
+	tiltShown += (impactTilt - tiltShown) * (1 - math.exp(-f.dt * 24))
+	plan.position += side * (0.65 * hitLean)
 	local now = os.clock()
 	if koPresentationUntil > now then
 		local t = math.clamp((now - koPresentationStarted) / math.max(0.01, koPresentationUntil - koPresentationStarted), 0, 1)
 		plan.position += side * (1.25 * (1 - t)) + Vector3.new(0, 0.55 * (1 - t), 0)
 		plan.fov = math.min(plan.fov, 28 + 3 * t)
 	end
-	plan.position += side * impactPush
+	plan.position += side * pushShown
 	plan.position = clippedPosition(plan.focus, plan.position)
 	if reset then
 		-- Hard cut, the same frame the bodies cut: the camera starts the new round on its shot instead of gliding across.
 		focus, camPos, camLook = plan.focus, plan.position, plan.focus
+		camVel, lookVel = Vector3.zero, Vector3.zero
 		cam.FieldOfView = plan.fov
 		snapCount += 1
 	else
 		focus = smooth(focus, plan.focus, f.dt, 8.5)
-		camPos = smooth(camPos, plan.position, f.dt, if effectiveMode == "Fight" then 9.8 else 4.2)
-		camLook = smooth(camLook, plan.focus, f.dt, 10.5)
+		camPos, camVel = follow(camPos, camVel, smooth(camPos, plan.position, f.dt, if effectiveMode == "Fight" then 9.8 else 4.2), f.dt)
+		camLook, lookVel = follow(camLook, lookVel, smooth(camLook, plan.focus, f.dt, 10.5), f.dt)
 	end
 	lastPlan = plan
 	shake = math.max(0, shake - f.dt * 1.55)
 	impactPush = math.max(0, impactPush - f.dt * 4.2)
 	impactTilt *= math.exp(-f.dt * 8)
-	local s = Vector3.new(math.sin(f.now * 87), math.cos(f.now * 73), math.sin(f.now * 61) * 0.4) * shake
+	-- Shake at 5-7 Hz (a 14 Hz shake sampled at 60 fps read as jitter), easing in over two frames.
+	shakeShown += (shake - shakeShown) * (1 - math.exp(-f.dt * 30))
+	local s = Vector3.new(math.sin(f.now * 41), math.cos(f.now * 33), math.sin(f.now * 29) * 0.4) * shakeShown
 	cam.FieldOfView += (plan.fov - cam.FieldOfView) * (1 - math.exp(-f.dt * 5.5))
-	cam.CFrame = CFrame.lookAt(camPos + s, camLook + s * 0.35) * CFrame.Angles(0, 0, impactTilt)
+	cam.CFrame = CFrame.lookAt(camPos + s, camLook + s * 0.35) * CFrame.Angles(0, 0, tiltShown)
 	local c = ctx
 	if c then
 		c.gui:SetAttribute("CameraMode", effectiveMode)
