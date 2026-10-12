@@ -1,9 +1,11 @@
 --!strict
--- Fighter look contracts: rig validity, heroic proportions (6.8-7.6 heads tall), head accessories seated on the heads,
--- hair that covers the whole scalp, shoes sized like real shoes as worn that rest on the floor through knockdowns and
--- getups, every authored item applied and textured, fitted fightwear (no ballooning garments), welded extras,
--- originality blocklist, exact credits, and Factory.dressCharacter idempotency on a live-style (unanchored) Humanoid
--- character.
+-- Fighter look contracts: rig validity, real adult proportions (7.0-7.4 heads tall; per fighter shoulder/head, neck,
+-- hand and hair-silhouette bounds on the precise meshes; motion-relevant leg and arm lengths held), head accessories
+-- seated on the heads, hair that covers the whole scalp, shoes sized like real shoes as worn that rest on the floor
+-- through knockdowns and getups, boxing gloves sized like real gloves that never clip into the head or hide the eyes in
+-- guard, gear worn close to the body, every authored item applied and textured, fitted fightwear (no ballooning
+-- garments), welded extras, originality blocklist, exact credits, and Factory.dressCharacter idempotency (gear and hand
+-- scale) on a live-style (unanchored) Humanoid character.
 local AssetService = game:GetService("AssetService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -33,10 +35,11 @@ local SHOE_TUCK_HEIGHT = 0.9
 local FIT_REVIEWED_ONE_PIECE: { [number]: string } = {
 	[16362208023] = "karate gi (jacket + trousers in one layered item)",
 }
--- Heroic but believable proportions (measured on the neutral template): realistic 3D-fighter casts stand about 7 heads
--- tall; below 6.8 the head reads as a Roblox avatar on the fight camera, above 7.6 the fighter turns pin-headed/lanky.
-local MIN_HEADS_TALL = 6.8
-local MAX_HEADS_TALL = 7.6
+-- Heroic but believable proportions (measured on the neutral template): realistic adult anatomy stands 7.0-7.4 heads
+-- tall (head box incl. the dynamic head's neck stub); below 7 the head reads as a Roblox avatar on the fight camera, above
+-- 7.4 the fighter turns pin-headed/lanky (round 4 tightened 6.8-7.6 to the real-adult band).
+local MIN_HEADS_TALL = 7.0
+local MAX_HEADS_TALL = 7.4
 -- Head accessories (hair, beard) must stay seated after head scaling: their boxes overlap the head box (tolerance in
 -- studs) and their centres stay within this many head heights of the head centre.
 local HEAD_ACCESSORY_TOLERANCE = 0.05
@@ -99,6 +102,100 @@ local LAYERED_SHOE_RENDERS: { [number]: { length: number, width: number, height:
 	[120192598736981] = { length = 0.75, width = 0.36, height = 0.53, sink = 0.06 }, -- Nia OV6 slip-ons, left
 	[78935764733147] = { length = 0.73, width = 0.35, height = 0.50, sink = 0.04 }, -- right
 }
+-- Round 4 (scaling audit): every fighter in real adult proportion. All silhouettes are measured on the neutral template
+-- through precise-collision copies of the meshes (front view = X, side view = Z); renders confirmed them within 1-2%.
+-- Head width includes the ears (the head reads at its widest). Shoulders = outer shoulder width deltoid to deltoid on the
+-- bare body (upper torso + upper arms, widest row from 0.02 x stature above the shoulder joints to 0.07 x stature
+-- below). Neck = narrowest front-view width between the head box bottom and the jaw. Hand length = wrist joint to the
+-- farthest point of the hand (fingertips; the relaxed curl shortens a box length), hand width = widest across the palm
+-- incl. the relaxed thumb. Hair = head + hair silhouette width.
+-- Per-fighter bounds: men 2.8-3.3 shoulder widths per head (Goran, the heavyweight, up to 3.6), women 2.4-2.9. Rhys's
+-- head read too big next to the other men (the user named it): on main his frame was the narrowest per head of the men
+-- (3.18) and he stood 7.08 heads, so he is held at the top of the men's band (>= 3.25) and >= 7.2 heads tall.
+-- Sierra's and Nia's necks are the slender necks of their head meshes (0.428 and 0.448 x head width; the narrowest point
+-- is on the head mesh, which scales uniformly, so no body or head scale changes the ratio): bounded at 0.42 and 0.44
+-- instead of 0.45. Curly hair may reach 1.4 head widths (Lumi).
+type R4Bounds = { shoulder: { number }, neck: number, hair: number?, heads: { number }? }
+local R4_BOUNDS: { [string]: R4Bounds } = {
+	Kael = { shoulder = { 2.8, 3.3 }, neck = 0.5, hair = 1.3 },
+	Sierra = { shoulder = { 2.4, 2.9 }, neck = 0.42, hair = 1.3 },
+	Goran = { shoulder = { 2.8, 3.6 }, neck = 0.5 },
+	Lumi = { shoulder = { 2.4, 2.9 }, neck = 0.45, hair = 1.4 },
+	Rhys = { shoulder = { 3.25, 3.3 }, neck = 0.5, hair = 1.3, heads = { 7.2, 7.4 } },
+	Nia = { shoulder = { 2.4, 2.9 }, neck = 0.44, hair = 1.3 },
+}
+local HAND_LENGTH_MIN, HAND_LENGTH_MAX = 0.10, 0.115 -- x stature
+local HAND_WIDTH_MAX = 0.055 -- x stature
+-- Motion clips are proportional to the legs and the arm IK to the arm segments: round 4 must not move them. Round-3
+-- (main) values measured on the templates: RootHeight, hip joint height above the sole, shoulder->elbow->wrist length.
+local R4_LIMBS: { [string]: { rootHeight: number, hip: number, armLeft: number, armRight: number } } = {
+	Kael = { rootHeight = 4.113, hip = 3.215, armLeft = 1.704, armRight = 1.669 },
+	Sierra = { rootHeight = 4.059, hip = 3.161, armLeft = 1.643, armRight = 1.647 },
+	Goran = { rootHeight = 4.095, hip = 3.245, armLeft = 1.901, armRight = 1.926 },
+	Lumi = { rootHeight = 4.111, hip = 3.292, armLeft = 1.574, armRight = 1.582 },
+	Rhys = { rootHeight = 4.100, hip = 3.155, armLeft = 1.697, armRight = 1.677 },
+	Nia = { rootHeight = 3.933, hip = 3.073, armLeft = 1.431, armRight = 1.451 },
+}
+local LEG_TOLERANCE, ARM_TOLERANCE = 0.01, 0.03
+-- Boxing gloves (round 4): real gloves are about 0.17 x stature long (cuff to fist end), as wide as the head and two
+-- thirds of its depth. Bounds: length <= 0.18 x stature, width (across the knuckles, hand Z) <= 1.1 x head width, depth
+-- (palm to back, hand X) <= 0.9 x head depth. A glove is seated on a closed fist: its fist end lies past the knuckles
+-- (0.6 hand lengths from the wrist joint) by the padding, 0.65-0.9 hand lengths from the wrist joint (seated on the open
+-- fingertips, 1.0+, it reads long and stands above the eyes in guard), and its cuff wraps the wrist at least 0.4 hand
+-- lengths up the forearm (hand length = the hand box, wrist joint to fingertips). Gloves are rigid catalog meshes (gear role
+-- "glove") so the server measures them exactly; a layered glove wraps the hand cage on the client (Kael's both-gloves
+-- item rendered 1.4 x his head wide on his large hands), so it is bounded by its measured render (larger hand of the
+-- chroma silhouettes in the hand frame, studs, top/bottom relative to the hand centre) in the fit it was measured in
+-- (fighter and body scales { Height, Width, Depth }, no hand scale); an unmeasured one fails.
+local GLOVE_LENGTH_MAX, GLOVE_WIDTH_MAX, GLOVE_DEPTH_MAX = 0.18, 1.1, 0.9
+local GLOVE_FIST_MIN, GLOVE_FIST_MAX, GLOVE_CUFF_MIN = 0.65, 0.9, 0.4 -- x hand length, from the wrist joint
+local LAYERED_GLOVE_RENDERS: { [number]: { fighter: string, scales: { number }, length: number, width: number, depth: number, top: number, bottom: number } } = {
+	[101503419947939] = { fighter = "Kael", scales = { 0.93, 0.96, 0.92 }, length = 0.981, width = 0.822, depth = 0.822, top = 0.558, bottom = -0.441 }, -- OV6 orange
+	[81319860328594] = { fighter = "Sierra", scales = { 0.9, 0.76, 0.78 }, length = 0.854, width = 0.514, depth = 0.415, top = 0.511, bottom = -0.345 }, -- OV6 brown
+}
+-- Eyes (fight camera, guard): head-space eye height = FaceCenterAttachment.Y + k x head height, eyes at +-0.18 x head
+-- width (located on front renders of each head, round 4).
+local EYE_LEVEL: { [string]: number } = { Kael = 0.0, Sierra = -0.018, Goran = 0.136, Lumi = -0.021, Rhys = 0.086, Nia = 0.026 }
+local EYE_SPREAD = 0.18
+-- The fight camera looks across the fight line, so it sees faces in profile (74-95 degrees off the face in guard). An
+-- eye counts where the camera is in front of the profile line (<= 90 degrees off the face) and sees it past the head and
+-- hair; from behind the profile line the head itself hides the eyes, gloves or not.
+local EYE_VIEW_MAX_ANGLE = 90
+local GLOVE_CLIP_SHRINK = 0.92 -- glove copies shrink about their centre: a glove resting on a cheek is contact, not clipping
+-- Gear worn on the body (round 4): protrusion past the bare body <= 0.04 x stature; belts at most 0.06 x stature tall.
+-- Rigid gear and rigid accessories are measured on the server (precise silhouettes vs the bare body). Layered gear wraps
+-- the body on the client: it is bounded by its measured renders (front and side chroma silhouettes vs the precise
+-- bare-body silhouette, studs), one per fit it was measured in: fighter, body scales { Height, Width, Depth } and hand
+-- scale (nil = none); a fit that was never measured fails.
+-- Nia's waist wrap is a draped sash, its band 0.085 x stature tall (13.8 cm on a 1.62 m woman; a real martial-arts sash
+-- is 10-15 cm): sash bands are bounded at 0.09 x stature, and a sash is held to the protrusion bound by its band (its
+-- tails hang free from the knot, 0.29 studs off the hip).
+local GEAR_PROTRUSION_MAX = 0.04
+local BELT_HEIGHT_MAX = 0.06
+local SASH_HEIGHT_MAX = 0.09
+type GearFit = { fighter: string, scales: { number }, hands: { number }?, protrusion: number, band: number? }
+local LAYERED_GEAR_RENDERS: { [number]: { GearFit } } = {
+	[114155090849709] = { -- OV6 tactical knee pads (round 3; removed in round 4)
+		{ fighter = "Goran", scales = { 0.85, 1.12, 1.12 }, protrusion = 0.355 },
+	},
+	[17697195879] = { -- wrist sweatbands
+		{ fighter = "Goran", scales = { 0.85, 1.12, 1.12 }, protrusion = 0.095 },
+		{ fighter = "Goran", scales = { 0.85, 0.91, 0.98 }, hands = { 0.88, 1.18, 0.76 }, protrusion = 0.084 },
+	},
+	[13048594874] = { -- arm sleeves
+		{ fighter = "Lumi", scales = { 0.82, 0.74, 0.76 }, protrusion = 0.094 },
+		{ fighter = "Lumi", scales = { 0.82, 0.84, 0.76 }, protrusion = 0.094 },
+	},
+	[131531879662841] = { -- hand wraps
+		{ fighter = "Rhys", scales = { 0.95, 0.86, 0.86 }, protrusion = 0.057 },
+		{ fighter = "Rhys", scales = { 0.95, 0.865, 0.86 }, hands = { 1.0, 1.0, 0.88 }, protrusion = 0.058 },
+	},
+	[93954966441244] = { -- waist wrap (sash): band protrusion and band height
+		{ fighter = "Nia", scales = { 0.86, 0.89, 0.8 }, hands = { 1.0, 1.13, 1.0 }, protrusion = 0.159, band = 0.465 },
+	},
+}
+-- Layered gear items, recognised by their credit kind (garments such as tops, gi, shorts and pants are not gear).
+local GEAR_KIND_WORDS = { "hand wrap", "waist wrap", "sweatband", "arm sleeve", "knee pad", "bracer", "belt", "sash", "pouch" }
 -- Assets rejected for logos/text, franchise likeness, costume evocation or ballooning fit; they must never come back.
 local BLOCKED: { [number]: string } = {
 	[113345926237908] = "compression shirt with chest text",
@@ -524,6 +621,532 @@ local function shoeGround(template: Model, id: string, motion: any, config: any)
 	return results, problem
 end
 
+-- Round 4 helpers ------------------------------------------------------------------------------------------------------
+
+-- Silhouette rows { y, lo, hi } of the union of `copies` (precise copies in Workspace) in frame F: per height y (F
+-- space) rays along F's X ("x", front view) or Z ("z", side view), every `spacing` studs across the other horizontal
+-- axis inside the copies' box.
+local function silhouette(copies: { BasePart }, F: CFrame, axis: string, y0: number, y1: number, dy: number, spacing: number): { { number } }
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = copies
+	local lo = Vector3.new(math.huge, math.huge, math.huge)
+	local hi = -lo
+	for _, c in copies do
+		for _, sx in { -0.5, 0.5 } do
+			for _, sy in { -0.5, 0.5 } do
+				for _, sz in { -0.5, 0.5 } do
+					local q = F:PointToObjectSpace(c.CFrame * Vector3.new(c.Size.X * sx, c.Size.Y * sy, c.Size.Z * sz))
+					lo, hi = lo:Min(q), hi:Max(q)
+				end
+			end
+		end
+	end
+	local oLo = (if axis == "x" then lo.Z else lo.X) - 0.02
+	local oHi = (if axis == "x" then hi.Z else hi.X) + 0.02
+	local n = math.max(4, math.ceil((oHi - oLo) / spacing))
+	local rows = {}
+	local y = y0
+	while y <= y1 + 1e-6 do
+		local a0, a1 = math.huge, -math.huge
+		for i = 0, n do
+			local o = oLo + (oHi - oLo) * i / n
+			local a = if axis == "x" then F * Vector3.new(-12, y, o) else F * Vector3.new(o, y, -12)
+			local b = if axis == "x" then F * Vector3.new(12, y, o) else F * Vector3.new(o, y, 12)
+			local h1 = Workspace:Raycast(a, b - a, params)
+			if h1 then
+				local p = F:PointToObjectSpace(h1.Position)
+				a0 = math.min(a0, if axis == "x" then p.X else p.Z)
+				local h2 = Workspace:Raycast(b, a - b, params)
+				if h2 then
+					local q = F:PointToObjectSpace(h2.Position)
+					a1 = math.max(a1, if axis == "x" then q.X else q.Z)
+				end
+			end
+		end
+		if a0 <= a1 then table.insert(rows, { y, a0, a1 }) end
+		y += dy
+	end
+	return rows
+end
+
+local function widest(rows: { { number } }): number
+	local w = 0
+	for _, r in rows do w = math.max(w, r[3] - r[2]) end
+	return w
+end
+
+local function mustCopy(part: BasePart, folder: Instance): BasePart
+	local copy = preciseCopy(part, folder)
+	assert(copy, "could not load the mesh of " .. part:GetFullName())
+	return copy :: BasePart
+end
+
+local function attachmentWorld(model: Model, partName: string, attachmentName: string): Vector3
+	return ((model:FindFirstChild(partName) :: BasePart):FindFirstChild(attachmentName) :: Attachment).WorldPosition
+end
+
+-- Round-4 proportions of a template on a Workspace clone in the neutral pose (precise mesh silhouettes, see R4_BOUNDS).
+type R4Body = { stature: number, heads: number, rootHeight: number, hip: number, armLeft: number, armRight: number, headWidth: number, headDepth: number, hairWidth: number?, shoulder: number, neck: number, hands: { [string]: { reach: number, width: number, visible: boolean } } }
+local function r4Body(template: Model): R4Body
+	local model = template:Clone()
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(0, 800 + ((model:GetAttribute("RootHeight") :: number?) or 3), -80))
+	local folder = Instance.new("Folder")
+	folder.Name = "_R4Body"
+	folder.Parent = Workspace
+	local function part(name: string): BasePart return model:FindFirstChild(name) :: BasePart end
+	local head = part("Head")
+	local sole = lowestFootY(model)
+	local stature = head.Position.Y + head.Size.Y * 0.5 - sole
+	local root = part("HumanoidRootPart")
+	local F = CFrame.new(root.Position.X, sole, root.Position.Z)
+	local hb = head.Position.Y - head.Size.Y * 0.5 - sole
+	local ht = head.Position.Y + head.Size.Y * 0.5 - sole
+	local headCopy = mustCopy(head, folder)
+	local out: any = { stature = stature, heads = stature / head.Size.Y, rootHeight = (template:GetAttribute("RootHeight") :: number?) or 0, hands = {} }
+	out.hip = attachmentWorld(model, "LeftUpperLeg", "LeftHipRigAttachment").Y - sole
+	for _, side in { "Left", "Right" } do
+		local s = attachmentWorld(model, side .. "UpperArm", side .. "ShoulderRigAttachment")
+		local e = attachmentWorld(model, side .. "UpperArm", side .. "ElbowRigAttachment")
+		local w = attachmentWorld(model, side .. "LowerArm", side .. "WristRigAttachment")
+		out["arm" .. side] = (e - s).Magnitude + (w - e).Magnitude
+	end
+	out.headWidth = widest(silhouette({ headCopy }, F, "x", hb, ht + 0.05, 0.01, 0.015))
+	out.headDepth = widest(silhouette({ headCopy }, F, "z", hb, ht + 0.05, 0.01, 0.015))
+	task.wait()
+	local hairCopies = { headCopy }
+	local top, bottom = ht, hb
+	for _, acc in model:GetChildren() do
+		if acc:IsA("Accessory") and (acc.AccessoryType == Enum.AccessoryType.Hair or acc.AccessoryType == Enum.AccessoryType.Hat) then
+			local handle = acc:FindFirstChild("Handle")
+			if handle and handle:IsA("BasePart") then
+				table.insert(hairCopies, mustCopy(handle, folder))
+				top = math.max(top, handle.Position.Y + handle.Size.Magnitude * 0.6 - sole)
+				bottom = math.min(bottom, handle.Position.Y - handle.Size.Magnitude * 0.6 - sole)
+			end
+		end
+	end
+	if #hairCopies > 1 then out.hairWidth = widest(silhouette(hairCopies, F, "x", math.max(bottom, hb - 0.6), top, 0.01, 0.015)) end
+	task.wait()
+	-- shoulders: the deltoid band from 0.07 x stature below the shoulder joints to 0.02 x stature above them
+	local sY = attachmentWorld(model, "LeftUpperArm", "LeftShoulderRigAttachment").Y - sole
+	local torso = { mustCopy(part("UpperTorso"), folder), mustCopy(part("LeftUpperArm"), folder), mustCopy(part("RightUpperArm"), folder) }
+	local shoulder = 0
+	for _, r in silhouette(torso, F, "x", sY - 0.12 * stature, sY + 0.03 * stature, 0.01, 0.015) do
+		if r[1] >= sY - 0.07 * stature and r[1] <= sY + 0.02 * stature then shoulder = math.max(shoulder, r[3] - r[2]) end
+	end
+	out.shoulder = shoulder
+	task.wait()
+	local neck = math.huge
+	for _, r in silhouette({ headCopy, torso[1] }, F, "x", hb - 0.15, hb + head.Size.Y * 0.45, 0.01, 0.015) do neck = math.min(neck, r[3] - r[2]) end
+	out.neck = neck
+	task.wait()
+	-- hands (hand frame, neutral pose: +Y toward the wrist): reach = wrist joint to the farthest surface point, width =
+	-- widest across the palm (Z, includes the relaxed thumb)
+	for _, side in { "Left", "Right" } do
+		local hand = part(side .. "Hand")
+		local wrist = (hand:FindFirstChild(side .. "WristRigAttachment") :: Attachment).WorldPosition
+		local copy = mustCopy(hand, folder)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { copy }
+		local s, n, H = copy.Size, 18, copy.CFrame
+		local reach = 0
+		for axis = 1, 3 do
+			for sign = -1, 1, 2 do
+				for i = 0, n do
+					for j = 0, n do
+						local u, v = (i / n - 0.5) * 1.02, (j / n - 0.5) * 1.02
+						local start = if axis == 1 then Vector3.new(sign * s.X, u * s.Y, v * s.Z) elseif axis == 2 then Vector3.new(u * s.X, sign * s.Y, v * s.Z) else Vector3.new(u * s.X, v * s.Y, sign * s.Z)
+						local dir = if axis == 1 then Vector3.new(-2 * sign * s.X, 0, 0) elseif axis == 2 then Vector3.new(0, -2 * sign * s.Y, 0) else Vector3.new(0, 0, -2 * sign * s.Z)
+						local hit = Workspace:Raycast(H * start, H:VectorToWorldSpace(dir), params)
+						if hit then reach = math.max(reach, (hit.Position - wrist).Magnitude) end
+					end
+				end
+			end
+		end
+		local width = widest(silhouette({ copy }, H, "z", -s.Y * 0.6, s.Y * 0.6, 0.01, 0.01))
+		out.hands[side] = { reach = reach, width = width, visible = hand.Transparency < 1 }
+		task.wait()
+	end
+	folder:Destroy()
+	model:Destroy()
+	return out :: R4Body
+end
+
+-- Bare head width (front, ears included) and depth (side) of a model in Workspace, sampled like r4Body.
+local function bareHeadSize(model: Model, folder: Instance): (number, number)
+	local head = model:FindFirstChild("Head") :: BasePart
+	local copy = mustCopy(head, folder)
+	local F = CFrame.new(head.Position.X, 0, head.Position.Z)
+	local hb = head.Position.Y - head.Size.Y * 0.5
+	local ht = head.Position.Y + head.Size.Y * 0.5
+	return widest(silhouette({ copy }, F, "x", hb, ht + 0.05, 0.01, 0.015)), widest(silhouette({ copy }, F, "z", hb, ht + 0.05, 0.01, 0.015))
+end
+
+local function sameFit(a: { number }?, b: { number }?): boolean
+	if a == nil or b == nil then return a == nil and b == nil end
+	for i = 1, 3 do
+		if math.abs(a[i] - b[i]) > 1e-3 then return false end
+	end
+	return true
+end
+
+-- The measured render of a layered gear item in the fighter's current fit (body scales and hand scale), if any.
+local function layeredGearFit(spec: any, assetId: number): GearFit?
+	local s = spec.scales or {}
+	local scales = { s.Height or 1, s.Width or 1, s.Depth or 1 }
+	for _, fit in LAYERED_GEAR_RENDERS[assetId] or {} do
+		if fit.fighter == spec.id and sameFit(fit.scales, scales) and sameFit(fit.hands, spec.handScale) then return fit end
+	end
+	return nil
+end
+
+local function wearsGloves(spec: any): boolean
+	for _, g in spec.gear or {} do
+		if g.role == "glove" then return true end
+	end
+	local kinds: { [number]: string } = {}
+	for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
+	for _, acc in spec.accessories or {} do
+		if string.find(kinds[acc.AssetId] or "", "glove", 1, true) then return true end
+	end
+	return false
+end
+
+-- Boxing gloves per hand, in the hand frame (Y along the forearm, Z across the knuckles, X palm to back): rigid glove
+-- gear measured exactly from its precise mesh surface through its weld (pose-independent); layered gloves (credit kind
+-- "glove") looked up in LAYERED_GLOVE_RENDERS.
+type GloveBox = { name: string, measured: boolean, rigid: boolean, length: number, width: number, depth: number, top: number, bottom: number, center: Vector3, part: BasePart?, c0: CFrame? }
+local function glovesOn(model: Model, spec: any, folder: Instance): { [string]: { GloveBox } }
+	local out: { [string]: { GloveBox } } = { Left = {}, Right = {} }
+	for _, side in { "Left", "Right" } do
+		local hand = model:FindFirstChild(side .. "Hand") :: BasePart
+		for _, d in hand:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "glove" then
+				local weld = d:FindFirstChildOfClass("Weld")
+				local points = shoeSurface(d, folder)
+				if weld and weld.Part0 == hand and points and #points > 0 then
+					local rel = weld.C0 * weld.C1:Inverse()
+					local lo = Vector3.new(math.huge, math.huge, math.huge)
+					local hi = -lo
+					for _, p in points do
+						local q = rel * p
+						lo, hi = lo:Min(q), hi:Max(q)
+					end
+					table.insert(out[side], { name = d.Name, measured = true, rigid = true, length = hi.Y - lo.Y, width = hi.Z - lo.Z, depth = hi.X - lo.X,
+						top = hi.Y, bottom = lo.Y, center = (lo + hi) * 0.5, part = d, c0 = rel })
+				else
+					table.insert(out[side], { name = d.Name, measured = false, rigid = true, length = 0, width = 0, depth = 0, top = 0, bottom = 0, center = Vector3.zero })
+				end
+			end
+		end
+	end
+	local kinds: { [number]: string } = {}
+	for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
+	for _, acc in spec.accessories or {} do
+		if string.find(kinds[acc.AssetId] or "", "glove", 1, true) then
+			local r = LAYERED_GLOVE_RENDERS[acc.AssetId]
+			local s = spec.scales or {}
+			local ok = r ~= nil and r.fighter == spec.id and sameFit(r.scales, { s.Height or 1, s.Width or 1, s.Depth or 1 }) and spec.handScale == nil
+			for _, side in { "Left", "Right" } do
+				table.insert(out[side], { name = "layered " .. tostring(acc.AssetId), measured = ok, rigid = false,
+					length = if ok then r.length else 0, width = if ok then r.width else 0, depth = if ok then r.depth else 0,
+					top = if ok then r.top else 0, bottom = if ok then r.bottom else 0, center = if ok then Vector3.new(0, (r.top + r.bottom) * 0.5, 0) else Vector3.zero })
+			end
+		end
+	end
+	return out
+end
+
+-- Rigid gear (welded extras other than shoes and gloves) and rigid accessories other than hair, hats and face items,
+-- measured on a Workspace clone in the neutral pose against the bare body around them (the torso and upper legs for
+-- torso items, else the limb part they sit on), world axes: the item's silhouette rows per height (front X, side Z),
+-- protrusion = how far a row reaches past the body row at the same height, band = the rows at least 70% as wide as the
+-- widest (a sash's hanging tails are not its band). `kind` is the item's credit kind (lower case).
+type RigidGear = { name: string, kind: string, height: number, protrusion: number, bandProtrusion: number }
+local TORSO_PARTS = { UpperTorso = true, LowerTorso = true }
+local function rigidGearOn(template: Model, spec: any): { RigidGear }
+	local kinds: { [number]: string } = {}
+	for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
+	local model = template:Clone()
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(0, 800 + ((model:GetAttribute("RootHeight") :: number?) or 3), -120))
+	local items: { { part: BasePart, target: BasePart, kind: string, name: string } } = {}
+	for _, d in model:GetDescendants() do
+		if not d:IsA("BasePart") then continue end
+		local acc = d:FindFirstAncestorOfClass("Accessory")
+		local role = d:GetAttribute("FightingLabRole")
+		if acc == nil and d:GetAttribute("FightingLabExtra") == true and role ~= "shoe" and role ~= "glove" then
+			local weld = d:FindFirstChildOfClass("Weld")
+			local kind = ""
+			for _, g in spec.gear or {} do
+				if g.assetId and (g.name or ("Gear_" .. tostring(g.assetId))) == d.Name then kind = kinds[g.assetId] or "" end
+			end
+			if weld and weld.Part0 then table.insert(items, { part = d, target = weld.Part0, kind = kind, name = d.Name }) end
+		elseif acc and d.Name == "Handle" and d:FindFirstChildOfClass("WrapLayer") == nil and acc.AccessoryType ~= Enum.AccessoryType.Hair
+			and acc.AccessoryType ~= Enum.AccessoryType.Hat and acc.AccessoryType ~= Enum.AccessoryType.Face then
+			local target: BasePart? = nil
+			for _, a in d:GetChildren() do
+				if a:IsA("Attachment") then
+					for _, bodyPart in model:GetChildren() do
+						if bodyPart:IsA("BasePart") and bodyPart:FindFirstChild(a.Name) then target = bodyPart end
+					end
+				end
+			end
+			local kind = ""
+			for _, entry in spec.accessories or {} do
+				if not entry.IsLayered and entry.AccessoryType == acc.AccessoryType.Name then kind = kinds[entry.AssetId] or "" end
+			end
+			if target then table.insert(items, { part = d, target = target, kind = kind, name = acc.Name }) end
+		end
+	end
+	local out: { RigidGear } = {}
+	if #items == 0 then
+		model:Destroy()
+		return out
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "_R4Gear"
+	folder.Parent = Workspace
+	local bodyCopies: { [string]: BasePart } = {}
+	local function bodyFor(target: BasePart): { BasePart }
+		local names = if TORSO_PARTS[target.Name] then { "UpperTorso", "LowerTorso", "LeftUpperLeg", "RightUpperLeg" } else { target.Name }
+		local list = {}
+		for _, n in names do
+			bodyCopies[n] = bodyCopies[n] or mustCopy(model:FindFirstChild(n) :: BasePart, folder)
+			table.insert(list, bodyCopies[n])
+		end
+		return list
+	end
+	for _, item in items do
+		local copy = mustCopy(item.part, folder)
+		local F = CFrame.new(item.target.Position)
+		local lo, hi = math.huge, -math.huge
+		for _, sx in { -0.5, 0.5 } do
+			for _, sy in { -0.5, 0.5 } do
+				for _, sz in { -0.5, 0.5 } do
+					local y = F:PointToObjectSpace(copy.CFrame * Vector3.new(copy.Size.X * sx, copy.Size.Y * sy, copy.Size.Z * sz)).Y
+					lo, hi = math.min(lo, y), math.max(hi, y)
+				end
+			end
+		end
+		local body = bodyFor(item.target)
+		local front = silhouette({ copy }, F, "x", lo, hi, 0.02, 0.02)
+		local side = silhouette({ copy }, F, "z", lo, hi, 0.02, 0.02)
+		local bodyFront = silhouette(body, F, "x", lo, hi, 0.02, 0.02)
+		local bodySide = silhouette(body, F, "z", lo, hi, 0.02, 0.02)
+		local maxW = widest(front)
+		local bandLo, bandHi = math.huge, -math.huge
+		for _, r in front do
+			if r[3] - r[2] >= 0.7 * maxW then bandLo, bandHi = math.min(bandLo, r[1]), math.max(bandHi, r[1]) end
+		end
+		local protrusion, bandProtrusion = 0, 0
+		for _, pair in { { front, bodyFront }, { side, bodySide } } do
+			for _, r in pair[1] do
+				for _, b in pair[2] do
+					if math.abs(b[1] - r[1]) < 0.005 then
+						local d = math.max(r[3] - b[3], b[2] - r[2])
+						protrusion = math.max(protrusion, d)
+						if r[1] >= bandLo and r[1] <= bandHi then bandProtrusion = math.max(bandProtrusion, d) end
+					end
+				end
+			end
+		end
+		table.insert(out, { name = item.name, kind = item.kind, height = if bandHi >= bandLo then bandHi - bandLo + 0.02 else 0, protrusion = protrusion, bandProtrusion = bandProtrusion })
+		task.wait()
+	end
+	folder:Destroy()
+	model:Destroy()
+	return out
+end
+
+-- Glove frames for the clipping and eye checks: guard (Idle: the stance cycle), the fighter's punches (1 and 2) up to
+-- their first active frame (full extension) and the hit reactions (High/Mid/Low x Light/Heavy) for 14 frames. Every
+-- sequence starts from 20 frames of guard.
+local GLOVE_WARMUP = 20
+local function gloveSequences(id: string): { { name: string, guard: boolean, frames: { { [string]: any } } } }
+	local Roster = require(ReplicatedStorage.FightingLab.Roster) :: any
+	local out = {}
+	local function sequence(name: string, guard: boolean): { { [string]: any } }
+		local frames = {}
+		for _ = 1, GLOVE_WARMUP do table.insert(frames, groundView("Idle")) end
+		table.insert(out, { name = name, guard = guard, frames = frames })
+		return frames
+	end
+	local guard = sequence("guard", true)
+	for _ = 1, 70 do table.insert(guard, groundView("Idle")) end
+	local jab: string? = nil
+	for _, notation in { "1", "2" } do
+		for _, m in Roster.get(id).moves do
+			if m.notation == notation then
+				jab = jab or m.key
+				local frames = sequence(m.key .. " at full extension", false)
+				for f = 1, m.startup + 1 do table.insert(frames, groundView("Attack", { move = m.key, moveFrame = f })) end
+			end
+		end
+	end
+	for _, height in { "High", "Mid", "Low" } do
+		for _, tier in { "Light", "Heavy" } do
+			local frames = sequence(height .. " " .. tier .. " hit reaction", false)
+			local hit = { frame = 900, move = jab or "Jab", height = height, tier = tier, side = 1, kind = "Hit" }
+			for f = 1, 14 do table.insert(frames, groundView("Hitstun", { lastHit = hit, stun = 20 - f })) end
+		end
+	end
+	return out
+end
+
+-- An eye on the head surface, in head space: FaceCenterAttachment height + EYE_LEVEL x head height, EYE_SPREAD x head
+-- width off the middle, on the face (head space -Z).
+local function eyeLocal(head: BasePart, id: string, sign: number, headCopy: BasePart): Vector3?
+	local fc = head:FindFirstChild("FaceCenterAttachment") :: Attachment?
+	if not fc then return nil end
+	local y = fc.Position.Y + (EYE_LEVEL[id] or 0) * head.Size.Y
+	local x = sign * EYE_SPREAD * head.Size.X
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { headCopy }
+	local from = headCopy.CFrame * Vector3.new(x, y, -head.Size.Z * 2)
+	local hit = Workspace:Raycast(from, headCopy.CFrame:VectorToWorldSpace(Vector3.new(0, 0, head.Size.Z * 3)), params)
+	if not hit then return nil end
+	return headCopy.CFrame:PointToObjectSpace(hit.Position)
+end
+
+-- Poses a Workspace clone with the real MotionPlayer (as CharacterPresenter does) through gloveSequences and checks
+-- every frame after the warm-up: glove copies shrunk to GLOVE_CLIP_SHRINK about their centre must not overlap the head
+-- copy, and in guard no glove may hide an eye the fight camera would otherwise see (CameraDirector's fight plan at
+-- neutral spacing, from the player's side of the fight line and from the opponent's side).
+type GloveFrameResult = { clips: { string }, covered: { string }, eyeChecks: number, frames: number }
+local function gloveFrames(template: Model, spec: any, motion: any, config: any): (GloveFrameResult?, string?)
+	local camera = require(ReplicatedStorage.FightingLab.Client.CameraDirector) :: any
+	local model = template:Clone()
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = d.Name == "HumanoidRootPart"
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+	model.Parent = Workspace
+	local folder = Instance.new("Folder")
+	folder.Name = "_R4Gloves"
+	folder.Parent = Workspace
+	local function finish(result: GloveFrameResult?, problem: string?): (GloveFrameResult?, string?)
+		motion.reset(SHOE_GROUND_SLOT)
+		folder:Destroy()
+		model:Destroy()
+		return result, problem
+	end
+	local rig = motion.collectRig(model)
+	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+	local head = model:FindFirstChild("Head") :: BasePart
+	local headCopy = mustCopy(head, folder)
+	headCopy.CFrame = head.CFrame
+	local eyes: { Vector3 } = {}
+	for _, sign in { -1, 1 } do
+		local e = eyeLocal(head, spec.id, sign, headCopy)
+		if not e then return finish(nil, spec.id .. " eye surface not found on the head mesh") end
+		table.insert(eyes, e)
+	end
+	local hairs: { { copy: BasePart, rel: CFrame } } = {}
+	for _, acc in model:GetChildren() do
+		if acc:IsA("Accessory") and (acc.AccessoryType == Enum.AccessoryType.Hair or acc.AccessoryType == Enum.AccessoryType.Hat) then
+			local handle = acc:FindFirstChild("Handle")
+			if handle and handle:IsA("BasePart") then table.insert(hairs, { copy = mustCopy(handle, folder), rel = head.CFrame:ToObjectSpace(handle.CFrame) }) end
+		end
+	end
+	type Held = { side: string, copy: BasePart, rel: CFrame }
+	local held: { Held } = {}
+	local gloves = glovesOn(model, spec, folder)
+	for _, side in { "Left", "Right" } do
+		for _, g in gloves[side] do
+			if not g.measured then return finish(nil, spec.id .. " " .. side .. " glove " .. g.name .. " is not measurable") end
+			if g.rigid and g.part then
+				local copy = mustCopy(g.part, folder)
+				copy.Size *= GLOVE_CLIP_SHRINK
+				table.insert(held, { side = side, copy = copy, rel = g.c0 :: CFrame })
+			else
+				-- a layered glove as it renders: its measured box around the hand
+				local box = Instance.new("Part")
+				box.Anchored, box.CanCollide, box.CanTouch, box.CanQuery, box.Transparency = true, false, false, true, 1
+				box.Size = Vector3.new(g.depth, g.length, g.width) * GLOVE_CLIP_SHRINK
+				box.Parent = folder
+				table.insert(held, { side = side, copy = box, rel = CFrame.new(g.center) })
+			end
+		end
+	end
+	if #held == 0 then return finish(nil, spec.id .. " wears no gloves") end
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Include
+	overlap.FilterDescendantsInstances = { headCopy }
+	local gloveSet: { [Instance]: boolean } = {}
+	local headAndHair: { Instance } = { headCopy }
+	for _, h in held do gloveSet[h.copy] = true end
+	for _, h in hairs do table.insert(headAndHair, h.copy) end
+	local rayHead = RaycastParams.new()
+	rayHead.FilterType = Enum.RaycastFilterType.Include
+	rayHead.FilterDescendantsInstances = headAndHair
+	local rayAll = RaycastParams.new()
+	rayAll.FilterType = Enum.RaycastFilterType.Include
+	rayAll.FilterDescendantsInstances = { folder }
+	local floorY = SHOE_GROUND_FLOOR_Y
+	local base = Vector3.new(0, floorY, 600)
+	local sep = 3.6
+	-- the fighter stands at the arena origin facing +X, the opponent at +sep
+	local plan = camera._plan(Vector3.zero, Vector3.new(sep, 0, 0), "Fight", 0, 1 / 60, Vector3.new(0, 0, -1), 0, false, nil)
+	local p, f = plan.position :: Vector3, plan.focus :: Vector3
+	local cameras = { near = base + p, far = base + Vector3.new(p.X, p.Y, f.Z - (p.Z - f.Z)) }
+	local result: GloveFrameResult = { clips = {}, covered = {}, eyeChecks = 0, frames = 0 }
+	for _, seq in gloveSequences(spec.id) do
+		motion.reset(SHOE_GROUND_SLOT)
+		for i, v in seq.frames do
+			v.characterId = spec.id
+			v.rootHeight = rig.rootHeight
+			v.legLength = rig.legLength
+			local pose = motion.sample(config, v, { now = i / 60, dt = 1 / 60, hitstop = 0, phase = "Fight", winner = 0, fighters = { v, { pos = Vector3.new(sep, 0, 0), facing = -Vector3.xAxis } } }, SHOE_GROUND_SLOT)
+			-- root placed as CharacterPresenter does: facing +X, so the fighter's right is +Z
+			local offset = pose.rootOffset :: Vector3
+			local center = Vector3.new(offset.Z, floorY + rig.rootHeight + offset.Y, 600 + offset.X)
+			root.CFrame = CFrame.lookAt(center, center + Vector3.xAxis)
+			motion.apply(rig, pose, floorY)
+			if i <= GLOVE_WARMUP and not seq.guard then continue end
+			result.frames += 1
+			local headWorld = motion.partWorld(rig, "Head") :: CFrame
+			headCopy.CFrame = headWorld
+			for _, h in hairs do h.copy.CFrame = headWorld * h.rel end
+			for _, h in held do
+				h.copy.CFrame = (motion.partWorld(rig, h.side .. "Hand") :: CFrame) * h.rel
+				if #Workspace:GetPartsInPart(h.copy, overlap) > 0 and #result.clips < 8 then
+					table.insert(result.clips, string.format("%s glove inside the head in the %s (frame %d)", h.side, seq.name, i))
+				end
+			end
+			if seq.guard and i % 2 == 0 then
+				for side, cam in cameras do
+					for k, e in eyes do
+						local target = headWorld * e
+						local dir = (target - cam) * 1.05
+						-- the eye counts when the camera sees the face within EYE_VIEW_MAX_ANGLE and the eye past the head and
+						-- hair (a face turned away from the camera shows no eyes, gloves or not)
+						local angle = math.deg(math.acos(math.clamp(headWorld.LookVector:Dot((cam - target).Unit), -1, 1)))
+						local seen = if angle <= EYE_VIEW_MAX_ANGLE then Workspace:Raycast(cam, dir, rayHead) else nil
+						if seen and (seen.Position - target).Magnitude < 0.05 then
+							result.eyeChecks += 1
+							local first = Workspace:Raycast(cam, dir, rayAll)
+							if first and gloveSet[first.Instance] and #result.covered < 8 then
+								table.insert(result.covered, string.format("%s eye hidden by a glove in guard (%s fight camera, frame %d, %.0f deg off the face)", if k == 1 then "left" else "right", side, i, angle))
+							end
+						end
+					end
+				end
+			end
+		end
+		task.wait()
+	end
+	return finish(result, nil)
+end
+
 return function(t)
 	local Specs = require(ServerStorage.FightingLab.CharacterSpecs) :: any
 	local Factory = require(ServerStorage.FightingLab.CharacterFactory) :: any
@@ -716,6 +1339,172 @@ return function(t)
 		end)
 	end
 
+	-- Round 4: real adult proportion, measured on the precise meshes (one test per fighter: each loads ~8 meshes).
+	for _, id in IDS do
+		t.test(id .. " is in real adult proportion: heads tall, shoulders, neck, hands and hair", function()
+			local chars = waitForTemplates()
+			local b = r4Body(chars:FindFirstChild(id) :: Model)
+			local bounds = R4_BOUNDS[id]
+			local problems: { string } = {}
+			local function check(ok: boolean, message: string)
+				if not ok then table.insert(problems, message) end
+			end
+			local heads = bounds.heads or { MIN_HEADS_TALL, MAX_HEADS_TALL }
+			check(b.heads >= heads[1] and b.heads <= heads[2], string.format("%s is %.2f heads tall (%.1f-%.1f)", id, b.heads, heads[1], heads[2]))
+			local shoulder = b.shoulder / b.headWidth
+			check(shoulder >= bounds.shoulder[1] and shoulder <= bounds.shoulder[2], string.format("%s shoulders are %.2f head widths (%.2f studs over a %.3f head; %.2f-%.2f)", id, shoulder, b.shoulder, b.headWidth, bounds.shoulder[1], bounds.shoulder[2]))
+			check(b.neck >= bounds.neck * b.headWidth, string.format("%s neck is %.3f head widths (%.3f studs; min %.2f)", id, b.neck / b.headWidth, b.neck, bounds.neck))
+			if b.hairWidth then
+				local hair = b.hairWidth / b.headWidth
+				check(bounds.hair ~= nil and hair <= bounds.hair, string.format("%s hair silhouette is %.2f head widths (%.3f studs; max %s)", id, hair, b.hairWidth, tostring(bounds.hair)))
+			end
+			for _, side in { "Left", "Right" } do
+				local h = b.hands[side]
+				if h.visible then
+					local reach, width = h.reach / b.stature, h.width / b.stature
+					check(reach >= HAND_LENGTH_MIN and reach <= HAND_LENGTH_MAX, string.format("%s %s hand is %.3f x stature long (%.3f studs wrist to fingertips; %.3f-%.3f)", id, side, reach, h.reach, HAND_LENGTH_MIN, HAND_LENGTH_MAX))
+					check(width <= HAND_WIDTH_MAX, string.format("%s %s hand is %.3f x stature wide (%.3f studs; max %.3f)", id, side, width, h.width, HAND_WIDTH_MAX))
+				end
+			end
+			t.expect.equal(#problems, 0, #problems .. " proportion problems:\n  " .. table.concat(problems, "\n  "))
+		end)
+	end
+
+	t.test("motion-relevant lengths hold: RootHeight and legs within 1%, arms within 3% of round 3", function()
+		local chars = waitForTemplates()
+		local problems: { string } = {}
+		for _, id in IDS do
+			local model = (chars:FindFirstChild(id) :: Model):Clone()
+			model.Parent = Workspace
+			model:PivotTo(CFrame.new(0, 800 + ((model:GetAttribute("RootHeight") :: number?) or 3), 120))
+			local ref = R4_LIMBS[id]
+			local sole = lowestFootY(model)
+			local now: { [string]: number } = {
+				rootHeight = (model:GetAttribute("RootHeight") :: number?) or 0,
+				hip = attachmentWorld(model, "LeftUpperLeg", "LeftHipRigAttachment").Y - sole,
+			}
+			for _, side in { "Left", "Right" } do
+				local s = attachmentWorld(model, side .. "UpperArm", side .. "ShoulderRigAttachment")
+				local e = attachmentWorld(model, side .. "UpperArm", side .. "ElbowRigAttachment")
+				local w = attachmentWorld(model, side .. "LowerArm", side .. "WristRigAttachment")
+				now["arm" .. side] = (e - s).Magnitude + (w - e).Magnitude
+			end
+			model:Destroy()
+			for _, key in { "rootHeight", "hip", "armLeft", "armRight" } do
+				local tolerance = if key == "armLeft" or key == "armRight" then ARM_TOLERANCE else LEG_TOLERANCE
+				local change = now[key] / ref[key] - 1
+				if math.abs(change) > tolerance then
+					table.insert(problems, string.format("%s %s %.3f -> %.3f (%+.1f%%, max %.0f%%)", id, key, ref[key], now[key], change * 100, tolerance * 100))
+				end
+			end
+		end
+		t.expect.equal(#problems, 0, #problems .. " motion-relevant lengths moved:\n  " .. table.concat(problems, "\n  "))
+	end)
+
+	for _, id in IDS do
+		if not wearsGloves(Specs.specs[id]) then continue end
+		t.test(id .. "'s boxing gloves are sized like real gloves and cover the hands", function()
+			local chars = waitForTemplates()
+			local spec = Specs.specs[id]
+			local model = (chars:FindFirstChild(id) :: Model):Clone()
+			model.Parent = Workspace
+			model:PivotTo(CFrame.new(0, 800 + ((model:GetAttribute("RootHeight") :: number?) or 3), -160))
+			local folder = Instance.new("Folder")
+			folder.Name = "_R4GloveSize"
+			folder.Parent = Workspace
+			local head = model:FindFirstChild("Head") :: BasePart
+			local stature = head.Position.Y + head.Size.Y * 0.5 - lowestFootY(model)
+			local headWidth, headDepth = bareHeadSize(model, folder)
+			local gloves = glovesOn(model, spec, folder)
+			local problems: { string } = {}
+			local function check(ok: boolean, message: string)
+				if not ok then table.insert(problems, message) end
+			end
+			for _, side in { "Left", "Right" } do
+				local hand = model:FindFirstChild(side .. "Hand") :: BasePart
+				local wrist = (hand:FindFirstChild(side .. "WristRigAttachment") :: Attachment).Position
+				check(#gloves[side] == 1, string.format("%s wears %d %s gloves (expected 1)", id, #gloves[side], side))
+				for _, g in gloves[side] do
+					local label = string.format("%s %s %s", id, side, g.name)
+					check(g.measured, label .. " is not measurable (a layered glove renders on the client only: wear it as rigid glove gear or add its measured render)")
+					if not g.measured then continue end
+					check(g.length <= GLOVE_LENGTH_MAX * stature, string.format("%s is %.3f x stature long, cuff to fist end (%.2f studs; max %.2f)", label, g.length / stature, g.length, GLOVE_LENGTH_MAX))
+					check(g.width <= GLOVE_WIDTH_MAX * headWidth, string.format("%s is %.2f head widths wide (%.2f studs over a %.3f head; max %.2f)", label, g.width / headWidth, g.width, headWidth, GLOVE_WIDTH_MAX))
+					check(g.depth <= GLOVE_DEPTH_MAX * headDepth, string.format("%s is %.2f head depths deep (%.2f studs over a %.3f head; max %.2f)", label, g.depth / headDepth, g.depth, headDepth, GLOVE_DEPTH_MAX))
+					local fist, cuff = (wrist.Y - g.bottom) / hand.Size.Y, (g.top - wrist.Y) / hand.Size.Y
+					check(fist >= GLOVE_FIST_MIN and fist <= GLOVE_FIST_MAX, string.format("%s fist end is %.2f hand lengths from the wrist joint (%.2f-%.2f: past the knuckles by the padding)", label, fist, GLOVE_FIST_MIN, GLOVE_FIST_MAX))
+					check(cuff >= GLOVE_CUFF_MIN, string.format("%s cuff reaches %.2f hand lengths up the forearm (min %.2f)", label, cuff, GLOVE_CUFF_MIN))
+					if g.rigid then
+						check(hand.Transparency >= 1, label .. " is a closed glove but the open bare hand stays visible inside it")
+					end
+				end
+			end
+			folder:Destroy()
+			model:Destroy()
+			t.expect.equal(#problems, 0, #problems .. " glove problems:\n  " .. table.concat(problems, "\n  "))
+		end)
+
+		t.test(id .. "'s gloves never clip into the head and leave the eyes visible in guard", function()
+			local chars = waitForTemplates()
+			local motion = require(ReplicatedStorage.FightingLab.Client.MotionPlayer) :: any
+			local config = require(ReplicatedStorage.FightingLab.CombatConfig) :: any
+			local result, problem = gloveFrames(chars:FindFirstChild(id) :: Model, Specs.specs[id], motion, config)
+			t.expect.equal(problem, nil, id .. " gloves and head sample")
+			local r = result :: GloveFrameResult
+			t.expect.truthy(r.frames > 0, id .. " glove frames were posed")
+			t.expect.truthy(r.eyeChecks > 0, id .. "'s eyes are never visible from the fight camera in guard (nothing to check)")
+			t.expect.equal(#r.clips, 0, id .. " gloves clip into the head:\n  " .. table.concat(r.clips, "\n  "))
+			t.expect.equal(#r.covered, 0, id .. " gloves hide the eyes in guard:\n  " .. table.concat(r.covered, "\n  "))
+		end)
+	end
+
+	for _, id in IDS do
+		t.test(id .. "'s gear sits close to the body: flat belts and sashes, flush pads, sleeves and wraps", function()
+			local chars = waitForTemplates()
+			local spec = Specs.specs[id]
+			local model = chars:FindFirstChild(id) :: Model
+			local stature = proportions(model).stature
+			local kinds: { [number]: string } = {}
+			for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
+			local problems: { string } = {}
+			local function check(ok: boolean, message: string)
+				if not ok then table.insert(problems, message) end
+			end
+			local function heightLimit(kind: string): number?
+				if string.find(kind, "belt", 1, true) then return BELT_HEIGHT_MAX end
+				if string.find(kind, "sash", 1, true) or string.find(kind, "waist wrap", 1, true) then return SASH_HEIGHT_MAX end
+				return nil
+			end
+			for _, acc in spec.accessories do
+				local kind = kinds[acc.AssetId] or ""
+				local isGear = false
+				for _, word in GEAR_KIND_WORDS do
+					if string.find(kind, word, 1, true) then isGear = true end
+				end
+				if not (acc.IsLayered and isGear) then continue end
+				local label = string.format("%s %s (%s)", id, kind, tostring(acc.AssetId))
+				local fit = layeredGearFit(spec, acc.AssetId)
+				check(fit ~= nil, label .. " is not measured in this fit (layered gear renders on the client only: add its measured render for these scales)")
+				if not fit then continue end
+				check(fit.protrusion <= GEAR_PROTRUSION_MAX * stature, string.format("%s stands %.3f x stature off the body (%.3f studs; max %.2f)", label, fit.protrusion / stature, fit.protrusion, GEAR_PROTRUSION_MAX))
+				local limit = heightLimit(kind)
+				if limit then
+					check(fit.band ~= nil and fit.band <= limit * stature, string.format("%s band is %.3f x stature tall (%s studs; max %.2f)", label, (fit.band or 0) / stature, tostring(fit.band), limit))
+				end
+			end
+			for _, g in rigidGearOn(model, spec) do
+				local label = string.format("%s %s (%s)", id, g.name, g.kind)
+				local limit = heightLimit(g.kind)
+				local protrusion = if limit then g.bandProtrusion else g.protrusion
+				check(protrusion <= GEAR_PROTRUSION_MAX * stature, string.format("%s stands %.3f x stature off the body (%.3f studs; max %.2f)", label, protrusion / stature, protrusion, GEAR_PROTRUSION_MAX))
+				if limit then
+					check(g.height <= limit * stature, string.format("%s band is %.3f x stature tall (%.3f studs; max %.2f)", label, g.height / stature, g.height, limit))
+				end
+			end
+			t.expect.equal(#problems, 0, #problems .. " gear problems:\n  " .. table.concat(problems, "\n  "))
+		end)
+	end
+
 	t.test("every authored item is applied and textured, nothing glossy-bare or procedural", function()
 		local chars = waitForTemplates()
 		for _, id in IDS do
@@ -868,27 +1657,44 @@ return function(t)
 			return list
 		end
 		local ok, err = pcall(function()
+			local leftHand = character:FindFirstChild("LeftHand") :: BasePart
+			local bareHand = leftHand.Size
+			local handScale = Vector3.new(table.unpack(spec.handScale or { 1, 1, 1 }))
+			local function handIs(expected: Vector3, message: string)
+				t.expect.truthy((leftHand.Size - expected).Magnitude < 1e-3, string.format("%s (hand %s, expected %s)", message, tostring(leftHand.Size), tostring(expected)))
+				local wrist = leftHand:FindFirstChild("LeftWristRigAttachment") :: Attachment
+				for _, d in character:GetDescendants() do
+					if d:IsA("Motor6D") and d.Part1 == leftHand then
+						t.expect.truthy(d.C1.Position:FuzzyEq(wrist.CFrame.Position, 1e-4), message .. ": the wrist joint follows the scaled wrist attachment")
+					end
+				end
+			end
+			t.expect.truthy(spec.handScale ~= nil, "the idempotency fixture fighter has a hand scale")
 			Factory.dressCharacter(character, spec)
 			local first = extras()
 			t.expect.equal(#first, #spec.gear, "Goran gear added once")
+			handIs(bareHand * handScale, "hand scale applied once")
 			local signature = character:GetAttribute("FightingLabDressed")
 			t.expect.truthy(typeof(signature) == "string" and signature ~= "", "dressed signature recorded")
 			Factory.dressCharacter(character, spec)
 			local second = extras()
 			t.expect.equal(#second, #first, "second call adds nothing")
 			t.expect.truthy(table.find(second, first[1]) ~= nil, "second call keeps the same gear instances")
+			handIs(bareHand * handScale, "second call keeps the hand scale")
 			for _, part in second do
 				t.expect.falsy(part.Anchored, part.Name .. " unanchored")
 				local weld = part:FindFirstChildOfClass("Weld")
 				t.expect.truthy(weld and weld.Part0 and weld.Part0:IsDescendantOf(character), part.Name .. " welded to the live rig")
 			end
-			-- Re-dressing for another fighter swaps the extras and the hand visibility.
+			-- Re-dressing for another fighter swaps the extras, the hand visibility and the hand scale.
 			Factory.dressCharacter(character, other)
 			t.expect.equal(#extras(), #(other.gear or {}), "re-dress removes the previous fighter's gear")
 			t.expect.equal((character:FindFirstChild("LeftHand") :: BasePart).Transparency, if other.hideHands then 1 else 0, "re-dress applies hideHands")
+			handIs(bareHand * Vector3.new(table.unpack(other.handScale or { 1, 1, 1 })), "re-dress undoes the previous hand scale")
 			Factory.dressCharacter(character, spec)
 			t.expect.equal(#extras(), #spec.gear, "dressing back restores the gear")
 			t.expect.equal((character:FindFirstChild("LeftHand") :: BasePart).Transparency, if spec.hideHands then 1 else 0, "dressing back restores hands")
+			handIs(bareHand * handScale, "dressing back restores the hand scale")
 			t.expect.throws(function() Factory.dressCharacter(Instance.new("Model"), spec) end, "a model without a Humanoid is rejected")
 		end)
 		folder:Destroy()
