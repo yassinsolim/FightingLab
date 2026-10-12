@@ -449,4 +449,70 @@ return function(t)
 		t.expect.truthy(keys[17] ~= keys[18], "ducking changes the blockstun request")
 		t.expect.truthy(worst < 0.25, string.format("the pelvis dropped %.3f studs in one frame when ducking in blockstun", worst))
 	end)
+
+	t.test("a KO during a hitstop freeze keeps the arms' bend continuous (no spin when the freeze ends)", function()
+		-- The impact fade runs on real time through the freeze while the animation clock stops; the IK pole continuity
+		-- has to follow the shown frames, or its reference goes stale and the arm spins once the clock resumes (Kael's
+		-- KO arm: 153 degrees in one frame). Both fighters posed through MotionPlayer.presentFrame on the real templates,
+		-- the KO hit with a 16-frame freeze (as MotionQA's idle>KOFaceUp case); upper-arm turn per frame.
+		local chars = Lab:WaitForChild("Characters")
+		local function stageOne(id: string): any
+			local clone = (chars:WaitForChild(id) :: Model):Clone()
+			for _, d in clone:GetDescendants() do
+				if d:IsA("BasePart") then d.Anchored = d.Name == "HumanoidRootPart"; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false end
+			end
+			clone.Parent = workspace
+			return { model = clone, rig = MotionPlayer.collectRig(clone), root = clone:FindFirstChild("HumanoidRootPart") }
+		end
+		local a, b = stageOne("Kael"), stageOne("Sierra")
+		MotionPlayer.reset(1)
+		MotionPlayer.reset(2)
+		MotionPlayer.resetRig(a.rig)
+		MotionPlayer.resetRig(b.rig)
+		local hit = { kind = "Hit", height = "High", tier = "Heavy", counter = false, frame = 7001, move = "QA", limb = "RearArm", side = 1 }
+		local origin = Vector3.new(0, 400, 1200)
+		-- World CFrames through the Motor6D chain (the staged clones are anchored, so the parts don't follow on their own).
+		local function armWorld(rig: any): { [string]: CFrame }
+			local m = rig.motors
+			local function step(parent: CFrame, jn: string): CFrame
+				local mm = m[jn] :: Motor6D
+				return parent * mm.C0 * mm.Transform * mm.C1:Inverse()
+			end
+			local upper = step(step((m.Root.Part0 :: BasePart).CFrame, "Root"), "Waist")
+			local out = {}
+			for _, side in { "Right", "Left" } do
+				out[side .. "UpperArm"] = step(upper, side .. "Shoulder")
+				out[side .. "LowerArm"] = step(out[side .. "UpperArm"], side .. "Elbow")
+			end
+			return out
+		end
+		local prev: { [string]: CFrame }? = nil
+		local worst, worstPart, worstFrame = 0, "", 0
+		for f = 1, 110 do
+			local ko = f > 20
+			local va = { pos = Vector3.zero, facing = Vector3.xAxis, state = if ko then "KO" else "Idle", moveFrame = 0, walkPhase = 0, stun = 0, crouched = false, moveX = 0,
+				guard = if ko then nil else "Stand", knockdown = if ko then "FaceUp" else nil, lastHit = if ko then hit else nil,
+				characterId = "Kael", rootHeight = a.rig.rootHeight, legLength = a.rig.legLength }
+			local vb = { pos = Vector3.new(4, 0, 0), facing = -Vector3.xAxis, state = "Idle", moveFrame = 0, walkPhase = 0, stun = 0, crouched = false, moveX = 0, guard = "Stand",
+				characterId = "Sierra", rootHeight = b.rig.rootHeight, legLength = b.rig.legLength }
+			local k = f - 20
+			local hitstop = if ko and k <= 16 then 17 - k else 0
+			local frame = { now = f / 60, dt = 1 / 60, hitstop = hitstop, phase = "Fight", winner = 0, fighters = { va, vb } }
+			MotionPlayer.presentFrame({ { rig = a.rig, root = a.root, view = va, slot = 1 }, { rig = b.rig, root = b.root, view = vb, slot = 2 } } :: any, frame, origin, Config)
+			local cfs = armWorld(a.rig)
+			if prev and f >= 18 then
+				for name, cf in cfs do
+					local _, angle = (prev[name] :: CFrame):ToObjectSpace(cf):ToAxisAngle()
+					local deg = math.deg(math.abs(angle))
+					if deg > worst then worst, worstPart, worstFrame = deg, name, f end
+				end
+			end
+			prev = cfs
+		end
+		MotionPlayer.reset(1)
+		MotionPlayer.reset(2)
+		a.model:Destroy()
+		b.model:Destroy()
+		t.expect.truthy(worst < 60, string.format("the KO %s turned %.1f degrees in one frame (f%d)", worstPart, worst, worstFrame))
+	end)
 end

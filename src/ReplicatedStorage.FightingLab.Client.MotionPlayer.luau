@@ -60,14 +60,21 @@ export type RigInfo = {
 	footHang: { [string]: number }?,
 	-- Clock of the pose being applied (MotionPlayer.apply; nil for poses without one: no lock release fade).
 	lockClock: number?,
+	-- Clock of the shown frame (real time; MotionPlayer.apply), paces the IK pole continuity.
+	frameClock: number?,
 	-- Contact aim residual (studs) per striking limb on the last startup/active frame, added in the recovery.
 	aimResidual: { [string]: { r: number, clock: number? } }?,
 	-- Strike contact retraction (fraction of the reach) per limb on the latest frame (MotionPlayer.applyContact).
 	contactHold: { [string]: { s: number, clock: number? } }?,
 	-- Leg treatment of a lying body (0 standing .. 1 lying) on the latest frame and its real time (ramped).
 	lyingLegs: { v: number, t: number }?,
+	-- Relaxed-feet weight of a lying body on the latest frame and its real time (ramped, MotionPlayer.RelaxFeetRamp).
+	relaxFeet: { v: number, t: number }?,
 	-- Self-clearance push of each hand (heading space) on the latest frame (MotionPlayer.clearArms; `t` = its time).
 	selfPush: { [string]: any }?,
+	-- The same for the forced pass after a contact retraction, and the arms that retraction drew back this frame.
+	selfPushForced: { [string]: any }?,
+	contactMoved: { [string]: boolean }?,
 	-- Body shapes for contact checks (Motion.BodyShape.of caches them here).
 	bodyShape: any?,
 	-- Optional per-frame solver diagnostics (tools: set to a table).
@@ -1383,13 +1390,17 @@ end
 -- weakens, and the bend direction turns at most PoleMaxStep per frame (pose clock), so a flip becomes a short roll.
 -- false = the round-5 behaviour (A/B checks).
 MotionPlayer.PoleContinuity = true
+-- The continuity reference advances with the shown frames (real time), not the animation clock: during a hitstop freeze
+-- the clock stops while the impact fade keeps moving the pose, and a stale reference let the bend plane jump once the
+-- freeze ended (Kael's KO arm spun 153 degrees in one frame).
+MotionPlayer.ContinuityRealTime = true
 MotionPlayer.PoleMaxStep = math.rad(30)
 local POLE_WEAK = 0.4
 -- Per-frame bookkeeping: on the first solve of a new frame the previous frame's final bend becomes the reference
 -- (re-solves within the frame — ground passes, the lying settle, throw grips — keep the same reference). A clock jump
 -- (new round, reused rig) starts over. Returns whether continuity applies to this solve.
 local function beginContinuity(rig: RigInfo, chain: any): boolean
-	local clock = rig.lockClock
+	local clock = rig.frameClock or rig.lockClock
 	if not MotionPlayer.PoleContinuity or clock == nil then return false end
 	if chain.bendClock ~= clock then
 		local last = chain.bendClock
@@ -1434,7 +1445,10 @@ function MotionPlayer.resetRig(rig: RigInfo)
 	rig.aimResidual = nil
 	rig.contactHold = nil
 	rig.lyingLegs = nil
+	rig.relaxFeet = nil
 	rig.selfPush = nil
+	rig.selfPushForced = nil
+	rig.contactMoved = nil
 	for _, chain in rig.chains do
 		chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
 		chain.flatPrev, chain.flatRef, chain.flatClock = nil, nil, nil
@@ -1445,6 +1459,9 @@ end
 -- or a clock jump). Same per-frame bookkeeping as the bend continuity.
 MotionPlayer.FlattenRate = 0.15
 MotionPlayer.LyingLegsRamp = 0.1
+-- Relaxed feet (toes laid out along the floor, sole up: up to a 180-degree roll about the toe line) come and go over at
+-- least this much real time: a roll getup tucking the toes again within its 5-frame crossfade snapped the ankle 66 deg.
+MotionPlayer.RelaxFeetRamp = 0.25
 -- Soft limits of the foot solve (studs): a foot settling onto the floor eases in over SoftFloor; a leg nearing its
 -- reach starts onto the ball within SoftReach of the limit.
 MotionPlayer.SoftFloor = 0.06
@@ -1710,6 +1727,10 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 	end
 	-- The bend direction this frame ended with (parent space) is the next frame's continuity reference.
 	if continuity and usedBend then chain.bendPrev = parentFrame:VectorToObjectSpace(usedBend) end
+	-- The goal this solve aimed at (the tip lands up to ~0.1 studs off it: three re-aim passes on a bent arm whose hand sits
+	-- off the forearm axis). Re-solves of the same limb (self clearance) offset this goal, not the landed tip, so a zero
+	-- offset reproduces the pose exactly (offsetting the tip re-landed the arm elsewhere: a 14-degree upper-arm jump).
+	chain.lastGoal = goal
 	rig.tips[chain.target] = tipWorld
 	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize))
 end
@@ -1753,6 +1774,8 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local scale = scaleFromRoot(rig.rootHeight)
 	local contacts = if pose.footLock == false then nil else pose.contact
 	rig.lockClock = pose.clock
+	-- Shown-frame clock (real time: it runs through the hitstop freeze, when impact fades still move the pose).
+	rig.frameClock = if MotionPlayer.ContinuityRealTime then (pose.real or pose.clock) else pose.clock
 	if pose.cut then
 		for _, chain in rig.chains do
 			chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
@@ -1773,6 +1796,12 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	end
 	if tReal then rig.lyingLegs = { v = lyingLegs, t = tReal } end
 	local relaxFeet = lyingLegs * math.clamp(pose.relaxFeet or 0, 0, 1)
+	local prevRelax = rig.relaxFeet
+	if tReal and prevRelax and not pose.cut and tReal > prevRelax.t and tReal - prevRelax.t < 0.25 then
+		local step = (tReal - prevRelax.t) / MotionPlayer.RelaxFeetRamp
+		relaxFeet = prevRelax.v + math.clamp(relaxFeet - prevRelax.v, -step, step)
+	end
+	if tReal then rig.relaxFeet = { v = relaxFeet, t = tReal } end
 	local limbLowest = math.huge
 	local armLowest, legLowest = math.huge, math.huge
 	local hang = rig.footHang
@@ -2013,7 +2042,8 @@ function MotionPlayer.presentFrame(entries: { PresentEntry? }, frame: any, origi
 				local e = entries[i] :: PresentEntry
 				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, (entries[3 - i] :: PresentEntry).rig, origin.Y)
 				-- A strike drawn back toward its shoulder must not end inside its own head or chest.
-				if moved > 0 and MotionPlayer.SelfClearance then MotionPlayer.clearArms(e.rig, poses[i] :: Pose, origin.Y, true) end
+				-- Only the arms the contact pass drew back (the other arm is the clip's).
+				if MotionPlayer.SelfClearance and (moved > 0 or e.rig.selfPushForced ~= nil) then MotionPlayer.clearArms(e.rig, poses[i] :: Pose, origin.Y, true, e.rig.contactMoved or {}) end
 			end
 		end
 	end
@@ -2086,6 +2116,7 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	end
 	if pose.space ~= "heading" or type(view.throw) == "table" or not (striking or held) then
 		rig.contactHold = nil
+		rig.contactMoved = nil
 		return 0
 	end
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -2099,6 +2130,7 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	local maxRetract = MotionPlayer.ContactMaxRetract
 	local nextHold = {}
 	local moved = 0
+	local movedLimbs: { [string]: boolean } = {}
 	local dbg = rig.debug
 	for limb, chainName in CONTACT_LIMBS do
 		local effector = pose.targets[limb]
@@ -2161,9 +2193,11 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 			if s > 0 then nextHold[limb] = { s = s, clock = clock } end
 			if dbg then dbg["contact" .. limb].s = s; dbg["contact" .. limb].steps = table.concat(steps :: { string }, " ") end
 			moved += 1
+			movedLimbs[limb] = true
 		end
 	end
 	rig.contactHold = if next(nextHold) then nextHold else nil
+	rig.contactMoved = movedLimbs
 	return moved
 end
 
@@ -2227,14 +2261,22 @@ local function sdfNormal(fn: (Vector3) -> number, p: Vector3): Vector3
 	return safeUnit(g, Vector3.yAxis)
 end
 MotionPlayer.SelfPushRate = 0.05
-function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?): number
+-- Push passes per arm and frame (each re-solves the arm once and re-measures the overlap).
+MotionPlayer.SelfClearPasses = 3
+-- Frames over which a push's base eases between the solve's goal and the landed hand (see clearArms).
+MotionPlayer.SelfBaseFrames = 6
+function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?, onlyLimbs: { [string]: boolean }?): number
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
 	-- Lying and getting up the hands push on the floor beside the body, attacks fold the arm on purpose: left to the clip
 	-- (an existing push lets go gradually). `force`: a strike the contact pass drew back toward its own head.
 	local ground = pose.ground or 0
 	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5)
-	local prevPush = rig.selfPush
+	-- The forced pass after a contact retraction (onlyLimbs: the arms the contact drew back) runs on top of the frame's
+	-- first pass, so it keeps its own push: rate-limited from zero when it starts (it used to apply in full in one
+	-- frame), and let go gradually once the contact releases (arms no longer listed).
+	local forcedPass = onlyLimbs ~= nil
+	local prevPush = if forcedPass then rig.selfPushForced else rig.selfPush
 	local clock = pose.real or pose.clock
 	local fresh = prevPush ~= nil and clock ~= nil and prevPush.t ~= nil and not pose.cut and clock > prevPush.t and clock - prevPush.t < 0.25
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -2251,19 +2293,37 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 	for limb, chainName in ARM_LIMBS do
 		local chain = rig.chains[chainName]
 		local effector = pose.targets[limb]
-		if chain and effector then
-			local start = (rig.tips[limb] :: CFrame).Position
+		local limbPush = allowPush and (not forcedPass or (onlyLimbs :: any)[limb] == true)
+		local kKey = limb .. "Base"
+		if forcedPass and not limbPush and not (fresh and ((prevPush :: any)[limb] or (prevPush :: any)[kKey])) then
+			-- The forced pass leaves an arm it never pushed alone.
+			continue
+		elseif chain and effector then
+			-- Push base: the solve's own goal blended toward the hand where it landed (the solve misses its goal by up to
+			-- ~0.1 studs). Re-solving from the landed hand gives the push a little extra outward travel that keeps elbows off
+			-- the ribs, but switching to it in one frame re-landed the arm elsewhere (a 14-degree upper-arm jump when a push
+			-- started): the base eases between the two over SelfBaseFrames as a push starts and ends.
+			local tipPos = (rig.tips[limb] :: CFrame).Position
+			local goalPos = chain.lastGoal or tipPos
+			local frameStep = if fresh then math.max((clock - (prevPush :: any).t) * 60, 1) else 1
+			local prevK = if fresh then ((prevPush :: any)[kKey] or 0) else 0
+			local kStep = frameStep / math.max(MotionPlayer.SelfBaseFrames, 1)
+			local kUp = math.min(1, prevK + kStep)
+			local start = goalPos:Lerp(tipPos, kUp)
 			local want = Vector3.zero
 			local lower = hrp * motors.Root.C0 * motors.Root.Transform * motors.Root.C1:Inverse()
 			local parent = lower * motors.Waist.C0 * motors.Waist.Transform * motors.Waist.C1:Inverse()
 			local grip = table.clone(effector)
-			local function solveAt(offset: Vector3)
-				grip.gripWorld, grip.gripWeight = start + offset, 1
+			local solvedAt: Vector3? = nil
+			local function solveAt(offset: Vector3, base: Vector3?)
+				local at = (base or start) + offset
+				grip.gripWorld, grip.gripWeight = at, 1
 				solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+				solvedAt = at
 			end
-			if allowPush then
+			if limbPush then
 				local hand, arm = armSelfDepth(rig, shape, frames, limb)
-				for _ = 1, 3 do
+				for _ = 1, MotionPlayer.SelfClearPasses do
 					if hand.e <= 0 and arm.e <= 0 then break end
 					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
 					-- the body moves the hand out further (it carries the elbow along only partly).
@@ -2282,17 +2342,30 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 				local maxStep = MotionPlayer.SelfPushRate * math.max((clock - (prevPush :: any).t) * 60, 1)
 				local d = want - was
 				shown = if d.Magnitude > maxStep then was + d.Unit * maxStep else want
-			elseif want.Magnitude > 0 and fresh then
+			elseif want.Magnitude > 0 and (fresh or (forcedPass and not pose.cut)) then
 				shown = if want.Magnitude > MotionPlayer.SelfPushRate then want.Unit * MotionPlayer.SelfPushRate else want
 			end
-			if shown ~= want then solveAt(shown) end
-			if shown.Magnitude > 1e-4 then
+			local pushing = shown.Magnitude > 1e-4
+			local k = if pushing then kUp else math.max(0, prevK - kStep)
+			if pushing then
+				if shown ~= want or solvedAt == nil then solveAt(shown) end
 				nextPush[limb] = heading:VectorToObjectSpace(shown)
 				moved += 1
+			elseif k > 0 then
+				-- The push is gone; the base eases back to the solve's goal.
+				solveAt(Vector3.zero, goalPos:Lerp(tipPos, k))
+				moved += 1
+			elseif solvedAt ~= nil then
+				solveAt(Vector3.zero, goalPos)
 			end
+			if k > 0 then nextPush[kKey] = k end
 		end
 	end
-	rig.selfPush = nextPush
+	if forcedPass then
+		rig.selfPushForced = if nextPush.LeftHand or nextPush.RightHand or nextPush.LeftHandBase or nextPush.RightHandBase then nextPush else nil
+	else
+		rig.selfPush = nextPush
+	end
 	return moved
 end
 
