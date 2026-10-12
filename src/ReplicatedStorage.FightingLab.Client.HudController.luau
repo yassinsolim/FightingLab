@@ -334,11 +334,11 @@ local function refreshPortrait(index: number, characterId: string?)
 		b.portrait:SetAttribute("CharacterId", id); b.portrait:SetAttribute("FacingDot", facingDot)
 	end
 	cache[id] = newEntry
-	local wantAccessories, wantWrapLayers = NetProtocol.appearanceCounts(model)
+	local wantAccessories, wantWrapLayers, wantExtras = NetProtocol.appearanceCounts(model)
 	local portrait = b.portrait
 	AvatarGate.track(clone, {
 		label = "Portrait " .. id,
-		expected = function() return wantAccessories, wantWrapLayers end,
+		expected = function() return wantAccessories, wantWrapLayers, wantExtras end,
 		settleSeconds = PORTRAIT_SETTLE,
 		hide = function() if portraitIds[index] == id then portrait.ImageTransparency = 1 end end,
 		show = function()
