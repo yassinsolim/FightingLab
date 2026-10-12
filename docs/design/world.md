@@ -1,5 +1,8 @@
 # OV6 world handoff
 
+> **Current layout: see "Round 5: compact layout" at the end.** It supersedes the round-1 ring described below
+> (positions, radii, pads and walk numbers). The anchors and the round-2 lighting are unchanged.
+
 Exports: `OV6\handoff\world-src\` (17 files, UTF-8, LF, no BOM, baseline file names). Unchanged and not exported:
 `ServerScriptService.FightingLabWorldBoot`, `CL.LightingProfile`. Built world version attribute: `ov6-world-1`.
 
@@ -214,3 +217,150 @@ The only failure is motioncore's `MotionGround_Test` (see below).
 - **motioncore (MotionGround_Test, not world):** in the full suite, "Sierra KO FaceDown sinks -0.049 (LeftLowerArm)"
   fails against its -0.04 threshold. The test poses rigs at its own constant floor (Y=120) and MotionPlayer does no
   world queries, so this is independent of the world and lighting.
+
+## Round 5: compact layout ("the lobby and arenas are too far away")
+
+**Layout** (`World.Layout`, world version `ov6-world-5`). The five stages now stand in a horseshoe round the spawn
+court instead of a ring round a larger plaza:
+
+- **Spacing:**
+  - Every FightOrigin is 66 studs from the plaza centre, and neighbouring stages are 56° apart.
+  - Neighbouring stages are therefore 62 studs apart, with an 8-stud walkway between their podiums.
+- **Plaza head:** the open side of the horseshoe (bearing 38, north-east).
+  - Ember Beacon, 44 out.
+  - Fighter Kiosk (bearing 17) and Hall of Champions (bearing 59), 36 out.
+  - Fingerpost at bearing 38, 15.5 out.
+- **Bearings** (clockwise from the plaza head) match the scenery behind each stage:
+
+  | Stage | bearing | scenery behind it |
+  |---|---|---|
+  | Harbor Dusk | 106 | harbour basin, cranes, lighthouse |
+  | Summit | 162 | peaks, observatory |
+  | Jungle Ruins | 218 | jungle hills, pyramid |
+  | Training Bay | 274 | the bay, pagoda hall |
+  | Midnight Rooftop | 330 | city skyline, Orbit Tower |
+
+- **Podium:** top radius 27 (was 31.5).
+  - Fight floor 21; edge line 21 to 21.4; band to 22.4; barrier posts at 22.75; then a walkway round the barrier.
+  - Floors: rooftop 4.2 (was 6.0), summit 3.0 (was 4.2), jungle 2.4, harbor and dojo 1.2.
+  - Stairs are 8 wide (were 26 to 36).
+- **Pads** left the podium and stand on the plaza in front of the stair:
+  - 41 studs in front of FightOrigin and 7.5 to each side, so 26.1 from the plaza centre; top = plaza + 0.25.
+  - Exits stand just behind them (34.5 in front, 7.5 to the side), facing the arena.
+  - The name mat lies at the stair foot.
+- **Spawn court:** the 6 spawns form a 3 × 2 block (5.2 × 5.2 apart) on the centre, facing the plaza head. Plaza
+  radius is 34 (was 36).
+- **NEW `Arrival` part** per arena (the lobbyux interface):
+  - 4 × 0.2 × 4, Transparency 1, Anchored, CanCollide/CanQuery/CanTouch false.
+  - 0.1 above the plaza, between the two pads: 41 in front of FightOrigin and 25 from the plaza centre.
+  - Faces FightOrigin.
+- **Grounds pockets**, re-centred on the new gaps: Night Market 38 (plaza head), Lantern Garden 134, welcome wall 190,
+  Beach Garden 246 (now 2 palms), Sea Lookout 302.
+- **Arena dressing**, re-placed for the smaller podiums and closer neighbours:
+  - **Rooftop:** smaller HVAC units, skylights and dishes on the apron; the Orbit Tower behind the status board; one
+    skyline tower moved from (-46, -128) to (-6, -128).
+  - **Harbor:** pilings only round the back; bollards, rope coils, life rings and crates on the apron rim; festoons
+    only on the back corners.
+  - **Summit:** boulders only round the back, 4 studs out from the podium wall; snow drifts; prayer-flag poles on the
+    ground just behind the podium; the observatory 57.7 out and 29.5 to the right.
+  - **Jungle:** pyramid 77.5 out and 19.2 to the left; braziers on the apron rim.
+  - **Dojo:** dummies side-on at the back; stone lanterns squared to the ring; cherry trees behind the pier's sides;
+    lantern strings only on the back corners.
+- **Neighbour checks while building.** Scenery placed round a stage checks its neighbours:
+  - `ArenaKit.clearOfNeighbours`: nothing rising above a neighbour's floor + 1.5 within 32 studs of that neighbour's
+    FightOrigin.
+  - `ArenaKit.clearOfFightFloor`: cherry crowns stay outside the flat fight floor.
+  - `Kit.woodClashes`: canopy trunks and boughs never interlock.
+
+  A tree that fails a check is moved further out or left out.
+
+**PathfindingService and thin plates.** PathfindingService treats the rim of a thin collidable plate as a wall, even
+when the rim is only a few hundredths of a stud high:
+- **Affected plates:** spawn plates, pads, name mats, paving rings, the kerb, lawns, sand beds, the summit's snow field
+  and the jungle floor.
+- **Effect:** paths detoured 5 to 13 studs round them. The snow field's rim alone closed the 8-stud walkway between the
+  Harbor and Summit podiums, so an 8-stud hop became a 226-stud path.
+- **Fix:** every such plate now carries a `PathfindingModifier` named `WalkOver` with `PassThrough = true`
+  (`Kit.passThrough`). `Kit.walkOverThin` marks the lobby's and the grounds' thin layers (at most 1 stud thick, top at
+  most 0.3).
+- **Result:** players still collide with the plates as before. Computed paths now cross them in straight lines: the
+  largest excess of any spawn-to-pad path over the straight line is 2.2 studs.
+
+**Walks** (PathfindingService; agent radius 1.5, height 5, no jumping; all 6 spawns × both pads):
+
+| Arena | before (main): worst / median | after: worst / median |
+|---|---|---|
+| Midnight Rooftop | 54.5 / 49.5 | 33.4 / 26.2 |
+| Harbor Dusk | 67.1 / 59.5 | 33.4 / 26.2 |
+| Jungle Ruins | 87.6 / 71.5 | 30.4 / 26.7 |
+| Summit Observatory | 80.5 / 69.5 | 32.6 / 26.2 |
+| Training Bay | 66.6 / 56.1 | 32.6 / 26.2 |
+| all 60 pairs | 87.6 / 60.9 | 33.4 / 26.2 |
+
+For the three worst pairs, a real `Humanoid:MoveTo` walk along the path covered 31.9 to 32.6 studs. At WalkSpeed 16
+that is about 2 s of walking.
+
+**Fight-camera background.** Measured with the real `CameraDirector._plan` "Fight" framing at the four fight-line
+orientations, in a 16:9 frame:
+- No other arena's ring centre is inside the central 60 % of the frame within 60 studs.
+- Nearest in the central 60 %: 77.5 studs (Jungle and Summit, each seen from the other). Main: 93.3.
+- Nearest anywhere in the frame: 75.8 studs (Rooftop and Dojo, at the frame edge).
+- World_Test enforces this and stores the value in `FightingLabWorld.NearestCentralArena`.
+
+**Lighting.** Measured with the round-2 harness: baked Sierra/Goran and Kael/Nia rigs, the real fight camera,
+`FighterLighting` and `StageController` instances, and magenta masks.
+- Poses: 120 (5 arenas × 4 orientations × centre/far/near × 2 pairs).
+- Fighter p95 max per arena: dojo 210.4, rooftop 207.9, jungle 187.5, summit 184.2, harbor 177.4 (target ≤ 235).
+- Near-white: 0.00 % everywhere (target ≤ 0.5 %). No pose fails.
+- Face p95 max: 229.2.
+- The stage spots moved in with the smaller podiums (r 26.2); their strength is unchanged.
+
+**LobbyAmbience.**
+- Pad light columns hide while the local player fights, sees results or practises. With the stages this close, other
+  arenas' columns would otherwise stand in the fight camera's background.
+- The positional ambience roll-off is 14/52 (was 16/80).
+
+**Numbers** (Play; same Studio and same load as the main measurement):
+
+| | main | r5-world |
+|---|---|---|
+| Parts | 3,944 | 3,860 |
+| Lights | 98 | 92 |
+| Occluder tags | 1,145 | 1,220 |
+| Build time, busy | 0.12 to 0.15 s | 0.16 to 0.17 s |
+| Build time, wall | 0.18 to 0.29 s | 0.21 to 0.33 s |
+
+**Tests.** `World_Test` now has 28 runs (was 24).
+- New tests:
+  - every arena has a valid `Arrival`;
+  - no other arena's pieces rise inside a fight camera's orbit (32 studs), and stages stand at least 58 apart;
+  - the camera-frame check above;
+  - the median walk is at most 30 studs.
+- Changed tests:
+  - per-arena walks must be at most 40 studs. The bound is hard-coded so that a wider layout fails.
+  - pads stand on the plaza, and exits on the plaza floor;
+  - spawns face the plaza head;
+  - the pad-column rule covers the local fight;
+  - the part ceiling is 3,944;
+  - flat distances are exact for cylinders.
+- Results:
+  - On main's world, the final World_Test fails 13 of 28. That includes all five per-arena walk tests (48.9 to 73.0
+    studs) and the median test (61.2).
+  - On the branch it passes 28 of 28.
+  - Full suite on `r5-world`: `[SUMMARY] 403 run, 403 passed, 0 failed`.
+
+**Evidence:** `OV6\handoff\world-shots\round5\`.
+
+**Notes**
+- `NetProtocol.SpectatorRadius` (85) needs no change. Every FightOrigin is 66 studs from the plaza centre (main: 66 to
+  70). The whole spawn court therefore still streams all five stages, which are at most 72 studs away. As before, the
+  far rim of the plaza is at most 100 studs from the opposite stage.
+- The Fighter Kiosk and the Hall of Champions are not walk-tested. I measured paths from the six spawns to a spot in
+  front of each:
+  - Kiosk: 28 to 48 studs.
+  - Hall: 29 to 35 studs, except from the two west spawns (63 and 68). There PathfindingService detours round the
+    fingerpost, while a player walks straight past it (37 studs).
+- On the Summit and Jungle, the default north/south fight views look across the plaza. The kiosk, the hall and the
+  Rooftop's status board stand in the background beyond the barrier. They are lobby props, not fighters.
+- Any new thin plate on a walkway needs `Kit.passThrough`, or computed paths will route round it. The walk and pocket
+  tests catch this.
