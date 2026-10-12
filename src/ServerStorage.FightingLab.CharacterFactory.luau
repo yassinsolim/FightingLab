@@ -15,7 +15,7 @@ export type Accessory = { AssetId: number, AccessoryType: string, IsLayered: boo
 export type FistSpec = { meshId: string, textureId: string?, color: { number }, material: string?, scale: { number }?, offset: { number }?, rotation: { number }? }
 export type FistsSpec = { shared: FistSpec?, Left: FistSpec?, Right: FistSpec? }
 export type BandSpec = { width: number, inflate: number?, inflateZ: number? }
-export type GearSpec = { assetId: number?, band: BandSpec?, name: string?, target: string, color: { number }?, tint: { number }?, material: string?, clearTexture: boolean?, scale: { number }?, fit: { number }?, offset: { number }?, rotation: { number }?, hideTarget: boolean? }
+export type GearSpec = { assetId: number?, band: BandSpec?, name: string?, target: string, color: { number }?, tint: { number }?, material: string?, clearTexture: boolean?, scale: { number }?, fit: { number }?, offset: { number }?, rotation: { number }?, hideTarget: boolean?, seat: string?, role: string? }
 export type Spec = {
 	id: string,
 	displayName: string,
@@ -34,6 +34,9 @@ export type Spec = {
 	fists: FistsSpec?,
 	gear: { GearSpec }?,
 	hideHands: boolean?,
+	-- "high" (high-tops/boots), "low" or "barefoot": the shoe-size bounds CharacterLook_Test applies (shoes are gear
+	-- with role "shoe", seat "sole").
+	shoeStyle: string?,
 	shirt: number?,
 	pants: number?,
 	graphicTShirt: number?,
@@ -190,6 +193,10 @@ end
 local EXTRA_ATTRIBUTE = "FightingLabExtra"
 local HIDDEN_ATTRIBUTE = "FightingLabHiddenByGear"
 local DRESSED_ATTRIBUTE = "FightingLabDressed"
+local SOLE_PROXY_ATTRIBUTE = "FightingLabSoleProxy"
+local BARE_FOOT_SIZE_ATTRIBUTE = "FightingLabBareFootSize"
+local GROUND_SIZE_ATTRIBUTE = "FightingLabShoeGroundSize"
+local GROUND_CENTER_ATTRIBUTE = "FightingLabShoeGroundCenter"
 
 local function findPart(model: Model, name: string): BasePart
 	local part = model:FindFirstChild(name) or model:FindFirstChild(name, true)
@@ -269,9 +276,10 @@ local function loadGearPart(assetId: number): BasePart
 	assert(found, "CharacterFactory: gear asset " .. tostring(assetId) .. " did not contain a BasePart")
 	local prototype = found:Clone()
 	asset:Destroy()
-	-- Accessory handles carry body-attachment helpers and occasional scripts; a welded gear part needs neither.
+	-- Accessory handles carry body-attachment helpers, layered-clothing cages and occasional scripts; a welded gear part
+	-- needs none of them (a rigid shoe cut from a layered shoe must not try to wrap onto the body).
 	for _, d in prototype:GetDescendants() do
-		if d:IsA("Attachment") or d:IsA("LuaSourceContainer") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("TouchTransmitter") then
+		if d:IsA("Attachment") or d:IsA("LuaSourceContainer") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("Constraint") or d:IsA("TouchTransmitter") or d:IsA("BaseWrap") then
 			d:Destroy()
 		end
 	end
@@ -310,8 +318,9 @@ local function hideGearTarget(target: BasePart, item: GearSpec)
 end
 
 -- Gear parts are parented under their target body part: if a live character's body part is ever replaced, its gear
--- goes with it instead of falling out of the world.
-local function addGear(model: Model, gear: { GearSpec }?)
+-- goes with it instead of falling out of the world. Returns the asset ids of gear pieces that could not be loaded.
+local function addGear(model: Model, gear: { GearSpec }?): { number }
+	local skipped: { number } = {}
 	for _, item in gear or {} do
 		local target = findPart(model, item.target)
 		if item.band then
@@ -330,6 +339,7 @@ local function addGear(model: Model, gear: { GearSpec }?)
 		local loaded, result = pcall(loadGearPart, item.assetId :: number)
 		if not loaded then
 			warn(string.format("CharacterFactory: skipped gear %s (%s): %s", tostring(item.name), tostring(item.assetId), tostring(result)))
+			table.insert(skipped, item.assetId :: number)
 			continue
 		end
 		hideGearTarget(target, item)
@@ -359,11 +369,31 @@ local function addGear(model: Model, gear: { GearSpec }?)
 		end
 		prepareExtraPart(part)
 		local offset = vectorFromArray(item.offset, Vector3.zero, part.Name .. ".offset")
+		-- `seat = "sole"` (shoes): the part's bottom rests on the target's bottom face, the sole that the ground solver
+		-- plants on the floor, so a shoe never sinks into the floor or floats above it; `offset` moves it from there.
+		if item.seat == "sole" then
+			offset += Vector3.new(0, (part.Size.Y - target.Size.Y) * 0.5, 0)
+		elseif item.seat ~= nil then
+			error("CharacterFactory: unknown gear seat " .. tostring(item.seat))
+		end
+		if item.role then part:SetAttribute("FightingLabRole", item.role) end
 		local rotation = vectorFromArray(item.rotation, Vector3.zero, part.Name .. ".rotation")
 		local isHandFist = (part.Name == "LeftFist" and target.Name == "LeftHand") or (part.Name == "RightFist" and target.Name == "RightHand")
 		weldTo(target, part, CFrame.new(offset) * CFrame.Angles(math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z)), if isHandFist then "FistWeld" else "GearWeld")
-		part.Parent = target
+		-- A skinned catalog mesh (e.g. a layered shoe used as a rigid shoe) parented straight into the rig would be
+		-- skinned onto the rig's own parts by bone name and render twisted; inside its own Model it renders as welded.
+		local okSkinned, skinned = pcall(function() return part:IsA("MeshPart") and (part :: MeshPart).HasSkinnedMesh end)
+		if okSkinned and skinned then
+			local holder = Instance.new("Model")
+			holder.Name = part.Name .. "Rigid"
+			holder:SetAttribute(EXTRA_ATTRIBUTE, true)
+			part.Parent = holder
+			holder.Parent = target
+		else
+			part.Parent = target
+		end
 	end
+	return skipped
 end
 
 local function applyHandVisibility(model: Model, hideHands: boolean?)
@@ -426,11 +456,12 @@ local function applyTints(model: Model, accessories: { Accessory }?): number
 	return tinted
 end
 
-local function applyExtras(model: Model, spec: Spec)
+local function applyExtras(model: Model, spec: Spec): { number }
 	addFists(model, spec.fists)
-	addGear(model, spec.gear)
+	local skipped = addGear(model, spec.gear)
 	applyHandVisibility(model, spec.hideHands)
 	applyTints(model, spec.accessories)
+	return skipped
 end
 
 local function extrasSignature(spec: Spec): string
@@ -512,6 +543,72 @@ local function measureRootHeight(model: Model, root: BasePart): number
 	return root.Position.Y - lowest
 end
 
+-- Fight templates only. A shoe is longer than the bare foot inside it, and the ground solver (MotionPlayer) plants,
+-- tips onto the ball and lays down the foot part's box; a shoe toe past that box would sink into the floor whenever
+-- the foot pitches (rear foot on its ball, lying, getting up). Where the bare foot is hidden under its shoe (boots,
+-- high-tops, tabi), the hidden foot part becomes the shoe's ground box: it takes the shoe's length and width and moves
+-- under it, keeping its height, bottom face and ankle joint, so RootHeight and leg length do not change. Joints,
+-- welds and attachments on the foot are re-expressed so nothing visible moves. The Humanoid's automatic scaling
+-- re-derives body part sizes and rig attachments from their OriginalSize / OriginalPosition values whenever a rig is
+-- parented into the world, so those are re-expressed too (per axis, with the scale the Humanoid applies to this foot).
+-- The bare foot box is kept in the FightingLabBareFootSize attribute. A visible foot (low shoes) keeps its box; its
+-- shoe's ground box (foot space: size, centre) is published as FightingLabShoeGroundSize / FightingLabShoeGroundCenter.
+local function fitSoleProxies(model: Model)
+	for _, name in { "LeftFoot", "RightFoot" } do
+		local found = model:FindFirstChild(name)
+		if not found or not found:IsA("BasePart") then continue end
+		local foot = found :: BasePart
+		local lo = Vector3.new(math.huge, math.huge, math.huge)
+		local hi = -lo
+		for _, d in foot:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local rel = foot.CFrame:ToObjectSpace(d.CFrame)
+				local h = d.Size * 0.5
+				for _, sx in { -1, 1 } do
+					for _, sy in { -1, 1 } do
+						for _, sz in { -1, 1 } do
+							local p = rel * Vector3.new(h.X * sx, h.Y * sy, h.Z * sz)
+							lo = lo:Min(p)
+							hi = hi:Max(p)
+						end
+					end
+				end
+			end
+		end
+		if lo.X > hi.X then continue end
+		local shift = Vector3.new((lo.X + hi.X) * 0.5, 0, (lo.Z + hi.Z) * 0.5)
+		local size = Vector3.new(hi.X - lo.X, foot.Size.Y, hi.Z - lo.Z)
+		if foot:GetAttribute(HIDDEN_ATTRIBUTE) ~= true then
+			foot:SetAttribute(GROUND_SIZE_ATTRIBUTE, size)
+			foot:SetAttribute(GROUND_CENTER_ATTRIBUTE, shift)
+			continue
+		end
+		local back = CFrame.new(-shift)
+		local originalSize = foot:FindFirstChild("OriginalSize")
+		local scale = if originalSize and originalSize:IsA("Vector3Value") then foot.Size / originalSize.Value else Vector3.one
+		for _, d in model:GetDescendants() do
+			if d:IsA("JointInstance") then
+				if d.Part0 == foot then d.C0 = back * d.C0 end
+				if d.Part1 == foot then d.C1 = back * d.C1 end
+			elseif d:IsA("WeldConstraint") and (d.Part0 == foot or d.Part1 == foot) then
+				error("CharacterFactory: a WeldConstraint on " .. name .. " cannot follow its sole proxy")
+			end
+		end
+		for _, a in foot:GetChildren() do
+			if a:IsA("Attachment") then
+				a.CFrame = back * a.CFrame
+				local originalPosition = a:FindFirstChild("OriginalPosition")
+				if originalPosition and originalPosition:IsA("Vector3Value") then originalPosition.Value = a.Position / scale end
+			end
+		end
+		if originalSize and originalSize:IsA("Vector3Value") then originalSize.Value = size / scale end
+		foot:SetAttribute(BARE_FOOT_SIZE_ATTRIBUTE, foot.Size)
+		foot:SetAttribute(SOLE_PROXY_ATTRIBUTE, true)
+		foot.CFrame = foot.CFrame * CFrame.new(shift)
+		foot.Size = size
+	end
+end
+
 function Factory.build(spec: Spec): Model
 	local model = Players:CreateHumanoidModelFromDescription(Factory.describe(spec), Enum.HumanoidRigType.R15, Enum.AssetTypeVerification.Always)
 	model.Name = spec.id
@@ -564,9 +661,12 @@ function Factory.build(spec: Spec): Model
 			d.Massless = true
 		end
 	end
-	applyExtras(model, spec)
+	local skippedGear = applyExtras(model, spec)
+	fitSoleProxies(model)
 	model:SetAttribute(DRESSED_ATTRIBUTE, extrasSignature(spec))
+	-- Catalog gear that could not be loaded (e.g. a shoe) is just as much a broken outfit as a missing accessory.
 	local missing = Factory.missingAccessories(model, spec)
+	for _, id in skippedGear do table.insert(missing, id) end
 	if #missing > 0 then
 		warn(string.format("CharacterFactory: %s is missing authored accessories %s", spec.id, table.concat(missing, ", ")))
 	end

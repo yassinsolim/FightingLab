@@ -192,5 +192,6 @@
     ]
   },
   "face": 0,
-  "hideHands": true
+  "hideHands": true,
+  "shoeStyle": "barefoot"
 }

@@ -96,7 +96,7 @@ define({
 	tagline = "Pressure-forged striker with calm, heavy hands", intro = "Keep your guard up. It won't help.",
 	victory = { "That's how the street keeps score.", "Stay down. You earned the rest." },
 	stats = stats({ maxHealth = 100, walkSpeed = 5.0, backSpeed = 4.0, dashDistance = 3.0, dashFrames = 14, backdashDistance = 3.0, backdashFrames = 18, sidestepArc = 1.8, weight = 1.0, height = 5.95, preferredRange = 3.6 }),
-	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange vintage leather boxing gloves, black-and-white chunky high-top sneakers.",
+	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
 	primaryColor = Color3.fromRGB(32, 36, 44), accentColor = Color3.fromRGB(238, 105, 48),
 }, {
 	{ key = "Jab", name = "Jab", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 6, height = "High", range = 4.2, width = 1.2, track = 1.5, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -229,7 +229,7 @@ define({
 	tagline = "Rooftop freerunner who fights from impossible angles", intro = "Try to keep up. Seriously, try.",
 	victory = { "Too slow for the rooftops.", "Gravity's optional. You didn't get the memo." },
 	stats = stats({ maxHealth = 90, walkSpeed = 5.7, backSpeed = 4.6, dashDistance = 3.5, dashFrames = 13, backdashDistance = 3.4, backdashFrames = 17, sidestepArc = 2.1, weight = 1.15, height = 5.9, preferredRange = 4.2 }),
-	look = "Adult woman, light long-limbed build, deep brown skin, brown eyes, black curly taper with a sports band; olive crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black/grey camo tech sneakers, open hands.",
+	look = "Adult woman, light long-limbed build, deep brown skin, brown eyes, black curly taper with a sports band; olive crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands.",
 	primaryColor = Color3.fromRGB(35, 40, 48), accentColor = Color3.fromRGB(86, 214, 160),
 }, {
 	{ key = "Palm", name = "Quick Palm", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 5, height = "High", range = 3.95, width = 1.2, track = 1.5, advance = 0.25, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "palm", side = "Lead", height = "High" },
@@ -272,7 +272,7 @@ define({
 	tagline = "Patient counter-striker who punishes every mistake", intro = "Show me your best opening.",
 	victory = { "Discipline wins the long fight.", "Every mistake has a price." },
 	stats = stats({ maxHealth = 100, walkSpeed = 4.8, backSpeed = 4.2, dashDistance = 3.0, dashFrames = 14, backdashDistance = 3.1, backdashFrames = 18, sidestepArc = 1.9, weight = 1.0, height = 5.9, preferredRange = 4.0 }),
-	look = "Adult man, lean athletic build, light skin, dark brown undercut ponytail, clean-shaven; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot. Do NOT use a white gi, a torn sleeveless gi or any headband.",
+	look = "Adult man, lean athletic build, light skin, dark brown hair tied back in a bun, clean-shaven; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot. Do NOT use a white gi, a torn sleeveless gi or any headband.",
 	primaryColor = Color3.fromRGB(32, 48, 92), accentColor = Color3.fromRGB(170, 178, 190),
 }, {
 	{ key = "Jab", name = "Lead Strike", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 6, height = "High", range = 4.2, width = 1.2, track = 1.5, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },

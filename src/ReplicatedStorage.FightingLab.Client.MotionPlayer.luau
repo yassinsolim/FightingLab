@@ -814,11 +814,20 @@ local function restChain(motors: { [string]: Motor6D }, joint: string, mid: stri
 	local fullReach = l1 + l2 + (if isLeg then ankleHeight else 0)
 	local upperPart, lowerPart = j.Part1, m.Part1
 	local tipSize = if endPart then endPart.Size else Vector3.one * 0.3
+	-- A visible foot in a shoe longer or wider than the bare foot publishes the shoe's ground box (foot space; same
+	-- height and bottom as the foot box): feet then rest on the shoe, not on the bare foot inside it.
+	local tipCenter = Vector3.zero
+	if isLeg and endPart then
+		local shoeSize, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
+		if typeof(shoeSize) == "Vector3" and typeof(shoeCenter) == "Vector3" then
+			tipSize, tipCenter = shoeSize, shoeCenter
+		end
+	end
 	return {
 		joint = joint, mid = mid, tip = tip, target = target, isLeg = isLeg, upperBone = upperBone, l1 = l1, l2 = l2,
 		ankleHeight = ankleHeight, refPivot = refPivotV, refReach = refReach, fullReach = fullReach, side = side,
 		upperSize = if upperPart then upperPart.Size else Vector3.one * 0.4, lowerSize = if lowerPart then lowerPart.Size else Vector3.one * 0.4,
-		tipSize = tipSize, tipOffset = t.C1.Position,
+		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter),
 		handRadius = math.min(tipSize.X, tipSize.Z) * 0.5 + 0.02,
 		midRadius = math.max(if upperPart then math.min(upperPart.Size.X, upperPart.Size.Z) else 0.4, if lowerPart then math.min(lowerPart.Size.X, lowerPart.Size.Z) else 0.4) * 0.5 + 0.02,
 	}
@@ -1230,7 +1239,7 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		tipWorld = lowerWorld * tm.C0 * tipTransform * tm.C1:Inverse()
 		-- A tilted foot (toe or heel down) or a hand dipping below the floor raises its goal by the overlap; a thigh,
 		-- shin or forearm dipping below it (segments overhang their joints) lifts the knee/elbow further.
-		local tipBottom = tipWorld.Position.Y - extentY(tipWorld, chain.tipSize)
+		local tipBottom = (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize)
 		local segmentBottom = math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize))
 		local retry = false
 		if tipBottom < floorY - 0.005 then
@@ -1244,7 +1253,7 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		if attempt == 3 or not retry then break end
 	end
 	rig.tips[chain.target] = tipWorld
-	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), tipWorld.Position.Y - extentY(tipWorld, chain.tipSize))
+	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize))
 end
 
 -- Applies a pose to a rig whose HumanoidRootPart has already been placed (fighter position + rootOffset).

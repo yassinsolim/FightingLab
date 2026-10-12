@@ -757421,11 +757421,20 @@ local function restChain(motors: { [string]: Motor6D }, joint: string, mid: stri
 	local fullReach = l1 + l2 + (if isLeg then ankleHeight else 0)
 	local upperPart, lowerPart = j.Part1, m.Part1
 	local tipSize = if endPart then endPart.Size else Vector3.one * 0.3
+	-- A visible foot in a shoe longer or wider than the bare foot publishes the shoe's ground box (foot space; same
+	-- height and bottom as the foot box): feet then rest on the shoe, not on the bare foot inside it.
+	local tipCenter = Vector3.zero
+	if isLeg and endPart then
+		local shoeSize, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
+		if typeof(shoeSize) == "Vector3" and typeof(shoeCenter) == "Vector3" then
+			tipSize, tipCenter = shoeSize, shoeCenter
+		end
+	end
 	return {
 		joint = joint, mid = mid, tip = tip, target = target, isLeg = isLeg, upperBone = upperBone, l1 = l1, l2 = l2,
 		ankleHeight = ankleHeight, refPivot = refPivotV, refReach = refReach, fullReach = fullReach, side = side,
 		upperSize = if upperPart then upperPart.Size else Vector3.one * 0.4, lowerSize = if lowerPart then lowerPart.Size else Vector3.one * 0.4,
-		tipSize = tipSize, tipOffset = t.C1.Position,
+		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter),
 		handRadius = math.min(tipSize.X, tipSize.Z) * 0.5 + 0.02,
 		midRadius = math.max(if upperPart then math.min(upperPart.Size.X, upperPart.Size.Z) else 0.4, if lowerPart then math.min(lowerPart.Size.X, lowerPart.Size.Z) else 0.4) * 0.5 + 0.02,
 	}
@@ -757837,7 +757846,7 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		tipWorld = lowerWorld * tm.C0 * tipTransform * tm.C1:Inverse()
 		-- A tilted foot (toe or heel down) or a hand dipping below the floor raises its goal by the overlap; a thigh,
 		-- shin or forearm dipping below it (segments overhang their joints) lifts the knee/elbow further.
-		local tipBottom = tipWorld.Position.Y - extentY(tipWorld, chain.tipSize)
+		local tipBottom = (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize)
 		local segmentBottom = math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize))
 		local retry = false
 		if tipBottom < floorY - 0.005 then
@@ -757851,7 +757860,7 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		if attempt == 3 or not retry then break end
 	end
 	rig.tips[chain.target] = tipWorld
-	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), tipWorld.Position.Y - extentY(tipWorld, chain.tipSize))
+	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize))
 end
 
 -- Applies a pose to a rig whose HumanoidRootPart has already been placed (fighter position + rootOffset).
@@ -775878,7 +775887,7 @@ define({
 	tagline = "Pressure-forged striker with calm, heavy hands", intro = "Keep your guard up. It won't help.",
 	victory = { "That's how the street keeps score.", "Stay down. You earned the rest." },
 	stats = stats({ maxHealth = 100, walkSpeed = 5.0, backSpeed = 4.0, dashDistance = 3.0, dashFrames = 14, backdashDistance = 3.0, backdashFrames = 18, sidestepArc = 1.8, weight = 1.0, height = 5.95, preferredRange = 3.6 }),
-	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange vintage leather boxing gloves, black-and-white chunky high-top sneakers.",
+	look = "Adult man, athletic boxer build, medium-olive skin, tight black cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
 	primaryColor = Color3.fromRGB(32, 36, 44), accentColor = Color3.fromRGB(238, 105, 48),
 }, {
 	{ key = "Jab", name = "Jab", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 6, height = "High", range = 4.2, width = 1.2, track = 1.5, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -776011,7 +776020,7 @@ define({
 	tagline = "Rooftop freerunner who fights from impossible angles", intro = "Try to keep up. Seriously, try.",
 	victory = { "Too slow for the rooftops.", "Gravity's optional. You didn't get the memo." },
 	stats = stats({ maxHealth = 90, walkSpeed = 5.7, backSpeed = 4.6, dashDistance = 3.5, dashFrames = 13, backdashDistance = 3.4, backdashFrames = 17, sidestepArc = 2.1, weight = 1.15, height = 5.9, preferredRange = 4.2 }),
-	look = "Adult woman, light long-limbed build, deep brown skin, brown eyes, black curly taper with a sports band; olive crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black/grey camo tech sneakers, open hands.",
+	look = "Adult woman, light long-limbed build, deep brown skin, brown eyes, black curly taper with a sports band; olive crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands.",
 	primaryColor = Color3.fromRGB(35, 40, 48), accentColor = Color3.fromRGB(86, 214, 160),
 }, {
 	{ key = "Palm", name = "Quick Palm", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 5, height = "High", range = 3.95, width = 1.2, track = 1.5, advance = 0.25, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "palm", side = "Lead", height = "High" },
@@ -776054,7 +776063,7 @@ define({
 	tagline = "Patient counter-striker who punishes every mistake", intro = "Show me your best opening.",
 	victory = { "Discipline wins the long fight.", "Every mistake has a price." },
 	stats = stats({ maxHealth = 100, walkSpeed = 4.8, backSpeed = 4.2, dashDistance = 3.0, dashFrames = 14, backdashDistance = 3.1, backdashFrames = 18, sidestepArc = 1.9, weight = 1.0, height = 5.9, preferredRange = 4.0 }),
-	look = "Adult man, lean athletic build, light skin, dark brown undercut ponytail, clean-shaven; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot. Do NOT use a white gi, a torn sleeveless gi or any headband.",
+	look = "Adult man, lean athletic build, light skin, dark brown hair tied back in a bun, clean-shaven; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot. Do NOT use a white gi, a torn sleeveless gi or any headband.",
 	primaryColor = Color3.fromRGB(32, 48, 92), accentColor = Color3.fromRGB(170, 178, 190),
 }, {
 	{ key = "Jab", name = "Lead Strike", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 6, height = "High", range = 4.2, width = 1.2, track = 1.5, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "straight", side = "Lead", height = "High" },
@@ -776534,9 +776543,9 @@ return {
 			{ name = "Grey Sleeveless Boxing Hoodie Layered Vest", creator = "Zen.Studio", kind = "Layered sleeveless hoodie", id = 108264643648437 },
 			{ name = "Red Boxing Shorts", creator = "Dockery", kind = "Layered boxing trunks", id = 9726891755 },
 			{ name = "Boxing Gloves", creator = "Deki's UGC", kind = "Layered boxing gloves", id = 101503419947939 },
-			{ name = "Black Street Fit Sneakers [PBR]", creator = "Dresscraft", kind = "Shoes bundle", id = 141883318340139 },
-			{ name = "Black Street Fit Sneakers [PBR]", creator = "Dresscraft", kind = "Layered shoe", id = 128212268343103 },
-			{ name = "Black Street Fit Sneakers [PBR]", creator = "Dresscraft", kind = "Layered shoe", id = 110054253690142 },
+			{ name = "High Cut Sneakers Black", creator = "The 67 UGC", kind = "Shoes bundle", id = 203322574255359 },
+			{ name = "High Cut Sneakers Black - Left Shoe Accessory", creator = "The 67 UGC", kind = "Rigid shoe", id = 70716256524989 },
+			{ name = "High Cut Sneakers Black - Right Shoe Accessory", creator = "The 67 UGC", kind = "Rigid shoe", id = 129737407945021 },
 		} },
 		{ name = "SIERRA", items = {
 			{ name = "Realistic Model Woman Doll", creator = "iAngel", kind = "Body bundle", id = 64276026698783 },
@@ -776565,8 +776574,8 @@ return {
 			{ name = "Y2K Active Shorts (Grey Camo)", creator = "dont look down", kind = "Layered fight shorts", id = 135168322016429 },
 			{ name = "Red Sports Wrist Sweatbands", creator = "NINET9 Clothing", kind = "Layered wrist sweatbands", id = 17697195879 },
 			{ name = "Light Brown Combat Boots", creator = "FATAL ARCHIVE", kind = "Shoes bundle", id = 148454237701358 },
-			{ name = "Light Brown Combat Boots - Left Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Layered shoe", id = 140700617127197 },
-			{ name = "Light Brown Combat Boots - Right Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Layered shoe", id = 100014109264125 },
+			{ name = "Light Brown Combat Boots - Left Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Rigid shoe", id = 140700617127197 },
+			{ name = "Light Brown Combat Boots - Right Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Rigid shoe", id = 100014109264125 },
 			{ name = "Weight Lifting Belt", creator = "AUZL", kind = "Welded gear", id = 18883135935 },
 			{ name = "Light Brown Full Trimmed Beard", creator = "The Barber Shoppe", kind = "3D beard", id = 13631074853 },
 			{ name = "Tight Muscle Tank Top (Dark Red)", creator = "GALLIANO", kind = "Layered muscle tank", id = 135571447604238 },
@@ -776584,10 +776593,10 @@ return {
 			{ name = "Black Curly Mid Taper Fade w/ Sports Hair Band", creator = "GIAENHA", kind = "Hair", id = 132626232018567 },
 			{ name = "Olive Tank Top", creator = "ANGVLI", kind = "Layered tank top", id = 90430205270040 },
 			{ name = "Techwear Sleeves (Jet)", creator = "Luka's Workshop", kind = "Layered arm sleeves", id = 13048594874 },
-			{ name = "Obsidian Prism Tech Sneakers [PBR]", creator = "Dresscraft", kind = "Shoes bundle", id = 230848115295914 },
-			{ name = "Obsidian Prism Tech Sneakers [PBR]", creator = "Dresscraft", kind = "Layered shoe", id = 106421807303280 },
-			{ name = "Obsidian Prism Tech Sneakers [PBR]", creator = "Dresscraft", kind = "Layered shoe", id = 77675773538059 },
 			{ name = "White Slim fit tracksuit pants", creator = "Blue infinity studios", kind = "Layered slim track pants", id = 80566106375297 },
+			{ name = "Tabi Suede Boots in Black", creator = "creepertDev", kind = "Shoes bundle", id = 199239061768347 },
+			{ name = "Tabi Suede Boots in Black - Left Shoe Accessory", creator = "creepertDev", kind = "Rigid shoe", id = 109971937853096 },
+			{ name = "Tabi Suede Boots in Black - Right Shoe Accessory", creator = "creepertDev", kind = "Rigid shoe", id = 111746619334138 },
 		} },
 		{ name = "RHYS", items = {
 			{ name = "Fashion Model Man Bundle", creator = "angelshefford", kind = "Body bundle", id = 148843544796522 },
@@ -776599,9 +776608,9 @@ return {
 			{ name = "Fashion Model Man Bundle - Right Leg", creator = "angelshefford", kind = "RightLeg", id = 94210819268147 },
 			{ name = "Default Mood", creator = "Roblox", kind = "Mood", id = 14618207727 },
 			{ name = "male compression t-shirt grey", creator = "Dolla", kind = "Layered training tee", id = 16454695769 },
-			{ name = "Brown Hair Undercut Ponytail", creator = "LimaMosca", kind = "Hair", id = 14063983879 },
 			{ name = "White/Black Belt Judo Kungfu Outfit", creator = "Dubit", kind = "Layered karate gi", id = 16362208023 },
 			{ name = "Hand Wraps", creator = "Maximum_ADHD", kind = "Layered hand wraps", id = 131531879662841 },
+			{ name = "Brown Man Bun - Millennial", creator = "Looe UGC", kind = "Hair", id = 103417751582989 },
 		} },
 		{ name = "NIA", items = {
 			{ name = "Woman Fashion Model Doll", creator = "angelshefford", kind = "Body bundle", id = 181282816119101 },
@@ -776615,8 +776624,8 @@ return {
 			{ name = "Black Bob Hair", creator = "Aiden Bogo UGC", kind = "Hair", id = 126833710732978 },
 			{ name = "Black Gold Martial Arts Top", creator = "AIKA fashion", kind = "Layered martial top", id = 95142893482414 },
 			{ name = "Casual Slip On Dude Shoes (Dark Grey)", creator = "SOLE ARCHIVE", kind = "Shoes bundle", id = 198808991844647 },
-			{ name = "Casual Slip On Dude Shoes (... - Left Shoe Accessory", creator = "SOLE ARCHIVE", kind = "Layered shoe", id = 120192598736981 },
-			{ name = "Casual Slip On Dude Shoes ... - Right Shoe Accessory", creator = "SOLE ARCHIVE", kind = "Layered shoe", id = 78935764733147 },
+			{ name = "Casual Slip On Dude Shoes (... - Left Shoe Accessory", creator = "SOLE ARCHIVE", kind = "Rigid shoe", id = 120192598736981 },
+			{ name = "Casual Slip On Dude Shoes ... - Right Shoe Accessory", creator = "SOLE ARCHIVE", kind = "Rigid shoe", id = 78935764733147 },
 			{ name = "White Slim fit tracksuit pants", creator = "Blue infinity studios", kind = "Layered tapered training pants", id = 80566106375297 },
 			{ name = "Purple Pirate's Waist Sash", creator = "Port Royal", kind = "Wrapped waist sash", id = 15502016508 },
 		} },
@@ -783138,8 +783147,11 @@ end
 						<Content name="LinkedSource"><null></null></Content>
 						<ProtectedString name="Source"><![CDATA[--!strict
 -- Fighter look contracts: rig validity, heroic proportions (6.8-7.6 heads tall), head accessories seated on the heads,
--- every authored item applied and textured, fitted fightwear (no ballooning garments), welded extras, originality
--- blocklist, exact credits, and Factory.dressCharacter idempotency on a live-style (unanchored) Humanoid character.
+-- hair that covers the whole scalp, shoes sized like real shoes as worn that rest on the floor through knockdowns and
+-- getups, every authored item applied and textured, fitted fightwear (no ballooning garments), welded extras,
+-- originality blocklist, exact credits, and Factory.dressCharacter idempotency on a live-style (unanchored) Humanoid
+-- character.
+local AssetService = game:GetService("AssetService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
@@ -783177,6 +783189,63 @@ local MAX_HEADS_TALL = 7.6
 local HEAD_ACCESSORY_TOLERANCE = 0.05
 local HEAD_ACCESSORY_MAX_OFFSET = 0.75
 local ROOT_HEIGHT_MIN, ROOT_HEIGHT_MAX = 2, 4.2
+-- Scalp coverage (round 3). Seen from behind at the lobby camera, Kael's cornrows stopped at the crown and Rhys's
+-- undercut left the back of his head bare, so both read as bald. Rays from behind, the three-quarter-back angle, the
+-- sides, the top and the front hairline toward the cranium centre (head frame, 12% of the head height above its
+-- centre) must hit hair before head skin. Head and hair are probed through copies of their render meshes with precise
+-- collision, so a hair item only counts where it really has geometry. Probes: { azimuth (0 = straight behind, +90 =
+-- the fighter's left), elevation above the horizontal, region }. A shaved head is the one exception and must carry no
+-- hair at all, so it reads as a clean shave and never as a partial cover with gaps.
+local HAIR_PROBES: { { any } } = {}
+for _, az in { -45, -30, -15, 0, 15, 30, 45 } do
+	for _, el in { -10, 0, 10, 20, 30, 40 } do table.insert(HAIR_PROBES, { az, el, "back" }) end
+end
+for _, az in { -60, 60 } do
+	for _, el in { 0, 15, 30 } do table.insert(HAIR_PROBES, { az, el, "three-quarter back" }) end
+end
+for _, az in { -90, 90 } do
+	for _, el in { 40, 55 } do table.insert(HAIR_PROBES, { az, el, "side" }) end
+end
+for _, az in { 0, 90, 180, -90 } do
+	for _, el in { 65, 80 } do table.insert(HAIR_PROBES, { az, el, "top" }) end
+end
+table.insert(HAIR_PROBES, { 0, 90, "top" })
+table.insert(HAIR_PROBES, { 180, 55, "front hairline" })
+local HAIR_MIN_COVERAGE = 0.95 -- a ray may slip through a parting between cornrows
+local HAIR_CRANIUM_UP = 0.12
+local CLEAN_SHAVEN: { [string]: boolean } = { Goran = true }
+-- Shoes (round 3): sized like real shoes as worn. Length 0.15-0.17 x stature, width at most about 1.2 x the bare foot
+-- and never wider than the lower leg it sits on, low shoes no higher than the ankle bone, high-tops/boots at most about
+-- 0.12 x stature, and the sole on the sole of the foot the ground solver plants. Shoes are rigid catalog meshes (gear
+-- role "shoe", seat "sole") so the server measures them exactly. Layered shoes wrap the body's foot cage on the client
+-- and rendered 1.5-3.0x the bare foot width on these realistic bodies, so a layered shoe is bounded by its measured
+-- render (chroma silhouettes in the characters lab, studs, on the fighter that wore it); an unmeasured one fails.
+local SHOE_LENGTH_MIN, SHOE_LENGTH_MAX = 0.15, 0.17
+local SHOE_WIDTH_FOOT_MAX = 1.25
+local SHOE_HIGH_MAX = 0.125
+local SHOE_ANKLE_TOLERANCE = 0.02
+local SHOE_SOLE_TOLERANCE = 0.03
+-- Shoes on the floor in motion (round 3): the ground solver (MotionPlayer) keeps the foot part's box on the floor, and
+-- a real-size shoe is longer than the small bare foot inside it, so its toe or heel sank whenever the foot pitched
+-- (knockdowns, getups, rolls: Lumi 0.13, Kael 0.06 studs). Where the bare foot is hidden, CharacterFactory makes the
+-- foot part the shoe's ground box (sole proxy), so the shoe may dip at most SHOE_GROUND_TOLERANCE below the box the
+-- solver rests on the floor. A visible foot under a low shoe keeps its bare box (its ankle shows above the collar) and
+-- publishes FightingLabShoeGroundSize / FightingLabShoeGroundCenter instead; MotionPlayer rests that shoe box on the
+-- floor, so the same tolerance applies.
+local SHOE_GROUND_TOLERANCE = 0.03
+local SHOE_GROUND_VISIBLE_FOOT = SHOE_GROUND_TOLERANCE
+local SHOE_GROUND_SLOT = 61
+local SHOE_GROUND_FLOOR_Y = 140
+local LAYERED_SHOE_RENDERS: { [number]: { length: number, width: number, height: number, sink: number } } = {
+	[128212268343103] = { length = 1.62, width = 0.77, height = 1.24, sink = 0.13 }, -- Kael OV6 street high-tops, left
+	[110054253690142] = { length = 1.62, width = 0.86, height = 1.26, sink = 0.17 }, -- right
+	[140700617127197] = { length = 1.64, width = 0.71, height = 1.04, sink = 0.16 }, -- Goran OV6 combat boots, left
+	[100014109264125] = { length = 1.62, width = 0.71, height = 0.99, sink = 0.16 }, -- right
+	[106421807303280] = { length = 1.29, width = 0.58, height = 1.31, sink = 0.26 }, -- Lumi OV6 tech sneakers, left
+	[77675773538059] = { length = 1.34, width = 0.67, height = 1.33, sink = 0.26 }, -- right
+	[120192598736981] = { length = 0.75, width = 0.36, height = 0.53, sink = 0.06 }, -- Nia OV6 slip-ons, left
+	[78935764733147] = { length = 0.73, width = 0.35, height = 0.50, sink = 0.04 }, -- right
+}
 -- Assets rejected for logos/text, franchise likeness, costume evocation or ballooning fit; they must never come back.
 local BLOCKED: { [number]: string } = {
 	[113345926237908] = "compression shirt with chest text",
@@ -783199,6 +783268,12 @@ local BLOCKED: { [number]: string } = {
 	[14056493513] = "three-stripe track pants (brand look)",
 	[10216549713] = "cosmetics-brand hair",
 	[134932291441380] = "anime-character wrist wraps",
+	[95546237277345] = "red/black boots described as a film character's costume boots (round 3 shoe search)",
+	[107036470464445] = "red/black boots described as a film character's costume boots (round 3 shoe search)",
+	[52911219773530] = "bundle of the film-character costume boots",
+	[120888448669923] = "skate high-tops with a sneaker brand's side stripe and heel tab",
+	[77928379545153] = "skate high-tops with a sneaker brand's side stripe and heel tab",
+	[87587200450608] = "bundle of the brand-look skate high-tops",
 }
 local BLOCKED_WORDS = { "tekken", "gojo", "naruto", "olympic", "ufc", "nike", "adidas", "jordan", "kung fu panda", "karate kid", "kyokushin", "luis", "wwe", "cena", "baki", "nars", "street fighter", "mortal kombat" }
 
@@ -783347,6 +783422,255 @@ local function headAccessories(template: Model): { { name: string, overlaps: boo
 	return out
 end
 
+-- Shoes as worn, per foot: rigid shoe gear measured exactly in the foot's frame from its weld (pose-independent),
+-- layered shoe accessories looked up in LAYERED_SHOE_RENDERS. Heights are above the sole of the foot.
+type ShoeBox = { name: string, layered: boolean, measured: boolean, length: number, width: number, height: number, top: number, sole: number, inside: boolean }
+local function shoesOn(model: Model, spec: any): { [string]: { foot: BasePart, bare: Vector3, ankle: number, lowerWidth: number, shoes: { ShoeBox } } }
+	local out = {}
+	for _, side in { "Left", "Right" } do
+		local foot = model:FindFirstChild(side .. "Foot") :: BasePart
+		local lower = model:FindFirstChild(side .. "LowerLeg") :: BasePart
+		local ankle = foot:FindFirstChild(side .. "AnkleRigAttachment") :: Attachment
+		local half = foot.Size * 0.5
+		-- a sole proxy (hidden foot under its shoe) keeps the bare foot box in an attribute
+		local bareAttr = foot:GetAttribute("FightingLabBareFootSize")
+		local bare = if typeof(bareAttr) == "Vector3" then bareAttr else foot.Size
+		local entry = { foot = foot, bare = bare, ankle = half.Y + ankle.Position.Y, lowerWidth = lower.Size.X, shoes = {} :: { ShoeBox } }
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local weld = d:FindFirstChildOfClass("Weld")
+				if weld and weld.Part0 == foot and weld.Part1 == d then
+					local lo = Vector3.new(math.huge, math.huge, math.huge)
+					local hi = -lo
+					for _, sx in { -0.5, 0.5 } do
+						for _, sy in { -0.5, 0.5 } do
+							for _, sz in { -0.5, 0.5 } do
+								local p = weld.C0 * (d.Size * Vector3.new(sx, sy, sz))
+								lo, hi = lo:Min(p), hi:Max(p)
+							end
+						end
+					end
+					-- a visible foot must stay inside its shoe (no toes or heel poking out); a hidden one may not
+					local inside = foot.Transparency >= 1 or (lo.X <= -half.X + 0.01 and hi.X >= half.X - 0.01 and lo.Z <= -half.Z + 0.01 and hi.Z >= half.Z - 0.01)
+					table.insert(entry.shoes, { name = d.Name, layered = false, measured = true, length = hi.Z - lo.Z, width = hi.X - lo.X, height = hi.Y - lo.Y, top = hi.Y + half.Y, sole = lo.Y + half.Y, inside = inside })
+				end
+			end
+		end
+		for _, acc in spec.accessories or {} do
+			if acc.AccessoryType == side .. "Shoe" then
+				local r = LAYERED_SHOE_RENDERS[acc.AssetId]
+				table.insert(entry.shoes, {
+					name = "layered " .. tostring(acc.AssetId), layered = true, measured = r ~= nil,
+					length = if r then r.length else 0, width = if r then r.width else 0, height = if r then r.height else 0,
+					top = if r then r.height - r.sink else 0, sole = if r then -r.sink else 0, inside = true,
+				})
+			end
+		end
+		out[side] = entry
+	end
+	return out
+end
+
+-- Hair probe: precise-collision copies of the head mesh and of every hair/hat mesh on a Workspace clone, then one ray
+-- per HAIR_PROBES direction toward the cranium centre. Returns the fraction that hits hair first and the bare probes.
+local preciseMeshes: { [string]: MeshPart } = {}
+local function preciseCopy(part: BasePart, folder: Instance): BasePart?
+	if not part:IsA("MeshPart") then return nil end
+	local meshId = (part :: MeshPart).MeshId
+	local proto = preciseMeshes[meshId]
+	if not proto then
+		local ok, made = pcall(function()
+			return AssetService:CreateMeshPartAsync(Content.fromUri(meshId), { CollisionFidelity = Enum.CollisionFidelity.PreciseConvexDecomposition })
+		end)
+		if not ok or not made then return nil end
+		proto = made
+		preciseMeshes[meshId] = made
+	end
+	local copy = (proto :: MeshPart):Clone()
+	copy.Size = part.Size
+	copy.CFrame = part.CFrame
+	copy.Anchored = true
+	copy.CanCollide = false
+	copy.CanTouch = false
+	copy.CanQuery = true
+	copy.Transparency = 1
+	copy.Parent = folder
+	return copy
+end
+
+local function hairCoverage(template: Model): (number, { string }, number, string?)
+	local model = template:Clone()
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(0, 800 + ((model:GetAttribute("RootHeight") :: number?) or 3), 40))
+	local folder = Instance.new("Folder")
+	folder.Name = "_HairProbe"
+	folder.Parent = Workspace
+	local head = model:FindFirstChild("Head") :: BasePart
+	local headCopy = preciseCopy(head, folder)
+	local hairCount, problem = 0, nil
+	if not headCopy then problem = "could not load the head mesh " .. tostring((head :: any).MeshId) end
+	for _, acc in model:GetChildren() do
+		local handle = if acc:IsA("Accessory") and (acc.AccessoryType == Enum.AccessoryType.Hair or acc.AccessoryType == Enum.AccessoryType.Hat) then acc:FindFirstChild("Handle") :: BasePart? else nil
+		if handle then
+			if preciseCopy(handle, folder) then hairCount += 1 else problem = "could not load the hair mesh of " .. acc.Name end
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { folder }
+	local cf = head.CFrame
+	local centre = cf * Vector3.new(0, head.Size.Y * HAIR_CRANIUM_UP, 0)
+	local reach = head.Size.Magnitude * 1.5
+	local covered, bare = 0, {}
+	for _, probe in HAIR_PROBES do
+		local a, e = math.rad(probe[1]), math.rad(probe[2])
+		local dir = cf:VectorToWorldSpace(Vector3.new(-math.sin(a) * math.cos(e), math.sin(e), math.cos(a) * math.cos(e)))
+		local hit = Workspace:Raycast(centre + dir * reach, -dir * reach, params)
+		if hit and hit.Instance ~= headCopy then
+			covered += 1
+		else
+			table.insert(bare, string.format("%s az %d el %d", probe[3], probe[1], probe[2]))
+		end
+	end
+	folder:Destroy()
+	model:Destroy()
+	return covered / #HAIR_PROBES, bare, hairCount, problem
+end
+
+-- Shoes on the floor in motion: surface points of a shoe mesh (a precise-collision copy probed from six directions),
+-- in the shoe's own frame.
+local function shoeSurface(part: BasePart, folder: Instance): { Vector3 }?
+	local copy = preciseCopy(part, folder)
+	if not copy then return nil end
+	local origin = CFrame.new(0, 900, 300)
+	copy.CFrame = origin
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { copy }
+	local s, n = copy.Size, 10
+	local points = {}
+	for axis = 1, 3 do
+		for sign = -1, 1, 2 do
+			for i = 0, n do
+				for j = 0, n do
+					local u, v = (i / n - 0.5) * 1.02, (j / n - 0.5) * 1.02
+					local start = if axis == 1 then Vector3.new(sign * s.X, u * s.Y, v * s.Z) elseif axis == 2 then Vector3.new(u * s.X, sign * s.Y, v * s.Z) else Vector3.new(u * s.X, v * s.Y, sign * s.Z)
+					local dir = if axis == 1 then Vector3.new(-2 * sign * s.X, 0, 0) elseif axis == 2 then Vector3.new(0, -2 * sign * s.Y, 0) else Vector3.new(0, 0, -2 * sign * s.Z)
+					local hit = Workspace:Raycast(origin * start, origin:VectorToWorldSpace(dir), params)
+					if hit then table.insert(points, origin:PointToObjectSpace(hit.Position)) end
+				end
+			end
+		end
+	end
+	copy:Destroy()
+	return points
+end
+
+local function groundView(state: string, extra: { [string]: any }?): { [string]: any }
+	local v: { [string]: any } = { pos = Vector3.zero, facing = Vector3.xAxis, state = state, move = nil, moveFrame = 0, walkPhase = 0, stun = 0, crouched = false, moveX = 0 }
+	if extra then for k, value in extra do v[k] = value end end
+	return v
+end
+
+-- KO face up and face down, and falls into each getup (stand up, back roll, side roll), frame by frame.
+local function groundSequences(config: any): { { name: string, frames: { { [string]: any } } } }
+	local landing = config.LandingFrames or 34
+	local getup = config.GetupFrames or 26
+	local out = {}
+	for _, knockdown in { "FaceUp", "FaceDown" } do
+		local ko = {}
+		for _ = 1, 60 do table.insert(ko, groundView("KO", { knockdown = knockdown })) end
+		table.insert(out, { name = "KO " .. knockdown, frames = ko })
+		for _, kind in { "Stand", if knockdown == "FaceUp" then "BackRoll" else "SideRoll" } do
+			local list = {}
+			for s = landing, 0, -1 do table.insert(list, groundView("Landing", { knockdown = knockdown, stun = s, getupKind = kind })) end
+			local total = getup + (if kind ~= "Stand" then 10 else 0)
+			for s = total, 0, -1 do table.insert(list, groundView("Getup", { knockdown = knockdown, stun = s, getupKind = kind })) end
+			table.insert(out, { name = "fall " .. knockdown .. " into a " .. kind .. " getup", frames = list })
+		end
+	end
+	return out
+end
+
+-- Poses a Workspace clone with the real MotionPlayer (as CharacterPresenter does) and returns, per sequence and shoe,
+-- how far the shoe's lowest surface point dips below the floor or below the foot box the ground solver rests on it.
+type GroundResult = { name: string, side: string, proxy: boolean, worst: number, frame: number }
+local function shoeGround(template: Model, id: string, motion: any, config: any): ({ GroundResult }, string?)
+	local model = template:Clone()
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = d.Name == "HumanoidRootPart"
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+	model.Parent = Workspace
+	local folder = Instance.new("Folder")
+	folder.Name = "_ShoeGround"
+	folder.Parent = Workspace
+	local rig = motion.collectRig(model)
+	local root = model:FindFirstChild("HumanoidRootPart") :: BasePart
+	local shoes = {}
+	local problem: string? = nil
+	for _, side in { "Left", "Right" } do
+		local foot = model:FindFirstChild(side .. "Foot") :: BasePart
+		for _, d in foot:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local weld = d:FindFirstChildOfClass("Weld")
+				local points = shoeSurface(d, folder)
+				if points and weld then
+					table.insert(shoes, { side = side, foot = side .. "Foot", chain = rig.chains[side .. "Leg"], c0 = weld.C0, points = points, proxy = foot:GetAttribute("FightingLabSoleProxy") == true })
+				else
+					problem = "could not sample the shoe mesh " .. d.Name
+				end
+			end
+		end
+	end
+	local floorY = SHOE_GROUND_FLOOR_Y
+	local results: { GroundResult } = {}
+	for _, seq in groundSequences(config) do
+		motion.reset(SHOE_GROUND_SLOT)
+		local worst: { [string]: number } = { Left = math.huge, Right = math.huge }
+		local at: { [string]: number } = { Left = 0, Right = 0 }
+		for i, v in seq.frames do
+			v.characterId = id
+			v.rootHeight = rig.rootHeight
+			v.legLength = rig.legLength
+			local pose = motion.sample(config, v, { now = i / 60, dt = 1 / 60, hitstop = 0, phase = "Fight", winner = 0, fighters = { v, { pos = Vector3.new(30, 0, 0), facing = -Vector3.xAxis } } }, SHOE_GROUND_SLOT)
+			-- root placed as CharacterPresenter does: facing +X, so the fighter's right is +Z
+			local offset = pose.rootOffset :: Vector3
+			local center = Vector3.new(offset.Z, floorY + rig.rootHeight + offset.Y, 600 + offset.X)
+			root.CFrame = CFrame.lookAt(center, center + Vector3.xAxis)
+			motion.apply(rig, pose, floorY)
+			if i > 3 then
+				for _, s in shoes do
+					local tip = rig.tips[s.foot] :: CFrame
+					local footLow = (tip * (s.chain.tipBox or CFrame.identity)).Position.Y - motion.extentY(tip, s.chain.tipSize) - floorY
+					local cf = tip * s.c0
+					local low = math.huge
+					for _, p in s.points do
+						local y = (cf * p).Y
+						if y < low then low = y end
+					end
+					local dip = low - floorY - math.min(footLow, 0)
+					if dip < worst[s.side] then
+						worst[s.side] = dip
+						at[s.side] = i
+					end
+				end
+			end
+		end
+		for _, s in shoes do
+			table.insert(results, { name = seq.name, side = s.side, proxy = s.proxy, worst = worst[s.side], frame = at[s.side] })
+		end
+	end
+	motion.reset(SHOE_GROUND_SLOT)
+	folder:Destroy()
+	model:Destroy()
+	return results, problem
+end
+
 return function(t)
 	local Specs = require(ServerStorage.FightingLab.CharacterSpecs) :: any
 	local Factory = require(ServerStorage.FightingLab.CharacterFactory) :: any
@@ -783442,6 +783766,103 @@ return function(t)
 		end
 	end)
 
+	-- One test per fighter: each loads two or three meshes with precise collision.
+	for _, id in IDS do
+		if CLEAN_SHAVEN[id] then
+			t.test(id .. "'s shaved head reads as a clean shave, not a partial cover", function()
+				local chars = waitForTemplates()
+				for _, acc in Specs.specs[id].accessories do
+					t.expect.truthy(acc.AccessoryType ~= "Hair" and acc.AccessoryType ~= "Hat", string.format("%s is clean-shaven by design and authors no hair/hat (%s)", id, tostring(acc.AssetId)))
+				end
+				for _, acc in (chars:FindFirstChild(id) :: Model):GetChildren() do
+					if acc:IsA("Accessory") then
+						t.expect.truthy(acc.AccessoryType ~= Enum.AccessoryType.Hair and acc.AccessoryType ~= Enum.AccessoryType.Hat, id .. " template wears no hair: " .. acc.Name)
+					end
+				end
+			end)
+		else
+			t.test(id .. "'s hair covers the whole scalp: back, three-quarter back, sides, top and hairline", function()
+				local chars = waitForTemplates()
+				local coverage, bare, count, problem = hairCoverage(chars:FindFirstChild(id) :: Model)
+				t.expect.equal(problem, nil, id .. " hair probe meshes load")
+				t.expect.truthy(count > 0, id .. " wears hair")
+				t.expect.truthy(coverage >= HAIR_MIN_COVERAGE, string.format("%s scalp coverage %.0f%% (min %.0f%%), bare at: %s", id, coverage * 100, HAIR_MIN_COVERAGE * 100, table.concat(bare, ", ", 1, math.min(#bare, 10))))
+			end)
+		end
+	end
+
+	t.test("shoes are sized like real shoes as worn and their soles sit on the feet", function()
+		local chars = waitForTemplates()
+		-- Every violation is collected first, so one run reports all fighters and all bounds.
+		local problems: { string } = {}
+		local function check(ok: boolean, message: string)
+			if not ok then table.insert(problems, message) end
+		end
+		for _, id in IDS do
+			local spec = Specs.specs[id]
+			local model = chars:FindFirstChild(id) :: Model
+			local stature = proportions(model).stature
+			local feet = shoesOn(model, spec)
+			local count = #feet.Left.shoes + #feet.Right.shoes
+			local style = spec.shoeStyle or (if count > 0 then "high" else "barefoot")
+			if style == "barefoot" then
+				check(count == 0, id .. " is barefoot by design but wears " .. count .. " shoes")
+				continue
+			end
+			check(style == "high" or style == "low", id .. " shoeStyle must be high, low or barefoot (got " .. tostring(style) .. ")")
+			for _, side in { "Left", "Right" } do
+				local entry = feet[side]
+				check(#entry.shoes == 1, string.format("%s wears %d %s shoes (expected 1)", id, #entry.shoes, side))
+				for _, s in entry.shoes do
+					local label = string.format("%s %s %s", id, side, s.name)
+					check(s.measured, label .. " is not measurable (a layered shoe renders on the client only: wear it as rigid shoe gear or add its measured render)")
+					if s.measured then
+						local length = s.length / stature
+						check(length >= SHOE_LENGTH_MIN and length <= SHOE_LENGTH_MAX, string.format("%s is %.3f x stature long (%.2f studs; %.2f-%.2f)", label, length, s.length, SHOE_LENGTH_MIN, SHOE_LENGTH_MAX))
+						check(s.width <= entry.bare.X * SHOE_WIDTH_FOOT_MAX, string.format("%s is %.2f x the bare foot wide (%.2f studs; max %.2f)", label, s.width / entry.bare.X, s.width, SHOE_WIDTH_FOOT_MAX))
+						check(s.width <= entry.lowerWidth, string.format("%s is wider than the lower leg it sits on (%.2f vs %.2f studs)", label, s.width, entry.lowerWidth))
+						if style == "low" then
+							check(s.top <= entry.ankle + SHOE_ANKLE_TOLERANCE, string.format("%s low shoe reaches %.2f studs, above the ankle bone at %.2f", label, s.top, entry.ankle))
+						else
+							check(s.height <= SHOE_HIGH_MAX * stature, string.format("%s high-top is %.3f x stature tall (%.2f studs; max %.3f)", label, s.height / stature, s.height, SHOE_HIGH_MAX))
+						end
+						check(math.abs(s.sole) <= SHOE_SOLE_TOLERANCE, string.format("%s sole is %.3f studs off the foot's sole (sinks into or floats above the floor)", label, s.sole))
+						check(s.inside, label .. " lets the visible bare foot poke out")
+					end
+				end
+			end
+		end
+		t.expect.equal(#problems, 0, #problems .. " shoe problems:\n  " .. table.concat(problems, "\n  "))
+	end)
+
+	for _, id in IDS do
+		if (Specs.specs[id].shoeStyle or "barefoot") == "barefoot" then continue end
+		t.test(id .. "'s shoes rest on the floor through knockdowns, falls, getups and rolls", function()
+			local chars = waitForTemplates()
+			local motion = require(ReplicatedStorage.FightingLab.Client.MotionPlayer) :: any
+			local config = require(ReplicatedStorage.FightingLab.CombatConfig) :: any
+			local model = chars:FindFirstChild(id) :: Model
+			for _, side in { "Left", "Right" } do
+				local foot = model:FindFirstChild(side .. "Foot") :: BasePart
+				if foot.Transparency >= 1 then
+					-- the hidden foot is its shoe's ground box, with the bare foot's height (RootHeight and leg length hold)
+					local bare = foot:GetAttribute("FightingLabBareFootSize")
+					t.expect.truthy(foot:GetAttribute("FightingLabSoleProxy") == true, id .. " " .. side .. " hidden foot is its shoe's ground box")
+					t.expect.truthy(typeof(bare) == "Vector3" and math.abs((bare :: Vector3).Y - foot.Size.Y) < 1e-3, id .. " " .. side .. " ground box keeps the bare foot's height")
+				else
+					t.expect.truthy(typeof(foot:GetAttribute("FightingLabShoeGroundSize")) == "Vector3", id .. " " .. side .. " visible foot publishes its shoe's ground box")
+				end
+			end
+			local results, problem = shoeGround(model, id, motion, config)
+			t.expect.equal(problem, nil, id .. " shoe meshes sample")
+			t.expect.truthy(#results > 0, id .. " wears measurable shoes")
+			for _, r in results do
+				local limit = if r.proxy then SHOE_GROUND_TOLERANCE else SHOE_GROUND_VISIBLE_FOOT
+				t.expect.truthy(r.worst >= -limit, string.format("%s %s shoe sinks %.3f studs into the floor (below the foot box the solver rests on it) in the %s, frame %d (max %.2f)", id, r.side, -r.worst, r.name, r.frame, limit))
+			end
+		end)
+	end
+
 	t.test("every authored item is applied and textured, nothing glossy-bare or procedural", function()
 		local chars = waitForTemplates()
 		for _, id in IDS do
@@ -783461,6 +783882,10 @@ return function(t)
 				local isTex, isPbr = isTextured(accessory)
 				t.expect.truthy(isTex, id .. " accessory " .. accessory.Name .. " is textured")
 				if isPbr and accessory.AccessoryType ~= Enum.AccessoryType.Hair then pbrGarments += 1 end
+			end
+			-- Rigid catalog gear (shoes, belt) counts as a garment too when it carries its PBR SurfaceAppearance.
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") and d:GetAttribute("FightingLabExtra") == true and d:FindFirstChildOfClass("SurfaceAppearance") then pbrGarments += 1 end
 			end
 			t.expect.truthy(pbrGarments >= MIN_PBR_GARMENTS, string.format("%s wears %d PBR garments (min %d)", id, pbrGarments, MIN_PBR_GARMENTS))
 			for _, g in spec.gear or {} do
@@ -788050,8 +788475,8 @@ end
 
 local function soleGap(rig: any, foot: string): number
 	local tip = rig.tips[foot]
-	local size = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"].tipSize
-	return tip.Position.Y - MotionPlayer.extentY(tip, size) - FLOOR_Y
+	local chain = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"]
+	return (tip * (chain.tipBox or CFrame.identity)).Position.Y - MotionPlayer.extentY(tip, chain.tipSize) - FLOOR_Y
 end
 
 local function topList(map: { [string]: number }, n: number): string
@@ -788202,8 +788627,8 @@ return function(t)
 				MotionPlayer.apply(rig, pose, FLOOR_Y)
 				for _, foot in FEET do
 					local tip = rig.tips[foot]
-					local size = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"].tipSize
-					gaps[foot][f] = if tip then tip.Position.Y - MotionPlayer.extentY(tip, size) - FLOOR_Y else 0
+					local chain = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"]
+					gaps[foot][f] = if tip then (tip * (chain.tipBox or CFrame.identity)).Position.Y - MotionPlayer.extentY(tip, chain.tipSize) - FLOOR_Y else 0
 					contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
 				end
 			end
@@ -1107610,7 +1108035,7 @@ export type Accessory = { AssetId: number, AccessoryType: string, IsLayered: boo
 export type FistSpec = { meshId: string, textureId: string?, color: { number }, material: string?, scale: { number }?, offset: { number }?, rotation: { number }? }
 export type FistsSpec = { shared: FistSpec?, Left: FistSpec?, Right: FistSpec? }
 export type BandSpec = { width: number, inflate: number?, inflateZ: number? }
-export type GearSpec = { assetId: number?, band: BandSpec?, name: string?, target: string, color: { number }?, tint: { number }?, material: string?, clearTexture: boolean?, scale: { number }?, fit: { number }?, offset: { number }?, rotation: { number }?, hideTarget: boolean? }
+export type GearSpec = { assetId: number?, band: BandSpec?, name: string?, target: string, color: { number }?, tint: { number }?, material: string?, clearTexture: boolean?, scale: { number }?, fit: { number }?, offset: { number }?, rotation: { number }?, hideTarget: boolean?, seat: string?, role: string? }
 export type Spec = {
 	id: string,
 	displayName: string,
@@ -1107629,6 +1108054,9 @@ export type Spec = {
 	fists: FistsSpec?,
 	gear: { GearSpec }?,
 	hideHands: boolean?,
+	-- "high" (high-tops/boots), "low" or "barefoot": the shoe-size bounds CharacterLook_Test applies (shoes are gear
+	-- with role "shoe", seat "sole").
+	shoeStyle: string?,
 	shirt: number?,
 	pants: number?,
 	graphicTShirt: number?,
@@ -1107785,6 +1108213,10 @@ end
 local EXTRA_ATTRIBUTE = "FightingLabExtra"
 local HIDDEN_ATTRIBUTE = "FightingLabHiddenByGear"
 local DRESSED_ATTRIBUTE = "FightingLabDressed"
+local SOLE_PROXY_ATTRIBUTE = "FightingLabSoleProxy"
+local BARE_FOOT_SIZE_ATTRIBUTE = "FightingLabBareFootSize"
+local GROUND_SIZE_ATTRIBUTE = "FightingLabShoeGroundSize"
+local GROUND_CENTER_ATTRIBUTE = "FightingLabShoeGroundCenter"
 
 local function findPart(model: Model, name: string): BasePart
 	local part = model:FindFirstChild(name) or model:FindFirstChild(name, true)
@@ -1107864,9 +1108296,10 @@ local function loadGearPart(assetId: number): BasePart
 	assert(found, "CharacterFactory: gear asset " .. tostring(assetId) .. " did not contain a BasePart")
 	local prototype = found:Clone()
 	asset:Destroy()
-	-- Accessory handles carry body-attachment helpers and occasional scripts; a welded gear part needs neither.
+	-- Accessory handles carry body-attachment helpers, layered-clothing cages and occasional scripts; a welded gear part
+	-- needs none of them (a rigid shoe cut from a layered shoe must not try to wrap onto the body).
 	for _, d in prototype:GetDescendants() do
-		if d:IsA("Attachment") or d:IsA("LuaSourceContainer") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("TouchTransmitter") then
+		if d:IsA("Attachment") or d:IsA("LuaSourceContainer") or d:IsA("JointInstance") or d:IsA("WeldConstraint") or d:IsA("Constraint") or d:IsA("TouchTransmitter") or d:IsA("BaseWrap") then
 			d:Destroy()
 		end
 	end
@@ -1107905,8 +1108338,9 @@ local function hideGearTarget(target: BasePart, item: GearSpec)
 end
 
 -- Gear parts are parented under their target body part: if a live character's body part is ever replaced, its gear
--- goes with it instead of falling out of the world.
-local function addGear(model: Model, gear: { GearSpec }?)
+-- goes with it instead of falling out of the world. Returns the asset ids of gear pieces that could not be loaded.
+local function addGear(model: Model, gear: { GearSpec }?): { number }
+	local skipped: { number } = {}
 	for _, item in gear or {} do
 		local target = findPart(model, item.target)
 		if item.band then
@@ -1107925,6 +1108359,7 @@ local function addGear(model: Model, gear: { GearSpec }?)
 		local loaded, result = pcall(loadGearPart, item.assetId :: number)
 		if not loaded then
 			warn(string.format("CharacterFactory: skipped gear %s (%s): %s", tostring(item.name), tostring(item.assetId), tostring(result)))
+			table.insert(skipped, item.assetId :: number)
 			continue
 		end
 		hideGearTarget(target, item)
@@ -1107954,11 +1108389,31 @@ local function addGear(model: Model, gear: { GearSpec }?)
 		end
 		prepareExtraPart(part)
 		local offset = vectorFromArray(item.offset, Vector3.zero, part.Name .. ".offset")
+		-- `seat = "sole"` (shoes): the part's bottom rests on the target's bottom face, the sole that the ground solver
+		-- plants on the floor, so a shoe never sinks into the floor or floats above it; `offset` moves it from there.
+		if item.seat == "sole" then
+			offset += Vector3.new(0, (part.Size.Y - target.Size.Y) * 0.5, 0)
+		elseif item.seat ~= nil then
+			error("CharacterFactory: unknown gear seat " .. tostring(item.seat))
+		end
+		if item.role then part:SetAttribute("FightingLabRole", item.role) end
 		local rotation = vectorFromArray(item.rotation, Vector3.zero, part.Name .. ".rotation")
 		local isHandFist = (part.Name == "LeftFist" and target.Name == "LeftHand") or (part.Name == "RightFist" and target.Name == "RightHand")
 		weldTo(target, part, CFrame.new(offset) * CFrame.Angles(math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z)), if isHandFist then "FistWeld" else "GearWeld")
-		part.Parent = target
+		-- A skinned catalog mesh (e.g. a layered shoe used as a rigid shoe) parented straight into the rig would be
+		-- skinned onto the rig's own parts by bone name and render twisted; inside its own Model it renders as welded.
+		local okSkinned, skinned = pcall(function() return part:IsA("MeshPart") and (part :: MeshPart).HasSkinnedMesh end)
+		if okSkinned and skinned then
+			local holder = Instance.new("Model")
+			holder.Name = part.Name .. "Rigid"
+			holder:SetAttribute(EXTRA_ATTRIBUTE, true)
+			part.Parent = holder
+			holder.Parent = target
+		else
+			part.Parent = target
+		end
 	end
+	return skipped
 end
 
 local function applyHandVisibility(model: Model, hideHands: boolean?)
@@ -1108021,11 +1108476,12 @@ local function applyTints(model: Model, accessories: { Accessory }?): number
 	return tinted
 end
 
-local function applyExtras(model: Model, spec: Spec)
+local function applyExtras(model: Model, spec: Spec): { number }
 	addFists(model, spec.fists)
-	addGear(model, spec.gear)
+	local skipped = addGear(model, spec.gear)
 	applyHandVisibility(model, spec.hideHands)
 	applyTints(model, spec.accessories)
+	return skipped
 end
 
 local function extrasSignature(spec: Spec): string
@@ -1108107,6 +1108563,72 @@ local function measureRootHeight(model: Model, root: BasePart): number
 	return root.Position.Y - lowest
 end
 
+-- Fight templates only. A shoe is longer than the bare foot inside it, and the ground solver (MotionPlayer) plants,
+-- tips onto the ball and lays down the foot part's box; a shoe toe past that box would sink into the floor whenever
+-- the foot pitches (rear foot on its ball, lying, getting up). Where the bare foot is hidden under its shoe (boots,
+-- high-tops, tabi), the hidden foot part becomes the shoe's ground box: it takes the shoe's length and width and moves
+-- under it, keeping its height, bottom face and ankle joint, so RootHeight and leg length do not change. Joints,
+-- welds and attachments on the foot are re-expressed so nothing visible moves. The Humanoid's automatic scaling
+-- re-derives body part sizes and rig attachments from their OriginalSize / OriginalPosition values whenever a rig is
+-- parented into the world, so those are re-expressed too (per axis, with the scale the Humanoid applies to this foot).
+-- The bare foot box is kept in the FightingLabBareFootSize attribute. A visible foot (low shoes) keeps its box; its
+-- shoe's ground box (foot space: size, centre) is published as FightingLabShoeGroundSize / FightingLabShoeGroundCenter.
+local function fitSoleProxies(model: Model)
+	for _, name in { "LeftFoot", "RightFoot" } do
+		local found = model:FindFirstChild(name)
+		if not found or not found:IsA("BasePart") then continue end
+		local foot = found :: BasePart
+		local lo = Vector3.new(math.huge, math.huge, math.huge)
+		local hi = -lo
+		for _, d in foot:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local rel = foot.CFrame:ToObjectSpace(d.CFrame)
+				local h = d.Size * 0.5
+				for _, sx in { -1, 1 } do
+					for _, sy in { -1, 1 } do
+						for _, sz in { -1, 1 } do
+							local p = rel * Vector3.new(h.X * sx, h.Y * sy, h.Z * sz)
+							lo = lo:Min(p)
+							hi = hi:Max(p)
+						end
+					end
+				end
+			end
+		end
+		if lo.X > hi.X then continue end
+		local shift = Vector3.new((lo.X + hi.X) * 0.5, 0, (lo.Z + hi.Z) * 0.5)
+		local size = Vector3.new(hi.X - lo.X, foot.Size.Y, hi.Z - lo.Z)
+		if foot:GetAttribute(HIDDEN_ATTRIBUTE) ~= true then
+			foot:SetAttribute(GROUND_SIZE_ATTRIBUTE, size)
+			foot:SetAttribute(GROUND_CENTER_ATTRIBUTE, shift)
+			continue
+		end
+		local back = CFrame.new(-shift)
+		local originalSize = foot:FindFirstChild("OriginalSize")
+		local scale = if originalSize and originalSize:IsA("Vector3Value") then foot.Size / originalSize.Value else Vector3.one
+		for _, d in model:GetDescendants() do
+			if d:IsA("JointInstance") then
+				if d.Part0 == foot then d.C0 = back * d.C0 end
+				if d.Part1 == foot then d.C1 = back * d.C1 end
+			elseif d:IsA("WeldConstraint") and (d.Part0 == foot or d.Part1 == foot) then
+				error("CharacterFactory: a WeldConstraint on " .. name .. " cannot follow its sole proxy")
+			end
+		end
+		for _, a in foot:GetChildren() do
+			if a:IsA("Attachment") then
+				a.CFrame = back * a.CFrame
+				local originalPosition = a:FindFirstChild("OriginalPosition")
+				if originalPosition and originalPosition:IsA("Vector3Value") then originalPosition.Value = a.Position / scale end
+			end
+		end
+		if originalSize and originalSize:IsA("Vector3Value") then originalSize.Value = size / scale end
+		foot:SetAttribute(BARE_FOOT_SIZE_ATTRIBUTE, foot.Size)
+		foot:SetAttribute(SOLE_PROXY_ATTRIBUTE, true)
+		foot.CFrame = foot.CFrame * CFrame.new(shift)
+		foot.Size = size
+	end
+end
+
 function Factory.build(spec: Spec): Model
 	local model = Players:CreateHumanoidModelFromDescription(Factory.describe(spec), Enum.HumanoidRigType.R15, Enum.AssetTypeVerification.Always)
 	model.Name = spec.id
@@ -1108159,9 +1108681,12 @@ function Factory.build(spec: Spec): Model
 			d.Massless = true
 		end
 	end
-	applyExtras(model, spec)
+	local skippedGear = applyExtras(model, spec)
+	fitSoleProxies(model)
 	model:SetAttribute(DRESSED_ATTRIBUTE, extrasSignature(spec))
+	-- Catalog gear that could not be loaded (e.g. a shoe) is just as much a broken outfit as a missing accessory.
 	local missing = Factory.missingAccessories(model, spec)
+	for _, id in skippedGear do table.insert(missing, id) end
 	if #missing > 0 then
 		warn(string.format("CharacterFactory: %s is missing authored accessories %s", spec.id, table.concat(missing, ", ")))
 	end
@@ -1108206,12 +1108731,12 @@ return Factory
 return {
 	order = { "Kael", "Sierra", "Goran", "Lumi", "Rhys", "Nia" },
 	hashes = {
-		Kael = "e68c7dfef0afd4c396ffc7f8e711debe5aedd78a",
-		Sierra = "66b66e505fad7ef1714035527641f35f8ca29d6e",
-		Goran = "7f297d7f65a15a9ee3d20c08e071ef7f39b8d467",
-		Lumi = "8a4fd886074cab631ba29b7c4b7e72baa11eb589",
-		Rhys = "908ae26dafd0be893b5bf195fe692a79bca29e8f",
-		Nia = "18948bcfca9739c7dd2e369ca56d2a3f301e003b",
+		Kael = "d9987fdf78aa299c849e60ab86e7fb5ecc72334c",
+		Sierra = "6e22404a6025736d056edfa487ca29589b452efd",
+		Goran = "8f51ab0be29a29d1bf121ea2299b1f48e540ae5f",
+		Lumi = "c671def51e630cdecb0ebe81eb8896bec6e4fd83",
+		Rhys = "96a8feb168a2d33b9698b5a7485896214795dad3",
+		Nia = "d1529c9ccb0e833e6d81770d6a83e60c38a30ff3",
 	},
 	specs = {
 		Kael = {
@@ -1108242,6 +1108767,8 @@ return {
 				{
 					AssetId = 17750359523,
 					AccessoryType = "Hair",
+					Scale = { 1.02, 1.15, 1.1 },
+					Position = { 0, -0.04, 0 },
 				},
 				{
 					AssetId = 108264643648437,
@@ -1108265,20 +1108792,6 @@ return {
 					Order = 20,
 					Puffiness = 0.08,
 					Tint = { 238, 105, 48 },
-				},
-				{
-					AssetId = 128212268343103,
-					AccessoryType = "LeftShoe",
-					IsLayered = true,
-					Order = 1,
-					Puffiness = 0.3,
-				},
-				{
-					AssetId = 110054253690142,
-					AccessoryType = "RightShoe",
-					IsLayered = true,
-					Order = 1,
-					Puffiness = 0.3,
 				},
 			},
 			sourceAssets = {
@@ -1108355,27 +1108868,48 @@ return {
 					kind = "Layered boxing gloves (tinted)",
 				},
 				{
-					id = 141883318340139,
-					name = "Black Street Fit Sneakers [PBR]",
-					creator = "Dresscraft",
+					id = 203322574255359,
+					name = "High Cut Sneakers Black",
+					creator = "The 67 UGC",
 					kind = "Shoes bundle",
 				},
 				{
-					id = 128212268343103,
-					name = "Black Street Fit Sneakers [PBR] - 左靴用アクセサリ",
-					creator = "Dresscraft",
-					kind = "Layered shoe",
+					id = 70716256524989,
+					name = "High Cut Sneakers Black - Left Shoe Accessory",
+					creator = "The 67 UGC",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 				{
-					id = 110054253690142,
-					name = "Black Street Fit Sneakers [PBR] - 右靴用アクセサリ",
-					creator = "Dresscraft",
-					kind = "Layered shoe",
+					id = 129737407945021,
+					name = "High Cut Sneakers Black - Right Shoe Accessory",
+					creator = "The 67 UGC",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 			},
 			mood = 14618207727,
-			gear = {},
-			look = "Adult street boxer with medium-olive realistic face and tight cornrows; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, black-and-white chunky high-top sneakers.",
+			gear = {
+				{
+					assetId = 70716256524989,
+					name = "LeftShoe",
+					target = "LeftFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1433, 1.9108, 1.2767 },
+					offset = { 0, 0, -0.012 },
+					hideTarget = true,
+				},
+				{
+					assetId = 129737407945021,
+					name = "RightShoe",
+					target = "RightFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1503, 1.8692, 1.2785 },
+					offset = { 0, 0, -0.012 },
+					hideTarget = true,
+				},
+			},
+			look = "Adult street boxer with medium-olive realistic face and tight cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
 			bodyColors = {
 				Head = { 255, 255, 255 },
 				Torso = { 255, 255, 255 },
@@ -1108386,6 +1108920,7 @@ return {
 			},
 			face = 0,
 			hideHands = true,
+			shoeStyle = "high",
 		},
 		Sierra = {
 			id = "Sierra",
@@ -1108534,6 +1109069,7 @@ return {
 			},
 			face = 0,
 			hideHands = true,
+			shoeStyle = "barefoot",
 		},
 		Goran = {
 			id = "Goran",
@@ -1108586,20 +1109122,6 @@ return {
 					IsLayered = true,
 					Order = 12,
 					Puffiness = 0.1,
-				},
-				{
-					AssetId = 140700617127197,
-					AccessoryType = "LeftShoe",
-					IsLayered = true,
-					Order = 1,
-					Puffiness = 0.3,
-				},
-				{
-					AssetId = 100014109264125,
-					AccessoryType = "RightShoe",
-					IsLayered = true,
-					Order = 1,
-					Puffiness = 0.3,
 				},
 				{
 					AssetId = 114155090849709,
@@ -1108680,13 +1109202,13 @@ return {
 					id = 140700617127197,
 					name = "Light Brown Combat Boots - Left Shoe Accessory",
 					creator = "FATAL ARCHIVE",
-					kind = "Layered shoe",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 				{
 					id = 100014109264125,
 					name = "Light Brown Combat Boots - Right Shoe Accessory",
 					creator = "FATAL ARCHIVE",
-					kind = "Layered shoe",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 				{
 					id = 18883135935,
@@ -1108722,6 +1109244,26 @@ return {
 					fit = { 1.12, 0.6, 1.14 },
 					offset = { 0, 0.06, 0 },
 				},
+				{
+					assetId = 140700617127197,
+					name = "LeftShoe",
+					target = "LeftFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1842, 1.4692, 0.9788 },
+					offset = { 0, 0, 0.05 },
+					hideTarget = true,
+				},
+				{
+					assetId = 100014109264125,
+					name = "RightShoe",
+					target = "RightFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1842, 1.1397, 0.9788 },
+					offset = { 0, 0, 0.05 },
+					hideTarget = true,
+				},
 			},
 			look = "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts, black leather lifting belt, black tactical knee pads, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
 			bodyColors = {
@@ -1108734,6 +1109276,7 @@ return {
 			},
 			face = 0,
 			hideHands = false,
+			shoeStyle = "high",
 		},
 		Lumi = {
 			id = "Lumi",
@@ -1108779,20 +1109322,6 @@ return {
 					IsLayered = true,
 					Order = 9,
 					Puffiness = 0.1,
-				},
-				{
-					AssetId = 106421807303280,
-					AccessoryType = "LeftShoe",
-					IsLayered = true,
-					Order = 5,
-					Puffiness = 0.3,
-				},
-				{
-					AssetId = 77675773538059,
-					AccessoryType = "RightShoe",
-					IsLayered = true,
-					Order = 5,
-					Puffiness = 0.3,
 				},
 				{
 					AssetId = 80566106375297,
@@ -1108871,32 +1109400,32 @@ return {
 					kind = "Layered arm sleeves",
 				},
 				{
-					id = 230848115295914,
-					name = "Obsidian Prism Tech Sneakers [PBR]",
-					creator = "Dresscraft",
-					kind = "Shoes bundle",
-				},
-				{
-					id = 106421807303280,
-					name = "Obsidian Prism Tech Sneakers [PBR] - 左靴用アクセサリ",
-					creator = "Dresscraft",
-					kind = "Layered shoe",
-				},
-				{
-					id = 77675773538059,
-					name = "Obsidian Prism Tech Sneakers [PBR] - 右靴用アクセサリ",
-					creator = "Dresscraft",
-					kind = "Layered shoe",
-				},
-				{
 					id = 80566106375297,
 					name = "White Slim fit tracksuit pants",
 					creator = "Blue infinity studios",
 					kind = "Layered slim track pants (tinted)",
 				},
+				{
+					id = 199239061768347,
+					name = "Tabi Suede Boots in Black",
+					creator = "creepertDev",
+					kind = "Shoes bundle",
+				},
+				{
+					id = 109971937853096,
+					name = "Tabi Suede Boots in Black - Left Shoe Accessory",
+					creator = "creepertDev",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
+				},
+				{
+					id = 111746619334138,
+					name = "Tabi Suede Boots in Black - Right Shoe Accessory",
+					creator = "creepertDev",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
+				},
 			},
 			mood = 14618207727,
-			look = "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black/grey camo tech sneakers, open hands.",
+			look = "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands.",
 			bodyColors = {
 				Head = { 118, 76, 50 },
 				Torso = { 118, 76, 50 },
@@ -1108906,8 +1109435,30 @@ return {
 				RightLeg = { 118, 76, 50 },
 			},
 			face = 0,
-			gear = {},
+			gear = {
+				{
+					assetId = 109971937853096,
+					name = "LeftShoe",
+					target = "LeftFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1909, 1.2208, 1.5678 },
+					offset = { 0, 0, -0.1327 },
+					hideTarget = true,
+				},
+				{
+					assetId = 111746619334138,
+					name = "RightShoe",
+					target = "RightFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.1909, 1.2208, 1.5678 },
+					offset = { 0, 0, -0.1327 },
+					hideTarget = true,
+				},
+			},
 			hideHands = false,
+			shoeStyle = "high",
 		},
 		Rhys = {
 			id = "Rhys",
@@ -1108942,10 +1109493,10 @@ return {
 					Puffiness = 0.2,
 				},
 				{
-					AssetId = 14063983879,
+					AssetId = 103417751582989,
 					AccessoryType = "Hair",
-					Position = { 0, 0.06, -0.06 },
-					Scale = { 0.86, 0.8, 0.8 },
+					Scale = { 1.0, 1.25, 1.04 },
+					Position = { 0, 0.02, 0 },
 				},
 				{
 					AssetId = 16362208023,
@@ -1109019,12 +1109570,6 @@ return {
 					kind = "Layered training tee",
 				},
 				{
-					id = 14063983879,
-					name = "Brown Hair Undercut Ponytail",
-					creator = "LimaMosca",
-					kind = "Hair",
-				},
-				{
 					id = 16362208023,
 					name = "White/Black Belt Judo Kungfu Outfit",
 					creator = "Dubit",
@@ -1109036,9 +1109581,15 @@ return {
 					creator = "Maximum_ADHD",
 					kind = "Layered hand wraps",
 				},
+				{
+					id = 103417751582989,
+					name = "Brown Man Bun - Millennial",
+					creator = "Looe UGC",
+					kind = "Hair",
+				},
 			},
 			mood = 14618207727,
-			look = "Adult karate counter-striker with light realistic face and tied-back dark-brown undercut; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
+			look = "Adult karate counter-striker with light realistic face and dark-brown hair tied back in a bun; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
 			bodyColors = {
 				Head = { 255, 255, 255 },
 				Torso = { 255, 255, 255 },
@@ -1109050,6 +1109601,7 @@ return {
 			face = 0,
 			gear = {},
 			hideHands = false,
+			shoeStyle = "barefoot",
 		},
 		Nia = {
 			id = "Nia",
@@ -1109086,20 +1109638,6 @@ return {
 					AccessoryType = "Shirt",
 					IsLayered = true,
 					Order = 2,
-					Puffiness = 0.3,
-				},
-				{
-					AssetId = 120192598736981,
-					AccessoryType = "LeftShoe",
-					IsLayered = true,
-					Order = 1,
-					Puffiness = 0.3,
-				},
-				{
-					AssetId = 78935764733147,
-					AccessoryType = "RightShoe",
-					IsLayered = true,
-					Order = 1,
 					Puffiness = 0.3,
 				},
 				{
@@ -1109187,13 +1109725,13 @@ return {
 					id = 120192598736981,
 					name = "Casual Slip On Dude Shoes (… - Left Shoe Accessory",
 					creator = "SOLE ARCHIVE",
-					kind = "Layered shoe",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 				{
 					id = 78935764733147,
 					name = "Casual Slip On Dude Shoes … - Right Shoe Accessory",
 					creator = "SOLE ARCHIVE",
-					kind = "Layered shoe",
+					kind = "Rigid shoe (catalog mesh welded to the foot)",
 				},
 				{
 					id = 80566106375297,
@@ -1109219,8 +1109757,28 @@ return {
 				RightLeg = { 236, 214, 200 },
 			},
 			face = 0,
-			gear = {},
+			gear = {
+				{
+					assetId = 120192598736981,
+					name = "LeftShoe",
+					target = "LeftFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.2237, 0.8226, 1.4708 },
+					offset = { 0, 0, -0.0265 },
+				},
+				{
+					assetId = 78935764733147,
+					name = "RightShoe",
+					target = "RightFoot",
+					role = "shoe",
+					seat = "sole",
+					fit = { 1.2237, 0.8297, 1.4708 },
+					offset = { 0, 0, -0.0265 },
+				},
+			},
 			hideHands = false,
+			shoeStyle = "low",
 		},
 	},
 }

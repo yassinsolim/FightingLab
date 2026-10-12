@@ -109,3 +109,15 @@ Review sheet of Goran's belly-to-belly slam: grab, lift, impact on the frame, an
 Kael's charging cross at max range: before (top two rows) the back foot lifted into the air; after (bottom two rows) it stays on the floor and drags on its ball.
 
 ![Floating-foot fix](18-foot-fix-before-after.jpg)
+
+## Hair and shoes from behind
+
+Round 3 fix, before (top two rows) vs after (bottom two rows) at the lobby camera: Kael's cornrows now reach the nape, Rhys wears a bun instead of a bare undercut, Goran reads as a clean shave, and the shoes are in proportion.
+
+![Hair and shoes from behind](19-hair-and-shoes-from-behind.jpg)
+
+## Slimmer shoes
+
+Side and front close-ups of every fighter's feet, before (left) vs after (right): Kael's chunky white high-tops became sleek black boxing boots, Lumi's bulky sneakers became slim split-toe boots, and Goran's boots are smaller.
+
+![Slimmer shoes](20-shoes-before-after.jpg)

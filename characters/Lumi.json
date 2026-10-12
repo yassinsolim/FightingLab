@@ -64,20 +64,6 @@
       "Puffiness": 0.1
     },
     {
-      "AssetId": 106421807303280,
-      "AccessoryType": "LeftShoe",
-      "IsLayered": true,
-      "Order": 5,
-      "Puffiness": 0.3
-    },
-    {
-      "AssetId": 77675773538059,
-      "AccessoryType": "RightShoe",
-      "IsLayered": true,
-      "Order": 5,
-      "Puffiness": 0.3
-    },
-    {
       "AssetId": 80566106375297,
       "AccessoryType": "Pants",
       "IsLayered": true,
@@ -158,32 +144,32 @@
       "kind": "Layered arm sleeves"
     },
     {
-      "id": 230848115295914,
-      "name": "Obsidian Prism Tech Sneakers [PBR]",
-      "creator": "Dresscraft",
-      "kind": "Shoes bundle"
-    },
-    {
-      "id": 106421807303280,
-      "name": "Obsidian Prism Tech Sneakers [PBR] - 左靴用アクセサリ",
-      "creator": "Dresscraft",
-      "kind": "Layered shoe"
-    },
-    {
-      "id": 77675773538059,
-      "name": "Obsidian Prism Tech Sneakers [PBR] - 右靴用アクセサリ",
-      "creator": "Dresscraft",
-      "kind": "Layered shoe"
-    },
-    {
       "id": 80566106375297,
       "name": "White Slim fit tracksuit pants",
       "creator": "Blue infinity studios",
       "kind": "Layered slim track pants (tinted)"
+    },
+    {
+      "id": 199239061768347,
+      "name": "Tabi Suede Boots in Black",
+      "creator": "creepertDev",
+      "kind": "Shoes bundle"
+    },
+    {
+      "id": 109971937853096,
+      "name": "Tabi Suede Boots in Black - Left Shoe Accessory",
+      "creator": "creepertDev",
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
+    },
+    {
+      "id": 111746619334138,
+      "name": "Tabi Suede Boots in Black - Right Shoe Accessory",
+      "creator": "creepertDev",
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black/grey camo tech sneakers, open hands.",
+  "look": "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands.",
   "bodyColors": {
     "Head": [
       118,
@@ -217,6 +203,44 @@
     ]
   },
   "face": 0,
-  "gear": [],
-  "hideHands": false
+  "gear": [
+    {
+      "assetId": 109971937853096,
+      "name": "LeftShoe",
+      "target": "LeftFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1909,
+        1.2208,
+        1.5678
+      ],
+      "offset": [
+        0,
+        0,
+        -0.1327
+      ],
+      "hideTarget": true
+    },
+    {
+      "assetId": 111746619334138,
+      "name": "RightShoe",
+      "target": "RightFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1909,
+        1.2208,
+        1.5678
+      ],
+      "offset": [
+        0,
+        0,
+        -0.1327
+      ],
+      "hideTarget": true
+    }
+  ],
+  "hideHands": false,
+  "shoeStyle": "high"
 }

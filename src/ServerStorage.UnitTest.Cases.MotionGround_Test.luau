@@ -226,8 +226,8 @@ end
 
 local function soleGap(rig: any, foot: string): number
 	local tip = rig.tips[foot]
-	local size = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"].tipSize
-	return tip.Position.Y - MotionPlayer.extentY(tip, size) - FLOOR_Y
+	local chain = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"]
+	return (tip * (chain.tipBox or CFrame.identity)).Position.Y - MotionPlayer.extentY(tip, chain.tipSize) - FLOOR_Y
 end
 
 local function topList(map: { [string]: number }, n: number): string
@@ -378,8 +378,8 @@ return function(t)
 				MotionPlayer.apply(rig, pose, FLOOR_Y)
 				for _, foot in FEET do
 					local tip = rig.tips[foot]
-					local size = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"].tipSize
-					gaps[foot][f] = if tip then tip.Position.Y - MotionPlayer.extentY(tip, size) - FLOOR_Y else 0
+					local chain = rig.chains[if foot == "LeftFoot" then "LeftLeg" else "RightLeg"]
+					gaps[foot][f] = if tip then (tip * (chain.tipBox or CFrame.identity)).Position.Y - MotionPlayer.extentY(tip, chain.tipSize) - FLOOR_Y else 0
 					contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
 				end
 			end

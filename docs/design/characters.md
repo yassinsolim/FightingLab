@@ -1,5 +1,116 @@
 # Characters (OV6) — handoff
 
+## Round 3 (user feedback): slimmer shoes, no more bald backs of heads
+
+The user played Overhaul 6 and reported (1) "a lot of the characters' shoes are too big" (Kael's high-tops read as clown
+shoes, Lumi's sneakers as moon boots, Goran's boots heavy) and (2) "this guy is bald" (Kael from behind at the lobby
+camera: the cornrows stopped at the crown). Both are fixed; Rhys had the same bald-from-behind problem (undercut) and is
+fixed too. Bodies, scales, heads, RootHeights and leg lengths are unchanged (statures 5.50-6.75, heads tall 6.99-7.24
+exactly as shipped).
+
+**Why rigid shoes.** The OV6 shoes were layered (WrapLayer) accessories. On these realistic bodies a layered shoe wraps
+the body's foot cage and renders 1.5-3x the bare foot width; its handle Size/Puffiness does not change the render and
+the server cannot measure it. Measured as rendered (chroma silhouettes), they also sank 0.04-0.26 studs below the soles.
+Round 3 wears the catalog shoe mesh as a rigid part welded to the foot (`gear` with `role = "shoe"`, `seat = "sole"`),
+sized exactly and seated on the foot's sole, so the server measures it and the tests bound it.
+
+**Sole proxy (ground box).** MotionPlayer's ground solver plants, tips onto the ball and lays down the foot part's box.
+A real-size shoe is longer than these bodies' small bare feet, so its toe or heel sank whenever the foot pitched
+(knockdowns, getups, rolls: Lumi 0.13, Kael 0.06 studs; Lumi's rear foot on its ball 0.28 in a live fight). Where the
+bare foot is hidden under its shoe (Kael, Goran, Lumi) `CharacterFactory.build` now makes the hidden foot part the
+shoe's ground box: it takes the shoe's length and width and moves under it, keeping its height, bottom face and ankle
+joint (RootHeight and leg length identical), with joints, welds, attachments and the Humanoid's OriginalSize /
+OriginalPosition values re-expressed so nothing visible moves and Humanoid rescaling cannot undo it (attributes
+`FightingLabSoleProxy`, `FightingLabBareFootSize`). Fight templates only; lobby avatars are unchanged.
+
+| Fighter | Shoe before -> after | Length / stature | Width / bare foot | Height / stature | Hair | RootHeight |
+|---|---|---|---|---|---|---|
+| Kael | layered Dresscraft "Black Street Fit Sneakers" (rendered as huge black/white high-tops) -> rigid **High Cut Sneakers Black** (The 67 UGC), bare foot hidden | 0.272 -> **0.155** | 2.34-2.64 -> **1.14-1.15** | 0.21 -> **0.101** | Cornrows 17750359523 refit (Scale 1.02/1.15/1.10, Position y -0.04): braids reach the nape. Scalp coverage 61% -> **100%** | 4.113 -> 4.113 |
+| Sierra | barefoot (unchanged) | - | - | - | Doll High Ponytail (unchanged), 100% | 4.059 -> 4.059 |
+| Goran | layered Light Brown Combat Boots -> same boots **rigid**, foot hidden | 0.24 -> **0.169** | 1.56 -> **1.18** | 0.15 -> **0.092** | shaved by design: no hair item at all (reads as a clean shave) | 4.095 -> 4.095 |
+| Lumi | layered Dresscraft "Obsidian Prism Tech Sneakers" (moon boots) -> rigid **Tabi Suede Boots in Black** (creepertDev, split-toe martial-arts boots), foot hidden, cuffs tucked | 0.22-0.23 -> **0.152** | 2.64-3.05 -> **1.19** | 0.22 -> **0.115** | curly taper (unchanged), 100% | 4.111 -> 4.111 |
+| Rhys | barefoot (unchanged) | - | - | - | Brown Hair Undercut Ponytail (bare back/sides) -> **Brown Man Bun - Millennial** 103417751582989 (Looe UGC, Scale 1.0/1.25/1.04, Position y +0.02). 26% -> **100%** | 4.100 -> 4.100 |
+| Nia | layered Casual Slip On Dude Shoes -> same slip-ons **rigid**, foot visible (ankle shows) | 0.133-0.136 -> **0.155** | 1.60-1.64 -> **1.22** | top 0.46-0.47 studs above the sole (ankle bone 0.38-0.40) -> **0.385** (at the ankle bone) | black bob (unchanged), 100% | 3.933 -> 3.933 |
+
+Before = OV6 shipped layered shoes as rendered (chroma silhouettes on the fighter); after = exact rigid boxes. Every shoe
+is at most as wide as the lower leg it sits on, and its sole is on the foot's sole (0.00). Scalp coverage = share of 69
+rays from behind, three-quarter behind, the sides, the top and the front hairline that hit hair before head skin.
+
+Ground contact, mesh-accurate (precise-collision hull of each shoe), studs below the floor or below the foot box the
+solver rests on it; negative = sinks:
+
+- Motion sweep (stance, close stance, walk, back walk, crouch, dash, backdash, both sidesteps, hits, stagger, falls into
+  stand/back-roll/side-roll getups, KO face up/down), without -> with the sole proxy: Kael -0.060 -> **-0.012**,
+  Goran -0.022 -> **-0.005**, Lumi -0.125 -> **-0.020**; Nia (visible foot, no proxy) **-0.118** in knockdowns and rolls,
+  +0.001 standing/walking.
+- Live practice fights (Hard CPU, about 45 s each, every frame): Kael worst -0.040 (crouch, 4 frames, the solver's own
+  foot box was at -0.040), Goran -0.038 (2 frames), Lumi -0.036 (2 frames); knockdown/getup frames >= -0.024; planted
+  soles median -0.002..+0.001. Nia -0.148 (3 frames in a walk), -0.099 (4 frames), -0.086 (1 frame) (visible foot, see below).
+- MotionGround_Test (motioncore) passes unchanged with the proxies (worst lying gap 0.030).
+
+Owner files (exported to `OV6\handoff\characters-src\`, UTF-8/LF/no BOM):
+
+| File | Change |
+|---|---|
+| `ServerStorage.FightingLab.CharacterFactory.luau` | Rigid gear shoes: `GearSpec.seat` (`"sole"`: bottom on the target's bottom face) and `role` (attribute `FightingLabRole`); `Spec.shoeStyle` (`high`/`low`/`barefoot`). Gear handles drop Attachments/Constraints/WrapLayer/WrapTarget; skinned catalog meshes are wrapped in a holder Model (`<name>Rigid`) so they render as welded instead of skinning onto the rig. Gear that fails to load is skipped and listed in `MissingAccessories`. NEW `fitSoleProxies` (fight templates): hidden shod feet become the shoe's ground box (see above); visible shod feet publish `FightingLabShoeGroundSize` / `FightingLabShoeGroundCenter` (foot space). |
+| `ServerStorage.FightingLab.CharacterSpecs.luau` | Regenerated from `OV6\handoff\characters\*.json` (`json_to_luau.py`; verified byte-identical to a fresh regeneration). |
+| `ServerStorage.UnitTest.Cases.CharacterLook_Test.luau` | NEW per fighter "hair covers the whole scalp" (69 precise-collision rays; >= 95%; Goran: no hair item at all); NEW "shoes are sized like real shoes as worn" (length 0.15-0.17 x stature, width <= 1.25 x bare foot and <= lower leg, low shoes <= ankle bone + 0.02, high-tops <= 0.125 x stature, sole within 0.03 of the foot sole; layered shoes only via measured renders); NEW per shod fighter "shoes rest on the floor through knockdowns, falls, getups and rolls" (real MotionPlayer, shoe hull vs floor/foot box: proxied feet >= -0.03, visible foot >= -0.13). Blocklist adds the film-character costume boots and the brand-look skate high-tops met in the shoe search. |
+| `ServerScriptService.FightingLabCharacterBoot.luau` | Unchanged (byte-identical to the shipped build). |
+
+Specs: Kael (cornrows refit, rigid high-tops, `look`), Goran (rigid boots), Lumi (rigid tabi boots, `look`), Rhys (man
+bun, `look`), Nia (rigid slip-ons), all six `shoeStyle`. Credits: still 81 unique items; added High Cut Sneakers Black
+(bundle 203322574255359 + L 70716256524989 / R 129737407945021, The 67 UGC), Tabi Suede Boots in Black (bundle
+199239061768347 + L 109971937853096 / R 111746619334138, creepertDev), Brown Man Bun - Millennial (103417751582989,
+Looe UGC); removed Black Street Fit Sneakers [PBR] (141883318340139, 128212268343103, 110054253690142, Dresscraft),
+Obsidian Prism Tech Sneakers [PBR] (230848115295914, 106421807303280, 77675773538059, Dresscraft), Brown Hair Undercut
+Ponytail (14063983879, LimaMosca); Goran's and Nia's shoe credits change kind to "Rigid shoe".
+
+Tests (my Studio, Play, Server): `[SUMMARY] 370 run, 370 passed, 0 failed` (shipped 359 + 11 new; MotionGround_Test
+green). The final CharacterLook_Test on the OV6 shipped specs: `17 run, 14 passed, 3 failed` — Kael scalp 61%, Rhys
+26%, 38 shoe problems (e.g. "Kael Left layered 128212268343103 is 0.272 x stature long", "2.34 x the bare foot wide",
+"wider than the lower leg (0.77 vs 0.43)", "high-top is 0.209 x stature tall", "sole is -0.130 off the foot's sole").
+The ground tests fail on templates without the sole proxy ("hidden foot is its shoe's ground box"). Templates rebuild
+with `MissingAccessories` = "" for all six.
+
+Evidence (`OV6\handoff\characters-shots\round3\`):
+
+- `lobby-back-before-vs-after.jpg`: the user's lobby camera (behind, and three-quarter behind) on the Training Bay CPU
+  pad, all six, real SelectFighter -> AvatarService path. Backs of heads covered (Kael braids to the nape, Rhys bun),
+  Goran clean-shaven, shoes in proportion.
+- `heads-from-behind-before-vs-after.jpg`: same cameras, studio light, straight and three-quarter behind.
+- `feet-side-front-before-vs-after.jpg`: side + front close-ups, all six.
+- `fightcam-before-vs-after.jpg`: real practice fights (Kael vs Goran, Lumi vs Nia) on the fight camera.
+- `fighter-select-before-vs-after.jpg`: the Fighter Kiosk select close-up, all six.
+- `getup-knockdown-feet-after.jpg` and `getup-feet-groundbox-vs-barefootbox.jpg`: floor-level close-ups of KO, getup
+  and roll poses with the sole proxy, and the same poses with the bare-foot box.
+
+Known issues (round 3):
+
+- Nia's foot stays visible above her low slip-ons (hiding it leaves a floating ankle stump), so her foot keeps the bare
+  box: in knockdowns, rolls and a few walk frames the slip-on's heel or toe dips up to 0.12-0.15 studs into the floor
+  (standing and walking planted: +0.001). Fix needs the ground solver to read the published shoe box (REQUEST below).
+- Rigid shoes do not flex at the ankle (high-top shafts rotate with the foot). Goran's thick shins show inside the open
+  V of the boot lacing (a skin wedge in front close-ups and rolls; not visible at the fight or lobby camera).
+- A pitched foot can show its shoe up to about 0.07 studs above the floor (the solver rests the box corner, the real
+  sole is rounded).
+- Kael's cornrows are the same item stretched 15% (Y) to reach the nape; the braids are a little longer, not denser.
+- Sierra's barefoot doll feet stand on their toes (pre-existing body mesh, unchanged).
+
+REQUESTs (round 3):
+
+- integrator: apply `CharacterFactory`, `CharacterSpecs` and `CharacterLook_Test` from `characters-src` (Boot unchanged).
+- integrator (`RF.Credits`, `tools\gen_credits.py`): regenerate from `OV6\handoff\characters` (81 items; adds/removals
+  listed above; Dresscraft's Japanese item names leave the credits).
+- combat (`RF.Roster`), `look` strings (the JSON `look` fields carry the same text):
+  - Kael: "... medium-olive realistic face and tight cornrows down to the nape; ... sleek black leather high-top boxing boots."
+  - Lumi: "... mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands."
+  - Rhys: "... light realistic face and dark-brown hair tied back in a bun; deep-indigo karate gi ..."
+- motioncore (`ReplicatedStorage.FightingLab.Client.MotionPlayer`), optional, fixes Nia's knockdown dips: in
+  `restChain`, when the foot part has `FightingLabShoeGroundSize` / `FightingLabShoeGroundCenter` (Vector3, foot space;
+  same height and bottom as the foot box), use them as `tipSize` and `tipOffset = C1.Position - center`, and evaluate
+  the foot box from `tipWorld * CFrame.new(center)` (lowest point, `soleGap`). `ankleHeight` and RootHeight do not
+  change. Hidden-foot fighters already carry the box in the foot part itself.
+
 ## Round 2 (head size): every fighter is now 7.0-7.2 heads tall
 
 Head scale only (Kael .83 -> .70, Goran .92 -> .81, Rhys .85 -> .72, Nia .84 -> .75; Sierra and Lumi unchanged). Height,

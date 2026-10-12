@@ -37,7 +37,17 @@
   "accessories": [
     {
       "AssetId": 17750359523,
-      "AccessoryType": "Hair"
+      "AccessoryType": "Hair",
+      "Scale": [
+        1.02,
+        1.15,
+        1.1
+      ],
+      "Position": [
+        0,
+        -0.04,
+        0
+      ]
     },
     {
       "AssetId": 108264643648437,
@@ -69,20 +79,6 @@
         105,
         48
       ]
-    },
-    {
-      "AssetId": 128212268343103,
-      "AccessoryType": "LeftShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
-    },
-    {
-      "AssetId": 110054253690142,
-      "AccessoryType": "RightShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
     }
   ],
   "sourceAssets": [
@@ -159,27 +155,64 @@
       "kind": "Layered boxing gloves (tinted)"
     },
     {
-      "id": 141883318340139,
-      "name": "Black Street Fit Sneakers [PBR]",
-      "creator": "Dresscraft",
+      "id": 203322574255359,
+      "name": "High Cut Sneakers Black",
+      "creator": "The 67 UGC",
       "kind": "Shoes bundle"
     },
     {
-      "id": 128212268343103,
-      "name": "Black Street Fit Sneakers [PBR] - 左靴用アクセサリ",
-      "creator": "Dresscraft",
-      "kind": "Layered shoe"
+      "id": 70716256524989,
+      "name": "High Cut Sneakers Black - Left Shoe Accessory",
+      "creator": "The 67 UGC",
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     },
     {
-      "id": 110054253690142,
-      "name": "Black Street Fit Sneakers [PBR] - 右靴用アクセサリ",
-      "creator": "Dresscraft",
-      "kind": "Layered shoe"
+      "id": 129737407945021,
+      "name": "High Cut Sneakers Black - Right Shoe Accessory",
+      "creator": "The 67 UGC",
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     }
   ],
   "mood": 14618207727,
-  "gear": [],
-  "look": "Adult street boxer with medium-olive realistic face and tight cornrows; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, black-and-white chunky high-top sneakers.",
+  "gear": [
+    {
+      "assetId": 70716256524989,
+      "name": "LeftShoe",
+      "target": "LeftFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1433,
+        1.9108,
+        1.2767
+      ],
+      "offset": [
+        0,
+        0,
+        -0.012
+      ],
+      "hideTarget": true
+    },
+    {
+      "assetId": 129737407945021,
+      "name": "RightShoe",
+      "target": "RightFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1503,
+        1.8692,
+        1.2785
+      ],
+      "offset": [
+        0,
+        0,
+        -0.012
+      ],
+      "hideTarget": true
+    }
+  ],
+  "look": "Adult street boxer with medium-olive realistic face and tight cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange vintage leather boxing gloves, sleek black leather high-top boxing boots.",
   "bodyColors": {
     "Head": [
       255,
@@ -213,5 +246,6 @@
     ]
   },
   "face": 0,
-  "hideHands": true
+  "hideHands": true,
+  "shoeStyle": "high"
 }

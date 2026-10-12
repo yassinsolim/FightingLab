@@ -52,20 +52,6 @@
       "Puffiness": 0.3
     },
     {
-      "AssetId": 120192598736981,
-      "AccessoryType": "LeftShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
-    },
-    {
-      "AssetId": 78935764733147,
-      "AccessoryType": "RightShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
-    },
-    {
       "AssetId": 80566106375297,
       "AccessoryType": "Pants",
       "IsLayered": true,
@@ -158,13 +144,13 @@
       "id": 120192598736981,
       "name": "Casual Slip On Dude Shoes (… - Left Shoe Accessory",
       "creator": "SOLE ARCHIVE",
-      "kind": "Layered shoe"
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     },
     {
       "id": 78935764733147,
       "name": "Casual Slip On Dude Shoes … - Right Shoe Accessory",
       "creator": "SOLE ARCHIVE",
-      "kind": "Layered shoe"
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     },
     {
       "id": 80566106375297,
@@ -214,6 +200,42 @@
     ]
   },
   "face": 0,
-  "gear": [],
-  "hideHands": false
+  "gear": [
+    {
+      "assetId": 120192598736981,
+      "name": "LeftShoe",
+      "target": "LeftFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.2237,
+        0.8226,
+        1.4708
+      ],
+      "offset": [
+        0,
+        0,
+        -0.0265
+      ]
+    },
+    {
+      "assetId": 78935764733147,
+      "name": "RightShoe",
+      "target": "RightFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.2237,
+        0.8297,
+        1.4708
+      ],
+      "offset": [
+        0,
+        0,
+        -0.0265
+      ]
+    }
+  ],
+  "hideHands": false,
+  "shoeStyle": "low"
 }

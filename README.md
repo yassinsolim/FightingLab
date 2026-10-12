@@ -125,7 +125,17 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 359 run, 359 passed, 0 failed`
+  Final result: `[SUMMARY] 370 run, 370 passed, 0 failed`
+
+## Update: shoes and hair (2026-10-12)
+
+- Every fighter's shoes are sized like real shoes as worn (length, width and height checked against the fighter's
+  height and bare foot by `CharacterLook_Test`): Kael wears sleek black high-top boxing boots, Lumi slim split-toe
+  boots, Goran smaller combat boots, and Nia's slip-ons are now rigid and sized to her feet.
+- Hair covers the whole scalp from every angle: Kael's cornrows reach the nape and Rhys wears a bun (Goran keeps his
+  shaved head). A ray test checks the back, sides and top of every head.
+- Shoes rest on the floor through knockdowns, rolls and getups: the ground solver now rests a visible foot on its
+  shoe's ground box instead of the smaller bare foot inside it.
 
 ## Overhaul 6 changes (2026-10-12)
 - Fighting that feels like a modern 3D fighter: deliberate walking, committed dashes and backdashes, one sidestep

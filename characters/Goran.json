@@ -71,20 +71,6 @@
       "Puffiness": 0.1
     },
     {
-      "AssetId": 140700617127197,
-      "AccessoryType": "LeftShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
-    },
-    {
-      "AssetId": 100014109264125,
-      "AccessoryType": "RightShoe",
-      "IsLayered": true,
-      "Order": 1,
-      "Puffiness": 0.3
-    },
-    {
       "AssetId": 114155090849709,
       "AccessoryType": "Shorts",
       "IsLayered": true,
@@ -163,13 +149,13 @@
       "id": 140700617127197,
       "name": "Light Brown Combat Boots - Left Shoe Accessory",
       "creator": "FATAL ARCHIVE",
-      "kind": "Layered shoe"
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     },
     {
       "id": 100014109264125,
       "name": "Light Brown Combat Boots - Right Shoe Accessory",
       "creator": "FATAL ARCHIVE",
-      "kind": "Layered shoe"
+      "kind": "Rigid shoe (catalog mesh welded to the foot)"
     },
     {
       "id": 18883135935,
@@ -212,6 +198,42 @@
         0.06,
         0
       ]
+    },
+    {
+      "assetId": 140700617127197,
+      "name": "LeftShoe",
+      "target": "LeftFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1842,
+        1.4692,
+        0.9788
+      ],
+      "offset": [
+        0,
+        0,
+        0.05
+      ],
+      "hideTarget": true
+    },
+    {
+      "assetId": 100014109264125,
+      "name": "RightShoe",
+      "target": "RightFoot",
+      "role": "shoe",
+      "seat": "sole",
+      "fit": [
+        1.1842,
+        1.1397,
+        0.9788
+      ],
+      "offset": [
+        0,
+        0,
+        0.05
+      ],
+      "hideTarget": true
     }
   ],
   "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts, black leather lifting belt, black tactical knee pads, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
@@ -248,5 +270,6 @@
     ]
   },
   "face": 0,
-  "hideHands": false
+  "hideHands": false,
+  "shoeStyle": "high"
 }

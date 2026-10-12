@@ -43,17 +43,17 @@
       "Puffiness": 0.2
     },
     {
-      "AssetId": 14063983879,
+      "AssetId": 103417751582989,
       "AccessoryType": "Hair",
+      "Scale": [
+        1.0,
+        1.25,
+        1.04
+      ],
       "Position": [
         0,
-        0.06,
-        -0.06
-      ],
-      "Scale": [
-        0.86,
-        0.8,
-        0.8
+        0.02,
+        0
       ]
     },
     {
@@ -132,12 +132,6 @@
       "kind": "Layered training tee"
     },
     {
-      "id": 14063983879,
-      "name": "Brown Hair Undercut Ponytail",
-      "creator": "LimaMosca",
-      "kind": "Hair"
-    },
-    {
       "id": 16362208023,
       "name": "White/Black Belt Judo Kungfu Outfit",
       "creator": "Dubit",
@@ -148,10 +142,16 @@
       "name": "Hand Wraps",
       "creator": "Maximum_ADHD",
       "kind": "Layered hand wraps"
+    },
+    {
+      "id": 103417751582989,
+      "name": "Brown Man Bun - Millennial",
+      "creator": "Looe UGC",
+      "kind": "Hair"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult karate counter-striker with light realistic face and tied-back dark-brown undercut; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
+  "look": "Adult karate counter-striker with light realistic face and dark-brown hair tied back in a bun; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
   "bodyColors": {
     "Head": [
       255,
@@ -186,5 +186,6 @@
   },
   "face": 0,
   "gear": [],
-  "hideHands": false
+  "hideHands": false,
+  "shoeStyle": "barefoot"
 }
