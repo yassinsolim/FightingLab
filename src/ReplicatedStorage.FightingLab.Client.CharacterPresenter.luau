@@ -186,6 +186,7 @@ local function release(record: LiveRig)
 	record.highlight.OutlineTransparency = 1
 	record.model.Name = "Pool_" .. record.characterId .. "_" .. record.serial
 	for _, motor in record.rig.motors do motor.Transform = CFrame.identity end
+	MotionPlayer.resetRig(record.rig)
 	record.model:PivotTo(parkFrame(record.serial))
 	if M.ParkHidden then setLocalVisible(record.model, false) end
 end
@@ -301,18 +302,6 @@ function M.getLimbPart(i: number, limb: string): BasePart?
 	return part
 end
 function M.setFlash(i: number, frames: number) local rig = localRigs[i]; if rig then rig.flash = math.max(rig.flash, frames) end end
-
-local function rootCFrame(pos: Vector3, facing: Vector3, rootHeight: number, offset: Vector3, base: Vector3): CFrame
-	if facing.Magnitude < 0.01 then error("CharacterPresenter received zero facing vector") end
-	local floorPos = Vector3.new(base.X + pos.X, base.Y, base.Z + pos.Z)
-	local airborne = math.max(0, pos.Y)
-	local forward = facing.Unit
-	-- Library +X is the fighter's right (forward x up), the same axis MotionPlayer.apply uses for limb targets.
-	local right = forward:Cross(Vector3.yAxis)
-	if right.Magnitude < 0.01 then right = Vector3.xAxis else right = right.Unit end
-	local center = floorPos + Vector3.new(0, rootHeight + airborne, 0) + right * offset.X + Vector3.yAxis * offset.Y + forward * offset.Z
-	return CFrame.lookAt(center, center + forward)
-end
 
 local function idFromFrame(f: RenderFrame, slot: number): string?
 	local view = f.fighters and f.fighters[slot]
@@ -459,31 +448,23 @@ function M.update(f: RenderFrame)
 			view.aimHeights = rig.aimHeights
 		end
 	end
+	local entries: { MotionPlayer.PresentEntry? } = {}
 	for i = 1, 2 do
 		local rig = localRigs[i]
 		local view = f.fighters[i]
 		framePoses[i] = nil
-		if rig and view then
-			local pose = MotionPlayer.sample(c.config, view, f, i)
-			rig.root.CFrame = rootCFrame(view.pos, view.facing, rig.rig.rootHeight, pose.rootOffset, origin)
-			MotionPlayer.apply(rig.rig, pose, origin.Y)
-			framePoses[i] = pose
+		if rig and view then entries[i] = { rig = rig.rig, root = rig.root, view = view, slot = i } end
+	end
+	-- Sample, place and pose both fighters, then the throw grips (gripping hands/feet reach the partner's real body
+	-- point once both bodies are posed; the attacker's grips first).
+	local poses = MotionPlayer.presentFrame(entries, f, origin, c.config)
+	for i = 1, 2 do
+		local rig = localRigs[i]
+		local view = f.fighters[i]
+		framePoses[i] = poses[i]
+		if rig and view and poses[i] then
 			if Face then Face.updateFromView(rig.model, view, if typeof(f.dt) == "number" then f.dt else 1 / 60, { phase = f.phase, winner = f.winner, slot = i }) end
 			if rig.flash > 0 then rig.flash -= 1; rig.highlight.Enabled = true; rig.highlight.FillTransparency = math.clamp(1 - (rig.flash / 6) * 0.55, 0.45, 0.85) else rig.highlight.Enabled = rig.mirrorOutline; rig.highlight.FillTransparency = 1 end
-		end
-	end
-	-- Throw grips: once both bodies are posed, gripping hands/feet reach the partner's real body point (the attacker's
-	-- grips first, so a defender's grip on the attacker follows the re-solved arm).
-	local rigA, rigB = localRigs[1], localRigs[2]
-	if rigA and rigB and framePoses[1] and framePoses[2] then
-		for pass = 1, 2 do
-			for i = 1, 2 do
-				local view = f.fighters[i]
-				local throw = view and view.throw
-				if type(throw) == "table" and (throw.role ~= "Defender") == (pass == 1) then
-					MotionPlayer.applyGrips((localRigs[i] :: LiveRig).rig, framePoses[i] :: MotionPlayer.Pose, view, f, i, (localRigs[3 - i] :: LiveRig).rig, origin.Y)
-				end
-			end
 		end
 	end
 	-- Rolling cost of posing both fighters (sample + IK + ground solver), for the performance budget.

@@ -209,11 +209,20 @@ return function(t)
 		t.expect.throws(function() CharacterPresenter.posePreview(clone, "Nia", "Pose" :: any, 0) end, "invalid pose errors")
 		clone:Destroy()
 	end)
-	t.test("hitstop freezes previous pose", function()
+	t.test("hitstop holds the struck frame: the animation clock stops and the contact pose stays on screen", function()
 		MotionPlayer.reset(1)
-		local poseA = MotionPlayer.sample(Config, view("Kael", "Jab", activeFrame("Kael", "Jab"), "Active"), { now = 0.1, hitstop = 0 }, 1)
-		local poseB = MotionPlayer.sample(Config, view("Kael", "Jab", activeFrame("Kael", "Jab") + 2, "Active"), { now = 0.2, hitstop = 4 }, 1)
-		t.expect.equal(poseA, poseB)
+		local f = activeFrame("Kael", "Jab")
+		MotionPlayer.sample(Config, view("Kael", "Jab", f - 1, "Startup"), { now = 0.1, dt = 1 / 60, hitstop = 0 }, 1)
+		local contact = MotionPlayer.sample(Config, view("Kael", "Jab", f, "Active"), { now = 0.1 + 1 / 60, dt = 1 / 60, hitstop = 0 }, 1)
+		-- The sim holds the struck frame through the freeze (the hitstop counts down).
+		local held = MotionPlayer.sample(Config, view("Kael", "Jab", f, "Active"), { now = 0.1 + 2 / 60, dt = 1 / 60, hitstop = 4 }, 1)
+		local held2 = MotionPlayer.sample(Config, view("Kael", "Jab", f, "Active"), { now = 0.1 + 3 / 60, dt = 1 / 60, hitstop = 3 }, 1)
+		t.expect.equal(held.clock, contact.clock, "the animation clock stops in hitstop")
+		t.expect.equal(held2.clock, contact.clock, "and stays stopped")
+		for _, limb in { "LeftHand", "RightHand", "LeftFoot", "RightFoot" } do
+			local d = (target(held2, limb).pos - target(contact, limb).pos).Magnitude
+			t.expect.truthy(d < 1e-3, string.format("%s shows the contact frame through the freeze (%.4f studs off)", limb, d))
+		end
 	end)
 
 	t.test("idle sampling stays finite and within the performance budget", function()
@@ -317,6 +326,7 @@ return function(t)
 		if not ClipLibrary.get("SideRoll") then return end
 		local L, G, R = Config.LandingFrames or 34, Config.GetupFrames or 26, Config.RollFrames or 10
 		-- Chest direction in heading space (lying body: rootRot's look vector); rollDir +1 travels to the fighter's left (-X).
+		-- The getup crossfades in over up to GetupCrossfadeMax (0.1 s), so the turn is judged on the roll's third frame.
 		local function chest(pose: any): Vector3 return (pose.rootRot or CFrame.identity).LookVector end
 		for _, face in { "FaceUp", "FaceDown" } do
 			for _, dir in { 1, -1 } do
@@ -334,8 +344,8 @@ return function(t)
 						local c = chest(pose)
 						local toward = -c.X * dir
 						if not firstChestY then firstChestY = c.Y end
-						if f <= L + 6 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
-						if f == L + 2 then towardAtTurn = toward end
+						if f <= L + 8 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
+						if f == L + 3 then towardAtTurn = toward end
 					end
 				end
 				local tag = string.format("%s rollDir %+d", face, dir)

@@ -21,6 +21,7 @@ local Kicks = require(MotionFolder.Kicks)
 local MoveAnimOverrides = require(MotionFolder.MoveAnimOverrides)
 local ClipLibrary = require(MotionFolder.ClipLibrary)
 local ClipPlayer = require(MotionFolder.ClipPlayer)
+local BodyShape = require(MotionFolder.BodyShape)
 
 export type FighterView = {
 	pos: Vector3, facing: Vector3, state: string, move: string?, moveFrame: number, walkPhase: number,
@@ -39,6 +40,13 @@ export type Pose = {
 	-- clock: the slot clock (seconds) the pose was sampled at (paces the foot-lock release fade); stepScale: applied ÷
 	-- designed sim advance of a step-in so far (MotionPlayer.sample; < 1 when keepApart capped it).
 	clock: number?, stepScale: number?,
+	-- real: the slot's real-time clock (advances in hitstop too; paces transitions that must not freeze).
+	real: number?,
+	-- selfClear: the arms may be pushed out of the own body (standing guard, movement, block and hit reactions; not
+	-- attacks, throws, falls or round-end poses — see MotionPlayer.clearArms).
+	selfClear: boolean?,
+	-- cut: the pose starts a new round (no continuity with the previous frame: IK bend directions start over).
+	cut: boolean?,
 }
 export type RigInfo = {
 	motors: { [string]: Motor6D }, parts: { [string]: BasePart }, rootHeight: number, legLength: number, armLength: number,
@@ -52,11 +60,28 @@ export type RigInfo = {
 	footHang: { [string]: number }?,
 	-- Clock of the pose being applied (MotionPlayer.apply; nil for poses without one: no lock release fade).
 	lockClock: number?,
+	-- Contact aim residual (studs) per striking limb on the last startup/active frame, added in the recovery.
+	aimResidual: { [string]: { r: number, clock: number? } }?,
+	-- Strike contact retraction (fraction of the reach) per limb on the latest frame (MotionPlayer.applyContact).
+	contactHold: { [string]: { s: number, clock: number? } }?,
+	-- Leg treatment of a lying body (0 standing .. 1 lying) on the latest frame and its real time (ramped).
+	lyingLegs: { v: number, t: number }?,
+	-- Self-clearance push of each hand (heading space) on the latest frame (MotionPlayer.clearArms; `t` = its time).
+	selfPush: { [string]: any }?,
+	-- Body shapes for contact checks (Motion.BodyShape.of caches them here).
+	bodyShape: any?,
+	-- Optional per-frame solver diagnostics (tools: set to a table).
+	debug: { [string]: any }?,
 }
 export type ResolvedMove = { keyframes: { Keyframe }, move: any, params: Library.AnimParams, timing: { startup: number, active: number, recovery: number }, source: string, clip: ClipLibrary.Clip? }
 
 local MotionPlayer = {}
 MotionPlayer.GroundClearance = 0.03
+-- Fighter states whose arms the self clearance may push out of the own body (MotionPlayer.clearArms).
+local SELF_CLEAR_STATES = {
+	Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true, CrouchBlock = true, Block = true,
+	Blockstun = true, Dash = true, Backdash = true, Sidestep = true, Step = true, Hitstun = true, Stagger = true,
+}
 
 type SlotState = {
 	pose: Pose?, key: string?, clock: number, lastNow: number?, keyStarted: number,
@@ -64,12 +89,26 @@ type SlotState = {
 	travel: number, lastPos: Vector3?, roundOverSince: number?,
 	-- Step-in tracking of the current attack (sim advance designed vs applied since its first frame).
 	stepMove: string?, stepFrame: number?, stepPos: Vector3?, stepApplied: number?, stepDesigned: number?,
+	-- real: wall time (runs during hitstop, unlike clock); fadeReal: the current crossfade runs on real time (an impact
+	-- that starts during the hitstop freeze); hitStamp/hitSeen: the last hit seen; glide: world offset (studs, XZ) that
+	-- holds the body where it was when the sim pushed it on a hit, released over glideDur of animation time.
+	real: number, fadeReal: boolean?, fadeLinear: boolean?, hitStamp: string?, hitSeen: boolean?, glide: Vector3?, glideStart: number?, glideDur: number?,
 }
 local slots: { [number]: SlotState } = {}
 local FINAL_HIT_HOLD = 1.1
 -- A sim position jump larger than this in one frame is a round reset (fighters back on their marks), never movement
 -- (dashes travel ~0.2 studs per frame, throw pushes 0.6): the pose cuts instead of crossfading.
 MotionPlayer.TeleportDistance = 3
+-- Impact entries (a reaction, knockdown, launch, KO or throw that starts on a hit): the crossfade from whatever the
+-- fighter was doing runs on real time, so it plays during the hitstop freeze; its length follows how far the pose has to
+-- travel (ImpactDegPerFrame of joint turn per frame), between ImpactFadeMin and ImpactFadeMax seconds.
+MotionPlayer.ImpactFadeMin = 4 / 60
+MotionPlayer.ImpactFadeMax = 12 / 60
+MotionPlayer.ImpactDegPerFrame = 8
+-- Other crossfades stretch the same way (never shorter than the state asks for, at most CrossfadeMax).
+MotionPlayer.CrossfadeDegPerFrame = 9
+MotionPlayer.CrossfadeMax = 0.3
+MotionPlayer.GetupCrossfadeMax = 0.1
 local resolvedCache: { [string]: ResolvedMove } = {}
 local LEGACY_TO_ROSTER: { [string]: string } = { Jab = "Jab", Heavy = "Cross", Kick = "Roundhouse", LeadKick = "FrontKick", DuckJab = "DuckJab", BodyPunch = "BodyBlow", ShinTap = "ShinKick", Sweep = "LowSweep", Rise = "RisingUppercut" }
 local DEFAULT_IDS = { "Kael", "Sierra" }
@@ -79,7 +118,7 @@ MotionPlayer.LEG_PER_ROOT = LEG_PER_ROOT
 
 local function finite(n: number): boolean return n == n and math.abs(n) < math.huge end
 local function finiteVector(v: Vector3): boolean return finite(v.X) and finite(v.Y) and finite(v.Z) end
-local function copyEffector(effector: Effector): Effector return { pos = effector.pos, pole = effector.pole, orient = effector.orient, weight = effector.weight, rot = effector.rot, aimWorldY = effector.aimWorldY, aimWeight = effector.aimWeight, sole = effector.sole } end
+local function copyEffector(effector: Effector): Effector return { pos = effector.pos, pole = effector.pole, orient = effector.orient, weight = effector.weight, rot = effector.rot, aimWorldY = effector.aimWorldY, aimWeight = effector.aimWeight, aimPhase = effector.aimPhase, sole = effector.sole } end
 local function scaleFromRoot(rootHeight: number?): number return math.max(0.75, math.min(1.35, (rootHeight or 3) / 3)) end
 local function characterRootHeight(characterId: string): number return (Roster.get(characterId).stats.height or 6) * 0.5 end
 local function libVector(v: Vector3): Vector3 return Vector3.new(v.X, v.Y, -v.Z) end
@@ -89,7 +128,7 @@ local function smoothstep(x: number): number local t = math.clamp(x, 0, 1); retu
 MotionPlayer.scaleFromRoot = scaleFromRoot
 
 local function newSlot(clock: number): SlotState
-	return { pose = nil, key = nil, clock = clock, lastNow = nil, keyStarted = 0, fadeFrom = nil, fadeStart = 0, fadeDur = 0, travel = 0, lastPos = nil, roundOverSince = nil }
+	return { pose = nil, key = nil, clock = clock, lastNow = nil, keyStarted = 0, fadeFrom = nil, fadeStart = 0, fadeDur = 0, travel = 0, lastPos = nil, roundOverSince = nil, real = clock }
 end
 
 local function slotState(slot: number): SlotState
@@ -211,16 +250,34 @@ local function toHeading(pose: Pose, scale: number): Pose
 end
 MotionPlayer.toHeading = toHeading
 
-local function blendEffector(a: Effector, b: Effector, alpha: number): Effector
+-- Arm targets blend around the shoulder (direction slerp, reach lerp): a straight-line blend between a hand behind the
+-- body and one in front swept the hand past the shoulder and whipped the arm 140 degrees in one frame. Legs keep the
+-- straight-line blend (a foot path on an arc around the hip would dip into the floor).
+local SHOULDER_PIVOT = { LeftHand = Vector3.new(-0.5, 1.1, 0), RightHand = Vector3.new(0.5, 1.1, 0) }
+local function blendHandPos(name: string, a: Vector3, b: Vector3, alpha: number): Vector3
+	local pivot = SHOULDER_PIVOT[name]
+	if not pivot then return a:Lerp(b, alpha) end
+	local pa, pb = a - pivot, b - pivot
+	local la, lb = pa.Magnitude, pb.Magnitude
+	if la < 1e-3 or lb < 1e-3 then return a:Lerp(b, alpha) end
+	local ua, ub = pa / la, pb / lb
+	local axis = ua:Cross(ub)
+	local ang = math.acos(math.clamp(ua:Dot(ub), -1, 1))
+	if ang < 1e-3 or axis.Magnitude < 1e-4 then return a:Lerp(b, alpha) end
+	return pivot + CFrame.fromAxisAngle(axis.Unit, ang * alpha):VectorToWorldSpace(ua) * (la + (lb - la) * alpha)
+end
+
+local function blendEffector(a: Effector, b: Effector, alpha: number, name: string?): Effector
 	local rot: CFrame? = nil
 	local ra, rb = a.rot, b.rot
 	if ra and rb then rot = ra:Lerp(rb, alpha) elseif alpha >= 0.5 then rot = rb else rot = ra end
 	return {
-		pos = a.pos:Lerp(b.pos, alpha),
+		pos = if name then blendHandPos(name, a.pos, b.pos, alpha) else a.pos:Lerp(b.pos, alpha),
 		pole = (a.pole or Vector3.yAxis):Lerp(b.pole or a.pole or Vector3.yAxis, alpha),
 		orient = a.orient, weight = (a.weight or 1) + ((b.weight or 1) - (a.weight or 1)) * alpha, rot = rot,
 		aimWorldY = b.aimWorldY or a.aimWorldY,
 		aimWeight = if a.aimWeight or b.aimWeight then (a.aimWeight or 0) + ((b.aimWeight or 0) - (a.aimWeight or 0)) * alpha else nil,
+		aimPhase = b.aimPhase or a.aimPhase,
 		sole = if a.sole and b.sole then a.sole + (b.sole - a.sole) * alpha else nil,
 	}
 end
@@ -232,7 +289,7 @@ local function blendPose(a: Pose, b: Pose, alpha: number): Pose
 	local targets: { [string]: Effector } = {}
 	for name, ea in a.targets do
 		local eb = b.targets[name]
-		targets[name] = if eb then blendEffector(ea, eb, alpha) else copyEffector(ea)
+		targets[name] = if eb then blendEffector(ea, eb, alpha, name) else copyEffector(ea)
 	end
 	for name, eb in b.targets do if not targets[name] then targets[name] = copyEffector(eb) end end
 	local rootRot = (a.rootRot or anglesOf(a.rootRotation)):Lerp(b.rootRot or anglesOf(b.rootRotation), alpha)
@@ -250,7 +307,12 @@ local function blendPose(a: Pose, b: Pose, alpha: number): Pose
 		ground = (a.ground or 0) + ((b.ground or 0) - (a.ground or 0)) * alpha,
 		settle = if a.settle or b.settle then (a.settle or 0) + ((b.settle or 0) - (a.settle or 0)) * alpha else nil,
 		relaxFeet = if a.relaxFeet or b.relaxFeet then (a.relaxFeet or 0) + ((b.relaxFeet or 0) - (a.relaxFeet or 0)) * alpha else nil,
-		stepScale = if a.stepScale or b.stepScale then (a.stepScale or 1) + ((b.stepScale or 1) - (a.stepScale or 1)) * alpha else nil,
+		-- A step-in's cap applies through its fade-in (blending in from an uncapped 1 lifted the stepping foot in place)
+		-- and lets go over a fade-out.
+		stepScale = if a.stepScale and b.stepScale then a.stepScale + (b.stepScale - a.stepScale) * alpha
+			elseif b.stepScale then b.stepScale
+			elseif a.stepScale then a.stepScale + (1 - a.stepScale) * alpha
+			else nil,
 		space = "heading",
 	}
 end
@@ -468,27 +530,11 @@ local AIM_WAIST = Vector3.new(0, 0.3, 0)
 -- and drop to a shorter one. Weight ramps in over the second half of startup, holds through the active frames and
 -- releases over 40% of recovery. Clip tags: limb = "LeftHand"|... overrides the roster limb, aim = false disables,
 -- aimWeight scales it.
-local function aimContact(pose: Pose, clip: ClipLibrary.Clip, resolved: ResolvedMove, frame: number, scale: number, rootHeight: number, targetRootHeight: number?, targetHeights: { [string]: number }?)
-	local tags = clip.tags
-	if tags.aim == false then return end
-	local move = resolved.move
-	local height = move.height
-	if height ~= "High" and height ~= "Mid" and height ~= "Low" then return end
-	local limb = if type(tags.limb) == "string" then tags.limb else LIMB_EFFECTOR[move.limb or ""]
-	local e = limb and pose.targets[limb]
-	if not e then return end
-	local timing = resolved.timing
-	local first = timing.startup + 1
-	local w
-	if frame <= first then
-		w = smoothstep((frame - first * 0.5) / math.max(first * 0.5, 1))
-	elseif frame <= timing.startup + timing.active then
-		w = 1
-	else
-		w = 1 - smoothstep((frame - timing.startup - timing.active) / math.max(timing.recovery * 0.4, 1))
-	end
-	w *= if type(tags.aimWeight) == "number" then tags.aimWeight else 1
-	if w <= 0 then return end
+-- Round 6 (R4 motion QA): through the startup and the active frames the limb is pulled to the target height as
+-- before; in the recovery the correction measured on the last active frame is ADDED to the clip's own motion while it
+-- releases, instead of pinning the limb toward the target height (a high kick whose clip drops the foot to the floor
+-- in four frames used to hang at head height and then land 3 studs in one frame).
+local function aimTargetY(pose: Pose, limb: string, height: string, scale: number, rootHeight: number, targetRootHeight: number?): number
 	local targetY = Library.contactY(height, scale) - pose.rootOffset.Y
 	if targetRootHeight then
 		targetY = Library.contactY(height, scaleFromRoot(targetRootHeight)) + (targetRootHeight - rootHeight) - pose.rootOffset.Y
@@ -509,18 +555,76 @@ local function aimContact(pose: Pose, clip: ClipLibrary.Clip, resolved: Resolved
 		end
 		targetY += ref.Y - posed.Y
 	end
-	e.pos = Vector3.new(e.pos.X, e.pos.Y + (targetY - e.pos.Y) * w, e.pos.Z)
+	return targetY
+end
+
+-- The clip sampled on the move's last active frame (per clip, rig size and target), for the recovery correction.
+local aimEndCache: { [any]: { [string]: number } } = setmetatable({}, { __mode = "k" }) :: any
+local function recoveryCorrection(clip: ClipLibrary.Clip, resolved: ResolvedMove, limb: string, height: string, scale: number, legLength: number, rootHeight: number, targetRootHeight: number?): number
+	local per = aimEndCache[clip]
+	if not per then
+		per = {}
+		aimEndCache[clip] = per
+	end
+	local key = string.format("%s:%s:%.4f:%.4f:%.4f:%.4f", limb, height, scale, legLength, rootHeight, targetRootHeight or -1)
+	local cached = per[key]
+	if cached then return cached end
+	local timing = resolved.timing
+	local t = ClipPlayer.moveTime(clip, timing, timing.startup + timing.active)
+	local endPose = ClipPlayer.sample(clip, t, { mirror = clip.mirror, legLength = legLength, scale = scale })
+	local e = endPose.targets[limb]
+	local c = if e then aimTargetY(endPose, limb, height, scale, rootHeight, targetRootHeight) - e.pos.Y else 0
+	per[key] = c
+	return c
+end
+
+local function aimContact(pose: Pose, clip: ClipLibrary.Clip, resolved: ResolvedMove, frame: number, scale: number, rootHeight: number, targetRootHeight: number?, targetHeights: { [string]: number }?, legLength: number?)
+	local tags = clip.tags
+	if tags.aim == false then return end
+	local move = resolved.move
+	local height = move.height
+	if height ~= "High" and height ~= "Mid" and height ~= "Low" then return end
+	local limb = if type(tags.limb) == "string" then tags.limb else LIMB_EFFECTOR[move.limb or ""]
+	local e = limb and pose.targets[limb]
+	if not e then return end
+	local timing = resolved.timing
+	local first = timing.startup + 1
+	local w
+	local phase
+	if frame <= first then
+		w, phase = smoothstep((frame - first * 0.5) / math.max(first * 0.5, 1)), if frame < first then 1 else 2
+	elseif frame <= timing.startup + timing.active then
+		w, phase = 1, 2
+	else
+		w, phase = 1 - smoothstep((frame - timing.startup - timing.active) / math.max(timing.recovery * 0.4, 1)), 3
+	end
+	w *= if type(tags.aimWeight) == "number" then tags.aimWeight else 1
+	if w <= 0 then return end
+	if phase == 3 and MotionPlayer.AimAdditiveRecovery then
+		-- The correction measured at the end of the active window, released with the same weight.
+		local c = recoveryCorrection(clip, resolved, limb :: string, height, scale, legLength or rootHeight * LEG_PER_ROOT, rootHeight, targetRootHeight)
+		e.pos = Vector3.new(e.pos.X, e.pos.Y + c * w, e.pos.Z)
+	else
+		local targetY = aimTargetY(pose, limb :: string, height, scale, rootHeight, targetRootHeight)
+		e.pos = Vector3.new(e.pos.X, e.pos.Y + (targetY - e.pos.Y) * w, e.pos.Z)
+	end
 	-- The aim weight marks the striking limb either way (the reach net leaves an aimed foot to the IK clamp toward its
 	-- target). Exact layer: with the opponent's measured standing heights, MotionPlayer.apply moves the IK goal to that
 	-- world height through the real posed shoulder/hip of this rig (the reference estimate above is only a first guess).
 	e.aimWeight = w
+	e.aimPhase = phase
 	local worldY = targetHeights and targetHeights[height]
 	if type(worldY) == "number" then
 		e.aimWorldY = worldY
 	end
 end
+MotionPlayer.AimAdditiveRecovery = true
 
 type Request = States.MotionRequest
+-- Seconds over which a falling body's floor weight and its settle (pelvis, head, feet relaxing) ramp in from the clip's
+-- floor contact.
+local GROUND_RAMP = 0.12
+local SETTLE_RAMP = 0.08
 
 local function clipTime(clip: ClipLibrary.Clip, req: Request, st: SlotState, legLength: number): number
 	local mode = req.timeMode
@@ -557,12 +661,14 @@ local function resolveRequest(req: Request, st: SlotState, style: string, scale:
 				-- An airborne body (KO still falling) must not be pulled onto the floor by the clip's ground channel.
 				pose.ground = 0
 			elseif req.ground and clip.contact then
-				-- Lying states: from the clip's contact (the body reaching the floor) on, the body rests on the floor.
+				-- Lying states: from the clip's contact (the body reaching the floor) on, the body rests on the floor. The floor
+				-- weight ramps in over GROUND_RAMP (a jump to half weight at the contact frame used to flip the lying feet
+				-- and elbows in one frame).
 				local c = clip.contact * clip.duration
-				if t >= c then pose.ground = math.max(pose.ground or 0, req.ground * math.clamp((t - c) / 0.05 + 0.5, 0, 1)) end
-				-- ...and relaxes onto it right away (pelvis, head and feet settle with the impact; see MotionPlayer.apply).
+				if t >= c then pose.ground = math.max(pose.ground or 0, req.ground * smoothstep((t - c) / GROUND_RAMP)) end
+				-- ...and relaxes onto it (pelvis, head and feet settle with the impact; see MotionPlayer.apply).
 				if req.settle == true then
-					pose.settle = math.clamp((t - c) / 0.08, 0, 1)
+					pose.settle = smoothstep((t - c) / SETTLE_RAMP)
 					pose.relaxFeet = pose.settle
 				end
 			end
@@ -592,7 +698,7 @@ local function validatePose(pose: Pose)
 	for name, target in pose.targets do if not finiteVector(target.pos) or (target.pole and not finiteVector(target.pole)) then error("MotionPlayer produced non-finite target " .. name) end end
 end
 
-local function advanceClock(st: SlotState, frame: any?, view: FighterView)
+local function advanceClock(st: SlotState, frame: any?, view: FighterView, frozen: boolean?)
 	local now = if frame and type(frame.now) == "number" then frame.now else nil
 	local dt = 0
 	if frame and type(frame.dt) == "number" then
@@ -601,7 +707,10 @@ local function advanceClock(st: SlotState, frame: any?, view: FighterView)
 		dt = now - st.lastNow
 	end
 	if now then st.lastNow = now end
-	st.clock += math.clamp(dt, 0, 0.1)
+	dt = math.clamp(dt, 0, 0.1)
+	-- Real time always runs (impact fades play during the hitstop freeze); animation time stops in hitstop.
+	st.real += dt
+	if not frozen then st.clock += dt end
 	-- Distance travelled along the facing (or sideways, whichever dominates) drives locomotion clips so planted
 	-- feet stay planted whatever the walk speed.
 	local pos = view.pos
@@ -650,18 +759,90 @@ local function stepInScale(st: SlotState, view: FighterView, moveKey: string, re
 	return math.clamp((st.stepApplied or 0) / designed, 0, 1)
 end
 
+-- Identity of the last hit a fighter took (CombatSim's lastHit: frame + move + kind), nil before any.
+local function hitStampOf(view: FighterView): string?
+	local h = view.lastHit
+	if type(h) ~= "table" then return nil end
+	return tostring(h.frame) .. ":" .. tostring(h.move) .. ":" .. tostring(h.kind)
+end
+
+-- Hitstop at the RENDERED moment. frame.hitstop belongs to the newest snapshot, but server duels render the fighters a
+-- buffer delay behind it (frozen several frames before the hit was even shown, the attacker caught short of contact).
+-- When the frame carries renderFrame (sim frames at render time) and the newest entry, the freeze window [hit frame,
+-- hit frame + hitstop) is tracked from the entries and compared with the rendered frame (practice renders the newest
+-- entry, so both agree there). Frames without them (tests, previews): frame.hitstop.
+local hitWindow: { start: number?, stop: number? } = { start = nil, stop = nil }
+function MotionPlayer.hitstopActive(frame: any?): boolean
+	if frame == nil then return false end
+	local entry, rf = frame.entry, frame.renderFrame
+	if type(entry) == "table" and type(entry.frame) == "number" and type(rf) == "number" then
+		local hs = if type(entry.hitstop) == "number" then entry.hitstop else 0
+		if hs > 0 then
+			local stop = entry.frame + hs
+			if hitWindow.stop == nil or entry.frame >= (hitWindow.stop :: number) or entry.frame < (hitWindow.start :: number) then
+				hitWindow.start = entry.frame
+			end
+			hitWindow.stop = stop
+		end
+		local start, stop = hitWindow.start, hitWindow.stop
+		return start ~= nil and stop ~= nil and rf >= start - 1e-6 and rf < stop
+	end
+	return (frame.hitstop or 0) > 0
+end
+
+-- How far (degrees) a crossfade between two heading-space poses turns the body's joints: pelvis, waist and neck
+-- rotations; per limb, the swing of the shoulder/hip->effector direction, the change of the elbow/knee bend (from the
+-- effector distance, two equal segments) and the turn of the bend plane (poles about the limb axis). Sets crossfade
+-- lengths (a guard's elbows swinging out on a block barely move the fist, but turn the arm 70 degrees).
+local LIMB_REACH: { [string]: number } = { LeftHand = 1.95, RightHand = 1.95, LeftFoot = 2.75, RightFoot = 2.75 }
+local LIMB_PIVOT: { [string]: Vector3 } = { LeftHand = Vector3.new(-0.5, 1.1, 0), RightHand = Vector3.new(0.5, 1.1, 0), LeftFoot = Vector3.new(-0.3, -0.35, 0), RightFoot = Vector3.new(0.3, -0.35, 0) }
+local function poseDistanceDeg(a: Pose, b: Pose, scale: number): number
+	local function rotDeg(x: CFrame?, y: CFrame?): number
+		if not x or not y then return 0 end
+		local _, ang = (x:Inverse() * y):ToAxisAngle()
+		return math.deg(math.abs(ang))
+	end
+	local function angle(u: Vector3, v: Vector3): number
+		if u.Magnitude < 1e-6 or v.Magnitude < 1e-6 then return 0 end
+		return math.deg(math.acos(math.clamp(u.Unit:Dot(v.Unit), -1, 1)))
+	end
+	local worst = math.max(rotDeg(a.rootRot, b.rootRot), rotDeg(a.waistRot, b.waistRot), rotDeg(a.neckRot, b.neckRot))
+	for name, ea in a.targets do
+		local eb = b.targets[name]
+		local reach = LIMB_REACH[name]
+		if eb and reach then
+			local pivot = LIMB_PIVOT[name] * scale
+			local va, vb = ea.pos - pivot, eb.pos - pivot
+			local full = reach * scale
+			local function flex(v: Vector3): number return math.deg(2 * math.acos(math.clamp(v.Magnitude / full, 0, 1))) end
+			local swing = angle(va, vb)
+			local bendChange = math.abs(flex(va) - flex(vb))
+			local twist = 0
+			local pa, pb = ea.pole, eb.pole
+			local axis = va + vb
+			if pa and pb and axis.Magnitude > 1e-4 then
+				axis = axis.Unit
+				-- A straight limb's bend plane barely shows.
+				twist = angle(pa - axis * pa:Dot(axis), pb - axis * pb:Dot(axis)) * math.clamp(math.max(flex(va), flex(vb)) / 60, 0, 1)
+			end
+			worst = math.max(worst, swing + bendChange + twist)
+		end
+	end
+	return worst
+end
+MotionPlayer.poseDistanceDeg = poseDistanceDeg
+
 function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: number?): Pose
 	local s = slot or 1
 	local st = slotState(s)
 	local previous = st.pose
-	local hitstop = frame ~= nil and (frame.hitstop or 0) > 0
-	-- Hitstop freezes the pose, except on the frame a new reaction starts: the defender snaps to the impact pose
-	-- (shown frozen for the whole hitstop) instead of freezing in its pre-hit stance.
-	local reactionStart = hitstop and previous ~= nil and States.reactionKey(view) ~= nil and States.reactionKey(view) ~= st.key
-	if hitstop and previous and not reactionStart then return previous end
+	-- Hitstop freezes animation TIME, not the view: the frozen sim data is re-sampled, so the attacker shows (and holds)
+	-- its hit frame itself, and a fighter entering a reaction eases into its impact pose on real time during the freeze.
+	local hitstop = MotionPlayer.hitstopActive(frame)
 	local prevPos = st.lastPos
 	local clockBefore = st.clock
-	advanceClock(st, frame, view)
+	local realBefore = st.real
+	advanceClock(st, frame, view, hitstop)
 	local characterId = characterForSlot(view, frame, s)
 	local rootHeight = view.rootHeight or characterRootHeight(characterId)
 	local scale = scaleFromRoot(rootHeight)
@@ -673,6 +854,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	local activeMove = if settling then nil else view.move
 	local key: string
 	local fade: number
+	local moveStartup: number? = nil
 	local pose: Pose? = nil
 	if not settling and type(view.throw) == "table" then
 		if view.throw.broken == true then
@@ -692,7 +874,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		local clip = ClipLibrary.forMove(characterId, moveKey, view.stringIndex)
 		if clip then
 			pose = ClipPlayer.sample(clip, ClipPlayer.moveTime(clip, resolved.timing, view.moveFrame or 0), { mirror = clip.mirror, legLength = legLength, scale = scale })
-			aimContact(pose :: Pose, clip, resolved, view.moveFrame or 0, scale, rootHeight, opponentRootHeight(frame, s), opponentAimHeights(frame, s))
+			aimContact(pose :: Pose, clip, resolved, view.moveFrame or 0, scale, rootHeight, opponentRootHeight(frame, s), opponentAimHeights(frame, s), legLength)
 		else
 			local normalized = moveTime(resolved.timing, view.moveFrame or 0)
 			local legacy = sampleKeys(resolved.keyframes, normalized)
@@ -700,6 +882,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 			pose = toHeading(legacy, scale)
 		end
 		key, fade = "Move:" .. moveKey, 0.05
+		moveStartup = resolved.timing.startup
 		local step = stepInScale(st, view, moveKey, resolved, scale)
 		if step < 1 then (pose :: Pose).stepScale = step end
 	else
@@ -722,8 +905,29 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	-- crossfading from the lying/celebrating pose at the new spot would show a body morphing upright.
 	local roundReset = (prevPos ~= nil and typeof(view.pos) == "Vector3" and (view.pos - prevPos).Magnitude > MotionPlayer.TeleportDistance)
 		or (key == "Intro" and st.key ~= nil and (string.sub(st.key, 1, 3) == "KO:" or st.key == "Victory" or st.key == "Defeat"))
+	-- A new hit on this fighter (hit, block, counter): CombatSim pushes the defender back by up to ~1.8 studs on the hit
+	-- frame. The body is held where it stood and released over a few frames of animation time (it stays put through the
+	-- hitstop freeze, then slides back), instead of jumping back in one frame.
+	local stamp = hitStampOf(view)
+	local newHit = st.hitSeen == true and stamp ~= nil and stamp ~= st.hitStamp
+	st.hitStamp, st.hitSeen = stamp, true
+	if roundReset then
+		st.glide = nil
+	elseif newHit and prevPos and typeof(view.pos) == "Vector3" then
+		local d = view.pos - prevPos
+		d = Vector3.new(d.X, 0, d.Z)
+		if d.Magnitude > 0.05 and d.Magnitude < 2.5 then
+			local remaining = if st.glide and st.glideStart and st.glideDur then (st.glide :: Vector3) * (1 - smoothstep((st.clock - st.glideStart) / st.glideDur)) else Vector3.zero
+			st.glide = remaining - d
+			st.glideStart = st.clock
+			st.glideDur = math.clamp(0.08 + d.Magnitude * 0.06, 0.08, 0.2)
+		end
+	end
 	if st.key ~= key then
-		if previous and fade > 0 and not reactionStart and not roundReset then
+		-- An impact entry (a new key on a hit or during the hitstop freeze): the crossfade runs on real time so the
+		-- impact pose arrives during the freeze, long enough that no joint turns more than ImpactDegPerFrame per frame.
+		local impact = hitstop or newHit
+		if previous and fade > 0 and not roundReset then
 			local from = previous
 			if leavingThrow and prevPos and typeof(view.pos) == "Vector3" then
 				local d = view.pos - prevPos
@@ -737,9 +941,29 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 					fade = math.max(fade, 0.12)
 				end
 			end
+			local travel = poseDistanceDeg(from, result, scale)
+			if impact then
+				st.fadeReal = true
+				st.fadeStart = realBefore
+				st.fadeDur = math.clamp(travel / MotionPlayer.ImpactDegPerFrame / 60, MotionPlayer.ImpactFadeMin, MotionPlayer.ImpactFadeMax)
+			else
+				st.fadeReal = false
+				st.fadeStart = clockBefore
+				-- A getup starts from the lying pose the landing ends in and must keep the sim's roll timing: its stretch is
+				-- capped shorter.
+				local maxFade = if string.sub(key, 1, 6) == "Getup:" then MotionPlayer.GetupCrossfadeMax else MotionPlayer.CrossfadeMax
+				local dur = math.max(fade, math.min(travel / MotionPlayer.CrossfadeDegPerFrame / 60, maxFade))
+				-- An attack's fade-in always completes before its first active frame (the contact pose is never blended).
+				-- When that cap shortens it, the fade runs linearly: the same turn every frame (an eased fade's middle
+				-- frames turned 1.5x faster and showed as a jump into quick strikes).
+				st.fadeLinear = false
+				if moveStartup then
+					local cap = math.max(fade, (moveStartup - 2) / 60)
+					if dur > cap then dur, st.fadeLinear = cap, true end
+				end
+				st.fadeDur = dur
+			end
 			st.fadeFrom = from
-			st.fadeStart = clockBefore
-			st.fadeDur = fade
 		else
 			st.fadeFrom = nil
 		end
@@ -747,11 +971,31 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	end
 	local from = st.fadeFrom
 	if from then
-		local alpha = smoothstep((st.clock - st.fadeStart) / math.max(st.fadeDur, 1e-3))
+		-- Impact fades run linearly (an even turn per frame from the hit on); others ease in and out.
+		local t = if st.fadeReal then st.real else st.clock
+		local x = math.clamp((t - st.fadeStart) / math.max(st.fadeDur, 1e-3), 0, 1)
+		local alpha = if st.fadeReal or st.fadeLinear then x else smoothstep(x)
 		if alpha >= 1 then st.fadeFrom = nil else result = blendPose(from, result, alpha) end
+	end
+	local glide = st.glide
+	if glide and st.glideStart and st.glideDur then
+		local w = 1 - smoothstep((st.clock - st.glideStart) / st.glideDur)
+		if w <= 0 then
+			st.glide = nil
+		else
+			local facing = if view.facing.Magnitude > 0.001 then view.facing.Unit else Vector3.xAxis
+			local right = facing:Cross(Vector3.yAxis)
+			local g = glide * w
+			result = table.clone(result)
+			result.rootOffset += Vector3.new(g:Dot(right), 0, g:Dot(facing))
+		end
 	end
 	validatePose(result)
 	result.clock = st.clock
+	result.real = st.real
+	result.selfClear = SELF_CLEAR_STATES[view.state] == true and type(view.move) ~= "string" and type(view.throw) ~= "table"
+		and (type(frame) ~= "table" or frame.phase == nil or frame.phase == "Fight")
+	if roundReset then result.cut = true end
 	st.pose = result
 	return result
 end
@@ -1019,18 +1263,31 @@ end
 
 -- The foot rises onto its ball — toes pitched down about the ankle, at most `limit` below the floor plane — just enough
 -- for its ankle (ankleAt: ankle height of the foot shown in a rotation, its lowest point keeping its clearance above the
--- floor) to reach `needY`; the full `limit` when that is not enough.
+-- floor) to reach `needY`. When no rise within the limit gets there, the rise that lifts the ankle most (none when
+-- rising does not help: a short bare foot whose ankle sits over its toes lifts LESS when pitched; the old full-limit
+-- answer stood such a foot on its toes for nothing and flipped it 60 degrees between frames).
 local function riseOnBall(base: CFrame, needY: number, limit: number, ankleAt: (CFrame?) -> number): CFrame
 	local room = math.max(0, limit - math.asin(math.clamp(-base.LookVector.Y, -1, 1)))
 	local function tiptoe(a: number): CFrame return base * CFrame.Angles(-a, 0, 0) end
-	local tlo, thi = 0, room
-	if ankleAt(tiptoe(thi)) >= needY then
-		for _ = 1, 7 do
-			local mid = (tlo + thi) * 0.5
-			if ankleAt(tiptoe(mid)) >= needY then thi = mid else tlo = mid end
+	local bestA, bestY = 0, ankleAt(base)
+	if bestY >= needY or room <= 1e-4 then return base end
+	local STEPS = 6
+	local prevA = 0
+	for i = 1, STEPS do
+		local a = room * i / STEPS
+		local yA = ankleAt(tiptoe(a))
+		if yA >= needY then
+			local lo, hi = prevA, a
+			for _ = 1, 6 do
+				local mid = (lo + hi) * 0.5
+				if ankleAt(tiptoe(mid)) >= needY then hi = mid else lo = mid end
+			end
+			return tiptoe(hi)
 		end
+		if yA > bestY + 1e-4 then bestA, bestY = a, yA end
+		prevA = a
 	end
-	return tiptoe(thi)
+	return tiptoe(bestA)
 end
 
 -- Reach net: slides an ankle goal at height y along the floor toward the hip until the straight leg (reach) gets there —
@@ -1050,6 +1307,105 @@ local function slideIntoReach(rig: RigInfo, target: string, goal: Vector3, pivot
 	return goal, ty
 end
 
+-- IK pole continuity. The bend plane of a two-bone limb comes from the clip's pole hint projected off the limb axis.
+-- When the hint lies nearly along the limb (a leg kicking straight out along its knee pole, an arm reaching along its
+-- elbow pole, a crossfade between poses whose poles point apart and cancel), the projection is undefined and the
+-- elbow/knee — and the twist of the upper limb with it — flips up to 180 degrees in one frame. The previous frame's
+-- bend direction (kept in the parent part's frame: whole-body turns and spins do not count) takes over as the hint
+-- weakens, and the bend direction turns at most PoleMaxStep per frame (pose clock), so a flip becomes a short roll.
+-- false = the round-5 behaviour (A/B checks).
+MotionPlayer.PoleContinuity = true
+MotionPlayer.PoleMaxStep = math.rad(30)
+local POLE_WEAK = 0.4
+-- Per-frame bookkeeping: on the first solve of a new frame the previous frame's final bend becomes the reference
+-- (re-solves within the frame — ground passes, the lying settle, throw grips — keep the same reference). A clock jump
+-- (new round, reused rig) starts over. Returns whether continuity applies to this solve.
+local function beginContinuity(rig: RigInfo, chain: any): boolean
+	local clock = rig.lockClock
+	if not MotionPlayer.PoleContinuity or clock == nil then return false end
+	if chain.bendClock ~= clock then
+		local last = chain.bendClock
+		local fresh = last ~= nil and clock > last and clock - last < 0.25
+		chain.bendRef = if fresh then chain.bendPrev else nil
+		chain.bendClock = clock
+	end
+	return true
+end
+
+-- The bend direction (unit, perpendicular to the start->aim axis) a solve uses: the hint projected off the axis, with
+-- the previous frame's bend blended in as the hint weakens and the change limited to PoleMaxStep. Projected exactly
+-- as solveTwoBone projects, so a healthy hint gives the same answer as before.
+local function continuousBend(chain: any, parentFrame: CFrame, start: Vector3, aim: Vector3, hint: Vector3, free: boolean): Vector3
+	local dir = safeUnit(aim - start, Vector3.zAxis)
+	local p = projectPole(hint, dir, Vector3.yAxis)
+	local refLocal = chain.bendRef
+	if not refLocal then return p end
+	local ref = parentFrame:VectorToWorldSpace(refLocal)
+	ref -= dir * ref:Dot(dir)
+	if ref.Magnitude < 1e-4 then return p end
+	ref = ref.Unit
+	local raw = hint - dir * hint:Dot(dir)
+	local k = if hint.Magnitude > 1e-6 then smoothstep(raw.Magnitude / hint.Magnitude / POLE_WEAK) else 0
+	local want = p * k + ref * (1 - k)
+	if want.Magnitude < 1e-4 then want = ref else want = want.Unit end
+	-- A pole the floor lift turned (knees/elbows kept above the floor) may turn faster, but never flip in one frame.
+	local step = if free then MotionPlayer.PoleMaxStep * 1.5 else MotionPlayer.PoleMaxStep
+	if want:Dot(ref) < math.cos(step) then
+		local axis = ref:Cross(want)
+		axis = if axis.Magnitude > 1e-6 then axis.Unit else dir
+		want = CFrame.fromAxisAngle(axis, step):VectorToWorldSpace(ref)
+		want -= dir * want:Dot(dir)
+		want = safeUnit(want, ref)
+	end
+	return want
+end
+
+-- Forgets a rig's per-frame continuity state (foot locks, bend directions): a rig reused for another fighter or case.
+function MotionPlayer.resetRig(rig: RigInfo)
+	table.clear(rig.footLock)
+	rig.aimResidual = nil
+	rig.contactHold = nil
+	rig.lyingLegs = nil
+	rig.selfPush = nil
+	for _, chain in rig.chains do
+		chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
+		chain.flatPrev, chain.flatRef, chain.flatClock = nil, nil, nil
+	end
+end
+
+-- Heel-drop continuity: the flatten fraction of a planted foot on the previous frame (nil on a new round, a reused rig
+-- or a clock jump). Same per-frame bookkeeping as the bend continuity.
+MotionPlayer.FlattenRate = 0.15
+MotionPlayer.LyingLegsRamp = 0.1
+-- Soft limits of the foot solve (studs): a foot settling onto the floor eases in over SoftFloor; a leg nearing its
+-- reach starts onto the ball within SoftReach of the limit.
+MotionPlayer.SoftFloor = 0.06
+MotionPlayer.SoftReach = 0.06
+-- 0 below 0, x above w, an eased blend between (C1: a coming-down foot stops without a jolt).
+local function softPositive(x: number, w: number): number
+	if x <= 0 then return 0 end
+	if w <= 0 or x >= w then return x end
+	return x * smoothstep(x / w)
+end
+-- Polynomial smooth maximum (>= max(a, b), equal once they differ by more than w).
+local function softMax(a: number, b: number, w: number): number
+	if w <= 0 then return math.max(a, b) end
+	local h = math.clamp(0.5 + 0.5 * (a - b) / w, 0, 1)
+	return b + (a - b) * h + w * h * (1 - h)
+end
+local function flattenRef(rig: RigInfo, chain: any): number?
+	local clock = rig.lockClock
+	if clock == nil then return nil end
+	if chain.flatClock ~= clock then
+		local last = chain.flatClock
+		local fresh = last ~= nil and clock > last and clock - last < 0.25
+		chain.flatRef = if fresh then chain.flatPrev else nil
+		chain.flatDt = if fresh then clock - last else 0
+		chain.flatClock = clock
+	end
+	return chain.flatRef
+end
+
 local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading: CFrame, legacyFrame: CFrame, effector: Effector, floorY: number, footFlat: CFrame, scale: number, headingSpace: boolean, contact: number, settle: number?, lying: number?, relax: number?, stepScale: number?): number
 	local motors = rig.motors
 	local jm, mm, tm = motors[chain.joint], motors[chain.mid], motors[chain.tip]
@@ -1060,8 +1416,22 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 	local goal = pivot.Position + targetFrame:VectorToWorldSpace(libVector(rel))
 	local aimY, aimW = effector.aimWorldY, effector.aimWeight
 	if aimY and aimW and aimW > 0 then
-		-- Contact aim at a measured world height (the opponent's head/chest/knee), through this rig's posed pivot.
-		goal = Vector3.new(goal.X, goal.Y + (floorY + aimY - goal.Y) * math.min(aimW, 1), goal.Z)
+		-- Contact aim at a measured world height (the opponent's head/chest/knee), through this rig's posed pivot. In the
+		-- recovery the residual of the last active frame is added while it releases (the clip's own motion continues).
+		local residuals = rig.aimResidual
+		if not residuals then
+			residuals = {}
+			rig.aimResidual = residuals
+		end
+		local r = floorY + aimY - goal.Y
+		local stored = residuals[chain.target]
+		local clock = rig.lockClock
+		if effector.aimPhase == 3 and MotionPlayer.AimAdditiveRecovery and stored and clock and stored.clock and clock - stored.clock >= 0 and clock - stored.clock < 1 then
+			r = stored.r
+		elseif effector.aimPhase ~= 3 then
+			residuals[chain.target] = { r = r, clock = clock }
+		end
+		goal = Vector3.new(goal.X, goal.Y + r * math.min(aimW, 1), goal.Z)
 	end
 	local planted = 0
 	local footRot: CFrame? = nil
@@ -1094,7 +1464,9 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 			end
 		end
 		local clipLift = if r then footLift(chain, r) else chain.ankleHeight
-		local clear = math.max(goal.Y + chain.ankleHeight - floorY - clipLift, 0)
+		-- A foot coming down decelerates over the last SoftFloor studs instead of stopping dead on the floor (a clip foot
+		-- aimed a little below this rig's floor used to stop in one frame and kick the shin).
+		local clear = softPositive(goal.Y + chain.ankleHeight - floorY - clipLift, MotionPlayer.SoftFloor)
 		-- Near-floor weight: 1 for a foot the clip holds on or near the floor (its own sole within NET_NEAR leg lengths),
 		-- fading out by NET_AIR (a foot clearly in the air: steps, chambers, kicks); never on a lying body or a striking
 		-- foot the contact aim pulls to the opponent. It weights the reach net (MotionPlayer.FootReachNet) and the
@@ -1127,23 +1499,31 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 			local clipRot = r :: CFrame
 			local flat = footFlat * flatYaw(heading.Rotation:Inverse() * clipRot)
 			local k = planted
+			-- The heel comes down at most FlattenRate per frame (a reach limit relaxing — the pelvis lowering over a
+			-- foot on its ball — used to slap the heel down 30 degrees in one frame and kick the thigh with it).
+			local kRef = flattenRef(rig, chain)
+			if kRef and k > kRef then k = math.min(k, kRef + MotionPlayer.FlattenRate * math.max(chain.flatDt * 60, 1)) end
 			local shown = if k > 0 then clipRot:Lerp(flat, k) else clipRot
 			local y = ankleY(shown)
-			if k > 0 and y < lowestY then
+			-- Smooth max: near the reach limit the foot already starts onto its ball (no kink where the limit takes over).
+			local need = softMax(y, lowestY, MotionPlayer.SoftReach)
+			if k > 0 and y < need then
 				-- A (nearly) straight leg cannot lower its ankle to a flat foot: the heel stays up just enough and the
 				-- foot rests on its ball instead, still on the floor.
 				local lo, hi = 0, k
 				for _ = 1, 7 do
 					local mid = (lo + hi) * 0.5
-					if ankleY(clipRot:Lerp(flat, mid)) >= lowestY then lo = mid else hi = mid end
+					if ankleY(clipRot:Lerp(flat, mid)) >= need then lo = mid else hi = mid end
 				end
 				k = lo
 				shown = if k > 0 then clipRot:Lerp(flat, k) else clipRot
 				y = ankleY(shown)
-				if y < lowestY and hold >= 0.5 then
+				if y < lowestY and hold > 0.35 then
 					-- Even the clip's own foot cannot reach (a straight support or pivot leg on a rig whose pelvis rides
 					-- high for its legs): the planted foot rises further onto its ball until its toes reach the floor.
-					shown = riseOnBall(shown, lowestY, TIPTOE_MAX, ankleY)
+					-- Faded in with the contact (a hard switch at contact 0.65 used to snap the foot 60 degrees).
+					local riseW = smoothstep((hold - 0.35) / 0.3)
+					shown = shown:Lerp(riseOnBall(shown, lowestY, TIPTOE_MAX, ankleY), riseW)
 					y = ankleY(shown)
 				end
 			end
@@ -1167,6 +1547,9 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 				end
 			end
 			footRot = shown
+			chain.flatPrev = k
+			local dbg = rig.debug
+			if dbg then dbg[chain.target] = { planted = planted, k = k, hold = hold, clear = clear, netW = netW, lying = lyingW, relax = relax or 0, y = y, lowestY = lowestY, flatD = flatD, reach = reach, clip = clipRot, shown = shown, contact = contact, pivotY = pivotPos.Y - floorY, goalY = goal.Y - floorY } end
 			goal = Vector3.new(goal.X, y, goal.Z)
 			local intent = rig.footClear
 			if intent then intent[chain.target] = ankleY(shown) - footLift(chain, shown) - floorY end
@@ -1193,23 +1576,28 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		goal = goal:Lerp(Vector3.new(gripPoint.X, math.max(gripPoint.Y, minY), gripPoint.Z), math.min(gripW, 1))
 	end
 	local pole = targetFrame:VectorToWorldSpace(libVector(effector.pole or defaultPole(chain.target)))
+	local continuity = beginContinuity(rig, chain)
 	local bone = safeUnit(chain.upperBone, -Vector3.yAxis)
 	local foldRest = if chain.isLeg then Vector3.zAxis else -Vector3.zAxis
 	foldRest = safeUnit(foldRest - bone * foldRest:Dot(bone), foldRest)
 	local restFrame = CFrame.fromMatrix(Vector3.zero, bone, foldRest):Inverse()
 	local upperWorld, lowerWorld, tipWorld = pivot, pivot, pivot
 	local midClearance = chain.midRadius
+	local usedBend: Vector3? = nil
 	for attempt = 1, 3 do
-		-- Knees and elbows never bend through the floor.
+		-- Knees and elbows never bend through the floor (a floor-lifted pole is taken as is: no continuity limit).
 		local bendPole = liftPole(pivot.Position, goal, chain.l1, chain.l2, pole, floorY + midClearance)
+		local lifted = bendPole ~= pole
 		local aim = goal
 		for iteration = 1, 3 do
-			local joint, tip = MotionPlayer.solveTwoBone(pivot.Position, aim, chain.l1, chain.l2, bendPole)
+			local bendDir = if continuity then continuousBend(chain, parentFrame, pivot.Position, aim, bendPole, lifted) else bendPole
+			usedBend = bendDir
+			local joint, tip = MotionPlayer.solveTwoBone(pivot.Position, aim, chain.l1, chain.l2, bendDir)
 			local u = safeUnit(joint - pivot.Position, -pivot.UpVector)
 			local f = safeUnit(tip - joint, u)
 			-- The lower segment folds toward the inside of the bend; a straight limb folds away from its pole.
 			local inward = f - u * f:Dot(u)
-			if inward.Magnitude < 1e-3 then inward = -(bendPole - u * bendPole:Dot(u)) end
+			if inward.Magnitude < 1e-3 then inward = -(bendDir - u * bendDir:Dot(u)) end
 			inward = safeUnit(inward, -pivot.LookVector)
 			local upperRot = CFrame.fromMatrix(Vector3.zero, u, inward) * restFrame
 			jm.Transform = pivot.Rotation:Inverse() * upperRot * jm.C1.Rotation
@@ -1252,6 +1640,8 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 		end
 		if attempt == 3 or not retry then break end
 	end
+	-- The bend direction this frame ended with (parent space) is the next frame's continuity reference.
+	if continuity and usedBend then chain.bendPrev = parentFrame:VectorToObjectSpace(usedBend) end
 	rig.tips[chain.target] = tipWorld
 	return math.min(upperWorld.Position.Y - extentY(upperWorld, chain.upperSize), lowerWorld.Position.Y - extentY(lowerWorld, chain.lowerSize), (tipWorld * chain.tipBox).Position.Y - extentY(tipWorld, chain.tipSize))
 end
@@ -1295,10 +1685,25 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local scale = scaleFromRoot(rig.rootHeight)
 	local contacts = if pose.footLock == false then nil else pose.contact
 	rig.lockClock = pose.clock
+	if pose.cut then
+		for _, chain in rig.chains do
+			chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
+			chain.flatPrev, chain.flatRef, chain.flatClock = nil, nil, nil
+		end
+	end
 	local stepScale = pose.stepScale
 	-- Lying body (heading-space clips with a floor-support weight): no sole-down foot flattening, shins rest on the
 	-- floor, and after a knockdown/KO the feet relax (relaxFeet, see relaxLyingFoot).
 	local lyingLegs = if headingSpace and ground > 0.5 then math.clamp((ground - 0.5) * 2, 0, 1) else 0
+	-- The leg treatment switches over LyingLegsRamp seconds of real time (a throw clip's floor channel steps 0 -> 1
+	-- at the impact frame: the feet turned 97 degrees in one frame).
+	local tReal = pose.real or pose.clock
+	local prevLying = rig.lyingLegs
+	if tReal and prevLying and not pose.cut and tReal > prevLying.t and tReal - prevLying.t < 0.25 then
+		local step = (tReal - prevLying.t) / MotionPlayer.LyingLegsRamp
+		lyingLegs = prevLying.v + math.clamp(lyingLegs - prevLying.v, -step, step)
+	end
+	if tReal then rig.lyingLegs = { v = lyingLegs, t = tReal } end
 	local relaxFeet = lyingLegs * math.clamp(pose.relaxFeet or 0, 0, 1)
 	local limbLowest = math.huge
 	local armLowest, legLowest = math.huge, math.huge
@@ -1427,17 +1832,23 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	end
 	rig.stats.groundShift = dy
 	rig.stats.lowest = math.min(coreAbs, limbLowest) - floor
+	if MotionPlayer.SelfClearance and headingSpace then MotionPlayer.clearArms(rig, pose, floor) end
 end
 
 -- Throw grips (FLThrow1 `grips`): call after BOTH fighters were applied this frame. Each active grip of this fighter's
 -- role re-solves that limb so the hand centre / ankle reaches the partner's real body point (sizes differ from the
 -- authored pair). Process the attacker before the defender: a defender's grip on the attacker then follows the
 -- re-solved arm. Returns the number of limbs moved.
+-- Grips take hold over at least GripFadeInMin and let go over at least GripReleaseMin seconds of clip time: a hand
+-- let go over the authored 3 frames swung up to 160 degrees per frame from the partner's body back to its clip place.
+MotionPlayer.GripFadeInMin = 0.05
+MotionPlayer.GripReleaseMin = 0.15
 local function gripWeight(g: ClipLibrary.Grip, t: number): number
-	local fade = math.max(g.fade, 1e-3)
-	if t < g.from - fade or t > g.to + fade then return 0 end
+	local fadeIn = math.max(g.fade, MotionPlayer.GripFadeInMin, 1e-3)
+	local fadeOut = math.max(g.fade, MotionPlayer.GripReleaseMin, 1e-3)
+	if t < g.from - fadeIn or t > g.to + fadeOut then return 0 end
 	local w = 1
-	if t < g.from then w = smoothstep((t - (g.from - fade)) / fade) elseif t > g.to then w = 1 - smoothstep((t - g.to) / fade) end
+	if t < g.from then w = smoothstep((t - (g.from - fadeIn)) / fadeIn) elseif t > g.to then w = 1 - smoothstep((t - g.to) / fadeOut) end
 	return w * g.weight
 end
 local function swapSide(name: string): string
@@ -1489,6 +1900,334 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 	return moved
 end
 
+-- HumanoidRootPart frame of a fighter at sim position `pos` (arena space, Y = height above the floor) facing `facing`,
+-- moved by the pose's root offset (heading space: +X right, +Y up, +Z forward), in a fight centred on `base`.
+function MotionPlayer.rootCFrame(pos: Vector3, facing: Vector3, rootHeight: number, offset: Vector3, base: Vector3): CFrame
+	if facing.Magnitude < 0.01 then error("MotionPlayer.rootCFrame received a zero facing vector") end
+	local floorPos = Vector3.new(base.X + pos.X, base.Y, base.Z + pos.Z)
+	local airborne = math.max(0, pos.Y)
+	local forward = facing.Unit
+	-- Library +X is the fighter's right (forward x up), the same axis MotionPlayer.apply uses for limb targets.
+	local right = forward:Cross(Vector3.yAxis)
+	if right.Magnitude < 0.01 then right = Vector3.xAxis else right = right.Unit end
+	local center = floorPos + Vector3.new(0, rootHeight + airborne, 0) + right * offset.X + Vector3.yAxis * offset.Y + forward * offset.Z
+	return CFrame.lookAt(center, center + forward)
+end
+
+-- Poses the two fighters of one render frame (CharacterPresenter, MotionQA): sample each view (slot = its index in
+-- frame.fighters), place its root, apply the pose; once both bodies are posed, the throw grips (attacker first) and the
+-- strike contact (a hand or foot never sinks into the opponent's head or torso).
+export type PresentEntry = { rig: RigInfo, root: BasePart, view: FighterView, slot: number }
+function MotionPlayer.presentFrame(entries: { PresentEntry? }, frame: any, origin: Vector3, config: any): { [number]: Pose? }
+	local poses: { [number]: Pose? } = {}
+	for i = 1, 2 do
+		local e = entries[i]
+		if e and e.view then
+			local pose = MotionPlayer.sample(config, e.view, frame, e.slot)
+			e.root.CFrame = MotionPlayer.rootCFrame(e.view.pos, e.view.facing, e.rig.rootHeight, pose.rootOffset, origin)
+			MotionPlayer.apply(e.rig, pose, origin.Y)
+			poses[i] = pose
+		end
+	end
+	local a, b = entries[1], entries[2]
+	if a and b and poses[1] and poses[2] then
+		for pass = 1, 2 do
+			for i = 1, 2 do
+				local e = entries[i] :: PresentEntry
+				local throw = e.view.throw
+				if type(throw) == "table" and (throw.role ~= "Defender") == (pass == 1) then
+					MotionPlayer.applyGrips(e.rig, poses[i] :: Pose, e.view, frame, e.slot, (entries[3 - i] :: PresentEntry).rig, origin.Y)
+				end
+			end
+		end
+		if MotionPlayer.StrikeContact then
+			for i = 1, 2 do
+				local e = entries[i] :: PresentEntry
+				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, (entries[3 - i] :: PresentEntry).rig, origin.Y)
+				-- A strike drawn back toward its shoulder must not end inside its own head or chest.
+				if moved > 0 and MotionPlayer.SelfClearance then MotionPlayer.clearArms(e.rig, poses[i] :: Pose, origin.Y, true) end
+			end
+		end
+	end
+	return poses
+end
+
+-- Strike contact. Attack clips do not know how close the opponent stands: at point-blank range (keepApart holds the
+-- bodies 2.6 studs apart; a jab is built to land at 4.2) a fully extended fist went 0.5-1.5 studs into the opponent's
+-- head. After both bodies are posed, every hand (glove) and foot of a fighter in an attack that sinks into the
+-- partner's head, chest or pelvis deeper than ContactAllowance is drawn back along its reach — the limb re-solved
+-- toward its shoulder/hip — until it rests on the surface: the elbow or knee bends instead. Throws are excluded (their
+-- grips hold the partner). Returns the number of limbs moved.
+MotionPlayer.StrikeContact = true
+MotionPlayer.ContactAllowance = 0.05
+MotionPlayer.ContactMaxRetract = 0.85
+MotionPlayer.ContactMaxFlex = 135
+-- Fraction of the reach a retraction may release per frame (a strike leaving the contact eases back to its clip).
+MotionPlayer.ContactRelease = 0.1
+local CONTACT_LIMBS = { LeftHand = "LeftArm", RightHand = "RightArm", LeftFoot = "LeftLeg", RightFoot = "RightLeg" }
+local CONTACT_MID = { LeftHand = "LeftLowerArm", RightHand = "RightLowerArm", LeftFoot = "LeftLowerLeg", RightFoot = "RightLowerLeg" }
+local function rigModel(rig: RigInfo): Instance?
+	local root = rig.motors.Root.Part0
+	return root and root.Parent or nil
+end
+-- Deepest point of a limb's striking end — the hand (glove) or foot and the forearm or shin behind it (a fist that
+-- passed through a head leaves its forearm inside it) — inside the partner's core.
+local function limbDepth(rig: RigInfo, shape: any, limb: string, pshape: any, frames: { [string]: CFrame }): number
+	local tip = rig.tips[limb]
+	if not tip then return -math.huge end
+	local a, b, r
+	if limb == "LeftHand" or limb == "RightHand" then
+		local h = shape.hand[limb]
+		if not h then return -math.huge end
+		a, b, r = tip.Position + tip.UpVector * h.len, tip.Position - tip.UpVector * h.len, h.r
+	else
+		local chain = rig.chains[CONTACT_LIMBS[limb]]
+		local size = chain.tipSize :: Vector3
+		r = math.min(size.X, size.Y) * 0.45
+		local len = math.max(size.Z * 0.5 - r, 0.01)
+		local c = (tip * chain.tipBox).Position
+		a, b = c + tip.LookVector * len, c - tip.LookVector * len
+	end
+	local worst = -math.huge
+	for k = 0, 4 do
+		local d = BodyShape.coreDistance(pshape, frames, a:Lerp(b, k / 4), false)
+		worst = math.max(worst, r - d)
+	end
+	local midName = CONTACT_MID[limb]
+	local mid = rig.parts[midName]
+	local midCF = partWorld(rig, midName)
+	if mid and midCF then
+		local size = mid.Size
+		local mr = math.min(size.X, size.Z) * 0.4
+		local half = midCF.UpVector * math.max(size.Y * 0.5 - mr, 0)
+		for k = 0, 4 do
+			local d = BodyShape.coreDistance(pshape, frames, (midCF.Position + half):Lerp(midCF.Position - half, k / 4), false)
+			worst = math.max(worst, mr - d)
+		end
+	end
+	return worst
+end
+function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, partner: RigInfo, floorY: number): number
+	local held = rig.contactHold
+	local clock = rig.lockClock
+	local striking = type(view.move) == "string"
+	if striking and type(view.characterId) == "string" then
+		-- A throw's grab reaches into the partner's clothes (the throw clip and its grips take over): no contact clamp.
+		local ok, def = pcall(Roster.getMove, view.characterId, view.move)
+		if ok and type(def) == "table" and def.height == "Throw" then striking = false end
+	end
+	if pose.space ~= "heading" or type(view.throw) == "table" or not (striking or held) then
+		rig.contactHold = nil
+		return 0
+	end
+	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
+	local pshape = BodyShape.of(partner, partner.parts, rigModel(partner))
+	local frames: { [string]: CFrame } = {}
+	for _, name in BodyShape.CORE do
+		local cf = partWorld(partner, name)
+		if cf then frames[name] = cf end
+	end
+	local allow = MotionPlayer.ContactAllowance
+	local maxRetract = MotionPlayer.ContactMaxRetract
+	local nextHold = {}
+	local moved = 0
+	local dbg = rig.debug
+	for limb, chainName in CONTACT_LIMBS do
+		local effector = pose.targets[limb]
+		local chain = rig.chains[chainName]
+		local depth = if effector and chain and striking then limbDepth(rig, shape, limb, pshape, frames) else -math.huge
+		-- The previous frame's retraction, released by ContactRelease per frame of animation time (held in hitstop).
+		local prev = held and held[limb]
+		local floorS = 0
+		if prev and clock and prev.clock and clock >= prev.clock and clock - prev.clock < 0.25 then
+			floorS = math.max(0, prev.s - (clock - prev.clock) * 60 * MotionPlayer.ContactRelease)
+		end
+		if dbg then dbg["contact" .. limb] = { depth = depth, floor = floorS } end
+		if effector and chain and (depth > allow or floorS > 0) then
+			local motors = rig.motors
+			local hrp = (motors.Root.Part0 :: BasePart).CFrame
+			local lower = hrp * motors.Root.C0 * motors.Root.Transform * motors.Root.C1:Inverse()
+			local parent = if chain.isLeg then lower else lower * motors.Waist.C0 * motors.Waist.Transform * motors.Waist.C1:Inverse()
+			local pivot = (parent * motors[chain.joint].C0).Position
+			local tipNow = rig.tips[limb] :: CFrame
+			local reachPoint = if chain.isLeg then (tipNow * motors[chain.tip].C1).Position else tipNow.Position
+			local heading = hrp.Rotation
+			local steps = if dbg then {} else nil
+			local function solveAt(s: number): number
+				local grip = table.clone(effector)
+				grip.gripWorld, grip.gripWeight = reachPoint:Lerp(pivot, s), 1
+				solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+				local d = if striking then limbDepth(rig, shape, limb, pshape, frames) else -math.huge
+				if steps then table.insert(steps, string.format("%.2f:%.2f", s, d)) end
+				return d
+			end
+			local s = floorS
+			-- The retraction never folds the elbow/knee past ContactMaxFlex (a crumpled arm reads worse than a fist
+			-- resting slightly inside a point-blank target).
+			local l1, l2 = chain.l1 :: number, chain.l2 :: number
+			local dmin = math.sqrt(math.max(l1 * l1 + l2 * l2 + 2 * l1 * l2 * math.cos(math.rad(MotionPlayer.ContactMaxFlex)), 0))
+			local dist = (reachPoint - pivot).Magnitude
+			local maxS = math.clamp(if dist > 1e-3 then 1 - dmin / dist else 0, 0, maxRetract)
+			s = math.min(s, maxS)
+			if depth > allow and solveAt(s) > allow and maxS > s then
+				-- Smallest retraction that clears the body (the limb drawn straight back usually leaves it the way it
+				-- came); when none does within reach, the least deep one.
+				local lo, hi = s, maxS
+				if solveAt(hi) <= allow then
+					for _ = 1, 6 do
+						local m = (lo + hi) * 0.5
+						if solveAt(m) <= allow then hi = m else lo = m end
+					end
+					s = hi
+				else
+					local best, bestD = s, math.huge
+					for k = 0, 7 do
+						local t = s + (maxS - s) * k / 7
+						local d = solveAt(t)
+						if d < bestD - 1e-3 then best, bestD = t, d end
+					end
+					s = best
+				end
+			end
+			solveAt(s)
+			if s > 0 then nextHold[limb] = { s = s, clock = clock } end
+			if dbg then dbg["contact" .. limb].s = s; dbg["contact" .. limb].steps = table.concat(steps :: { string }, " ") end
+			moved += 1
+		end
+	end
+	rig.contactHold = if next(nextHold) then nextHold else nil
+	return moved
+end
+
+-- Self clearance of the arms. Clips authored on other proportions (or a guard retargeted onto boxing gloves) leave a
+-- glove inside the own head or chest, or an elbow tucked into the ribs. After the pose is applied, an arm whose glove
+-- or hand sinks into the own head (beyond SelfHeadAllowance) or torso, or whose forearm / lower upper arm centreline
+-- runs inside the body (beyond SelfBodyAllowance), is re-solved with the hand moved out along the surface normal, up to
+-- three passes (every push is proportional to the overlap, so it changes continuously from frame to frame). Returns
+-- the arms moved.
+MotionPlayer.SelfClearance = true
+MotionPlayer.SelfHeadAllowance = 0.015
+MotionPlayer.SelfBodyAllowance = 0.03
+local ARM_LIMBS = { LeftHand = "LeftArm", RightHand = "RightArm" }
+type SelfHit = { e: number, p: Vector3?, fn: ((Vector3) -> number)? }
+-- Deepest excess penetration (studs beyond the allowance) of an arm's hand/glove and of its arm centreline into its
+-- own body, with the point and the distance function to take the surface normal from.
+local function armSelfDepth(rig: RigInfo, shape: any, frames: { [string]: CFrame }, limb: string): (SelfHit, SelfHit)
+	local side = if limb == "LeftHand" then "Left" else "Right"
+	local hand: SelfHit = { e = -math.huge }
+	local arm: SelfHit = { e = -math.huge }
+	local function headD(p: Vector3): number return BodyShape.partDistance(shape, "Head", frames.Head, p) end
+	local function bodyD(p: Vector3): number return (BodyShape.coreDistance(shape, frames, p, true)) end
+	local function allD(p: Vector3): number return (BodyShape.coreDistance(shape, frames, p, false)) end
+	local tip = rig.tips[limb]
+	local h = shape.hand[limb]
+	if tip and h then
+		local a, b = tip.Position + tip.UpVector * h.len, tip.Position - tip.UpVector * h.len
+		for k = 0, 4 do
+			local p = a:Lerp(b, k / 4)
+			if frames.Head then
+				local e = h.r - headD(p) - MotionPlayer.SelfHeadAllowance
+				if e > hand.e then hand = { e = e, p = p, fn = headD } end
+			end
+			local e2 = h.r - bodyD(p) - MotionPlayer.SelfBodyAllowance
+			if e2 > hand.e then hand = { e = e2, p = p, fn = bodyD } end
+		end
+	end
+	for _, partName in { side .. "LowerArm", side .. "UpperArm" } do
+		local part = rig.parts[partName]
+		local cf = partWorld(rig, partName)
+		if part and cf then
+			local half = cf.UpVector * (part.Size.Y * 0.5)
+			local top, bottom = cf.Position + half, cf.Position - half
+			-- The shoulder half of the upper arm always sits under the deltoid.
+			local from = if partName == side .. "UpperArm" then 0.5 else 0
+			for k = 0, 4 do
+				local p = top:Lerp(bottom, from + (1 - from) * k / 4)
+				local e = -allD(p) - MotionPlayer.SelfBodyAllowance
+				if e > arm.e then arm = { e = e, p = p, fn = allD } end
+			end
+		end
+	end
+	return hand, arm
+end
+local function sdfNormal(fn: (Vector3) -> number, p: Vector3): Vector3
+	local h = 0.03
+	local g = Vector3.new(
+		fn(p + Vector3.xAxis * h) - fn(p - Vector3.xAxis * h),
+		fn(p + Vector3.yAxis * h) - fn(p - Vector3.yAxis * h),
+		fn(p + Vector3.zAxis * h) - fn(p - Vector3.zAxis * h))
+	return safeUnit(g, Vector3.yAxis)
+end
+MotionPlayer.SelfPushRate = 0.05
+function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?): number
+	local rootPart = rig.motors.Root.Part0
+	if not rootPart then return 0 end
+	-- Lying and getting up the hands push on the floor beside the body, attacks fold the arm on purpose: left to the clip
+	-- (an existing push lets go gradually). `force`: a strike the contact pass drew back toward its own head.
+	local ground = pose.ground or 0
+	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5)
+	local prevPush = rig.selfPush
+	local clock = pose.real or pose.clock
+	local fresh = prevPush ~= nil and clock ~= nil and prevPush.t ~= nil and not pose.cut and clock > prevPush.t and clock - prevPush.t < 0.25
+	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
+	local frames: { [string]: CFrame } = {}
+	for _, name in BodyShape.CORE do
+		local cf = partWorld(rig, name)
+		if cf then frames[name] = cf end
+	end
+	local motors = rig.motors
+	local hrp = (rootPart :: BasePart).CFrame
+	local heading = hrp.Rotation
+	local nextPush: { [string]: any } = { t = clock }
+	local moved = 0
+	for limb, chainName in ARM_LIMBS do
+		local chain = rig.chains[chainName]
+		local effector = pose.targets[limb]
+		if chain and effector then
+			local start = (rig.tips[limb] :: CFrame).Position
+			local want = Vector3.zero
+			local lower = hrp * motors.Root.C0 * motors.Root.Transform * motors.Root.C1:Inverse()
+			local parent = lower * motors.Waist.C0 * motors.Waist.Transform * motors.Waist.C1:Inverse()
+			local grip = table.clone(effector)
+			local function solveAt(offset: Vector3)
+				grip.gripWorld, grip.gripWeight = start + offset, 1
+				solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+			end
+			if allowPush then
+				local hand, arm = armSelfDepth(rig, shape, frames, limb)
+				for _ = 1, 3 do
+					if hand.e <= 0 and arm.e <= 0 then break end
+					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
+					-- the body moves the hand out further (it carries the elbow along only partly).
+					if hand.e > 0 and hand.p and hand.fn then want += sdfNormal(hand.fn, hand.p) * (hand.e + 0.005) end
+					if arm.e > 0 and arm.p and arm.fn then want += sdfNormal(arm.fn, arm.p) * (arm.e * 2.5 + 0.005) end
+					solveAt(want)
+					hand, arm = armSelfDepth(rig, shape, frames, limb)
+				end
+			end
+			-- The push follows at most SelfPushRate studs per frame (heading space, so it turns with the body): a hand
+			-- crossing the chest fast is not shoved aside in one frame, and a push lets go gradually.
+			local shown = want
+			local prev = if fresh then (prevPush :: any)[limb] else nil
+			if prev then
+				local was = heading:VectorToWorldSpace(prev)
+				local maxStep = MotionPlayer.SelfPushRate * math.max((clock - (prevPush :: any).t) * 60, 1)
+				local d = want - was
+				shown = if d.Magnitude > maxStep then was + d.Unit * maxStep else want
+			elseif want.Magnitude > 0 and fresh then
+				shown = if want.Magnitude > MotionPlayer.SelfPushRate then want.Unit * MotionPlayer.SelfPushRate else want
+			end
+			if shown ~= want then solveAt(shown) end
+			if shown.Magnitude > 1e-4 then
+				nextPush[limb] = heading:VectorToObjectSpace(shown)
+				moved += 1
+			end
+		end
+	end
+	rig.selfPush = nextPush
+	return moved
+end
+
 -- Standing heights above the floor of this fighter's head centre (High), chest (Mid) and knees (Low) in its displayed
 -- stance: where an opponent's contact aim lands on it. Poses the rig once (the caller re-poses it on its next update);
 -- measured through the joint chain, so it is exact the same frame. Cache the result per rig.
@@ -1514,7 +2253,12 @@ function MotionPlayer.standingHeights(rig: RigInfo, characterId: string): { [str
 end
 
 function MotionPlayer.reset(slot: number?)
-	if slot then slots[slot] = nil else table.clear(slots) end
+	if slot then
+		slots[slot] = nil
+	else
+		table.clear(slots)
+		hitWindow.start, hitWindow.stop = nil, nil
+	end
 end
 
 function MotionPlayer._debugSampleKeys(keys: { Keyframe }, normalized: number): Pose

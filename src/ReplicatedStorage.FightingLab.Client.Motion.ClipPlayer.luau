@@ -43,6 +43,22 @@ local function ch(clip: Clip, c: number, i0: number, i1: number, a: number): num
 	return x0 + (v[i1] - x0) * a
 end
 
+-- A foot contact channel at clip time t, median of three neighbouring clip frames: mocap contact detection wobbles for
+-- a frame at touchdown (0.55, 0.76, 0.70, 0.91), which made the planted foot flatten, lift and flatten again. Steps
+-- keep their exact timing (the median of three preserves a monotone edge).
+local function contactAt(clip: Clip, c: number, t: number): number
+	local v = clip.channels[c]
+	if type(v) == "number" then return v end
+	local fps = clip.fps or 30
+	local i0, i1, a = frameIndex(clip, t)
+	local m = ch(clip, c, i0, i1, a)
+	local j0, j1, b = frameIndex(clip, t - 1 / fps)
+	local p = ch(clip, c, j0, j1, b)
+	local k0, k1, d = frameIndex(clip, t + 1 / fps)
+	local n = ch(clip, c, k0, k1, d)
+	return math.max(math.min(p, m), math.min(math.max(p, m), n))
+end
+
 local function vec(clip: Clip, c: number, i0: number, i1: number, a: number, mirror: boolean): Vector3
 	local x = ch(clip, c, i0, i1, a)
 	if mirror then x = -x end
@@ -101,8 +117,8 @@ function ClipPlayer.sample(clip: Clip, t: number, opts: SampleOptions): any
 		-- runtime can tell a foot the clip holds on the floor from one it lifts, whatever the rig's proportions.
 		targets[limb] = { pos = (pivot + lib(rel) * reach) * s, pole = lib(pole), rot = rot, weight = 1, sole = if isLeg then 1 + rootPos.Y + rel.Y else nil }
 	end
-	local contactL = ch(clip, if mirror then ClipLibrary.CONTACT_RIGHT else ClipLibrary.CONTACT_LEFT, i0, i1, a)
-	local contactR = ch(clip, if mirror then ClipLibrary.CONTACT_LEFT else ClipLibrary.CONTACT_RIGHT, i0, i1, a)
+	local contactL = contactAt(clip, if mirror then ClipLibrary.CONTACT_RIGHT else ClipLibrary.CONTACT_LEFT, t)
+	local contactR = contactAt(clip, if mirror then ClipLibrary.CONTACT_LEFT else ClipLibrary.CONTACT_RIGHT, t)
 	local ground = ch(clip, ClipLibrary.GROUND, i0, i1, a)
 	return {
 		rootOffset = lib(rootPos) * opts.legLength,

@@ -523,9 +523,10 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 				keyframe = States.launch(scale, view.velocityY, view.airFrames, view.airHits, hitSide), fade = 0.12, styled = false, ground = 0 }
 		end
 		local launchV = if type(config.LaunchVelocity) == "number" then config.LaunchVelocity else 16
-		-- Rising half of the clip while going up, falling half on the way down.
+		-- Rising half of the clip while going up, falling half on the way down. A juggle hit re-launches the body (its
+		-- upward speed jumps back up): a new key per hit, so the clip's jump back to the rising half is crossfaded.
 		local progress = math.clamp(0.5 - 0.5 * vy / math.max(launchV, 1), 0, 1)
-		return { key = "Airborne", clip = States.CLIPS.Airborne, timeMode = "progress", progress = progress,
+		return { key = "Airborne:" .. hitStamp(hit), clip = States.CLIPS.Airborne, timeMode = "progress", progress = progress,
 			keyframe = States.launch(scale, view.velocityY, view.airFrames, view.airHits, hitSide), fade = 0.05, styled = false, ground = 0 }
 	end
 	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.

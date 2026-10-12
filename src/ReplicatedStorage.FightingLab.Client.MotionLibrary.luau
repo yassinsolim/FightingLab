@@ -6,7 +6,7 @@ local Library = {}
 -- aimWorldY/aimWeight: contact aim toward a measured world height above the floor (set by MotionPlayer for attack clips
 -- when the opponent's standing heights are known; MotionPlayer.apply corrects the IK goal with them).
 -- gripWorld/gripWeight: throw grip, the hand centre / ankle goes to this world point (MotionPlayer.applyGrips).
-export type Effector = { pos: Vector3, pole: Vector3?, orient: Vector3?, weight: number?, rot: CFrame?, aimWorldY: number?, aimWeight: number?, gripWorld: Vector3?, gripWeight: number?, sole: number? }
+export type Effector = { pos: Vector3, pole: Vector3?, orient: Vector3?, weight: number?, rot: CFrame?, aimWorldY: number?, aimWeight: number?, aimPhase: number?, gripWorld: Vector3?, gripWeight: number?, sole: number? }
 export type Keyframe = {
 	t: number,
 	rootOffset: Vector3?,
