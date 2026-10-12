@@ -11,9 +11,9 @@
 --   limits      elbow/knee hyperextension or over-flexion, shoulder/hip twist, wrist, ankle, neck yaw, waist twist
 --   self        hand (glove) inside the own head or torso, forearm/upper arm through the torso, legs through each other
 --   opponent    striking hand/foot depth into the opponent's body; torsos overlapping outside throws
---   jitter      zig-zag (velocity reversing with speed on both sides) in looping idles and walks
--- Rig geometry is read from the rig itself (part sizes, joints, an optional glove accessory, LeftFist/RightFist parts,
--- an optional FightingLabGloveRadius attribute on the hands), so it works for any fighter proportions.
+--   jitter      a part turning around three times within 6 frames at visible speed, in looping idles and walks
+-- Rig geometry is read from the rig itself (part sizes, joints, profiled hulls; gloves through Motion.BodyShape: rigid
+-- glove parts, layered glove accessories, fist parts, a FightingLabGloveRadius attribute), so it works for any rig.
 -- Used by ServerStorage.UnitTest.Cases.MotionQA_Test (targets) and tools/mocap/motionqa_report.luau (full report).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- _G.MotionQALab: an alternative module root (a fresh clone of FightingLab's modules, for hot reloads in a running
@@ -24,6 +24,7 @@ local Config = require(Lab.CombatConfig)
 local Roster = require(Lab.Roster)
 local MotionPlayer = require(Lab.Client.MotionPlayer)
 local ClipLibrary = require(Lab.Client.Motion.ClipLibrary)
+local BodyShape = require(Lab.Client.Motion.BodyShape)
 
 local QA = {}
 QA.MotionPlayer, QA.Config, QA.ClipLibrary, QA.Roster = MotionPlayer, Config, ClipLibrary, Roster
@@ -91,28 +92,10 @@ local function segSegDistance(p1: Vector3, q1: Vector3, p2: Vector3, q2: Vector3
 end
 QA.sdEllipsoid, QA.sdRoundBox, QA.segSegDistance = sdEllipsoid, sdRoundBox, segSegDistance
 
-local function gloveRadius(model: Model, hand: BasePart): (number?, string?)
-	local attr = hand:GetAttribute("FightingLabGloveRadius")
-	if typeof(attr) == "number" and attr > 0 then return attr, "attribute" end
-	local fist = hand:FindFirstChild(if hand.Name == "LeftHand" then "LeftFist" else "RightFist")
-	if fist and fist:IsA("BasePart") then return (fist.Size.X + fist.Size.Y + fist.Size.Z) / 6, "fist" end
-	for _, a in model:GetChildren() do
-		if a:IsA("Accessory") and string.find(string.lower(a.Name), "glove", 1, true) then
-			local h = a:FindFirstChild("Handle")
-			if h and h:IsA("BasePart") then
-				-- One layered accessory holds both gloves (authored in the T-pose: X spans both arms); the glove's own
-				-- cross-section is its Y x Z.
-				return (h.Size.Y + h.Size.Z) * 0.25, "accessory"
-			end
-		end
-	end
-	return nil, nil
-end
-
 export type Profile = { ys: { number }, r: { { number } }, n: number, y0: number, y1: number }
 export type Geo = {
 	head: Vector3, upper: Vector3, lower: Vector3, upperRR: number, lowerRR: number,
-	hand: { [string]: { r: number, len: number, gloved: boolean, source: string } },
+	hand: { [string]: BodyShape.Hand },
 	limbR: { [string]: number }, foot: { [string]: Vector3 }, profiles: { [string]: Profile }?,
 }
 
@@ -190,16 +173,10 @@ QA.sdProfile = sdProfile
 local function rigGeometry(model: Model, rig: any): Geo
 	local parts = rig.parts
 	local function size(n: string): Vector3 return (parts[n] :: BasePart).Size end
+	-- Hands/gloves: the runtime's own measure (Motion.BodyShape: rigid glove parts, attributes, fists, layered gloves).
 	local hand = {}
 	for _, n in { "LeftHand", "RightHand" } do
-		local part = parts[n] :: BasePart
-		local g, source = gloveRadius(model, part)
-		if g then
-			hand[n] = { r = g, len = g * 0.35, gloved = true, source = source :: string }
-		else
-			local s = part.Size
-			hand[n] = { r = (s.X + s.Z) * 0.25, len = s.Y * 0.32, gloved = false, source = "hand" }
-		end
+		hand[n] = BodyShape.handVolume(model, parts[n] :: BasePart)
 	end
 	local limbR = {}
 	for _, n in { "LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg" } do
@@ -325,10 +302,7 @@ local function coreDistance(geo: Geo, cf: { [string]: CFrame }, p: Vector3, skip
 end
 
 local function handSegment(geo: Geo, cf: { [string]: CFrame }, hand: string): (Vector3, Vector3, number)
-	local h = geo.hand[hand]
-	local c = cf[hand]
-	local axis = c.UpVector * h.len
-	return c.Position + axis, c.Position - axis, h.r
+	return BodyShape.handCapsule(geo.hand[hand], cf[hand])
 end
 
 -- Deepest penetration (radius - distance) of a capsule into a signed-distance field, sampled along the segment.

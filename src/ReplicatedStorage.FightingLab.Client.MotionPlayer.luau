@@ -82,6 +82,15 @@ local SELF_CLEAR_STATES = {
 	Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true, CrouchBlock = true, Block = true,
 	Blockstun = true, Dash = true, Backdash = true, Sidestep = true, Step = true, Hitstun = true, Stagger = true,
 }
+-- Per-fighter guard trims (studs, heading space: +X right, +Y up, +Z toward the opponent) added to the hand targets of
+-- the states that hold the guard. Kael: the rear (right) glove, between the player's own fight camera and his profile
+-- (the camera sees the local fighter's right side), sits lower, its top at the cheekbone instead of the brow, so his
+-- profile eye reads.
+MotionPlayer.GuardTrim = { Kael = { RightHand = Vector3.new(0, -0.1, 0) } } :: { [string]: { [string]: Vector3 } }
+local GUARD_STATES = {
+	Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true, CrouchBlock = true, Block = true,
+	Blockstun = true, Dash = true, Backdash = true, Sidestep = true, Step = true,
+}
 
 type SlotState = {
 	pose: Pose?, key: string?, clock: number, lastNow: number?, keyStarted: number,
@@ -894,6 +903,13 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		end
 		pose = resolveRequest(req, st, style, scale, legLength)
 		key, fade = req.key, req.fade or 0.12
+		local trim = MotionPlayer.GuardTrim[characterId]
+		if trim and GUARD_STATES[view.state] and not settling then
+			for limb, offset in trim do
+				local e = (pose :: Pose).targets[limb]
+				if e then e.pos += offset end
+			end
+		end
 	end
 	local result: Pose = pose :: Pose
 	addArmor(result, view)
@@ -1979,7 +1995,7 @@ local function limbDepth(rig: RigInfo, shape: any, limb: string, pshape: any, fr
 	if limb == "LeftHand" or limb == "RightHand" then
 		local h = shape.hand[limb]
 		if not h then return -math.huge end
-		a, b, r = tip.Position + tip.UpVector * h.len, tip.Position - tip.UpVector * h.len, h.r
+		a, b, r = BodyShape.handCapsule(h, tip)
 	else
 		local chain = rig.chains[CONTACT_LIMBS[limb]]
 		local size = chain.tipSize :: Vector3
@@ -2122,7 +2138,7 @@ local function armSelfDepth(rig: RigInfo, shape: any, frames: { [string]: CFrame
 	local tip = rig.tips[limb]
 	local h = shape.hand[limb]
 	if tip and h then
-		local a, b = tip.Position + tip.UpVector * h.len, tip.Position - tip.UpVector * h.len
+		local a, b = BodyShape.handCapsule(h, tip)
 		for k = 0, 4 do
 			local p = a:Lerp(b, k / 4)
 			if frames.Head then

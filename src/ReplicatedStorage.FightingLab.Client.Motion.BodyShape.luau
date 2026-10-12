@@ -5,7 +5,7 @@
 local BodyShape = {}
 
 export type Profile = { ys: { number }, r: { { number } }, n: number, y0: number, y1: number }
-export type Hand = { r: number, len: number, gloved: boolean, source: string }
+export type Hand = { r: number, len: number, offset: Vector3, axis: Vector3?, gloved: boolean, source: string }
 export type Shape = { profiles: { [string]: Profile }, hand: { [string]: Hand }, half: { [string]: Vector3 } }
 
 BodyShape.CORE = { "Head", "UpperTorso", "LowerTorso" }
@@ -87,15 +87,29 @@ local function sdEllipsoid(p: Vector3, r: Vector3): number
 end
 BodyShape.sdEllipsoid = sdEllipsoid
 
--- The visible hand volume: a boxing glove (an accessory named "*glove*", or a FightingLabGloveRadius attribute on the
--- hand) or a fist part (LeftFist/RightFist) as a sphere-ish capsule; else the open hand as a thin capsule.
+-- The visible hand volume, a capsule in the hand's frame (centre `offset`, direction `axis` — the hand's long axis when
+-- nil —, half length `len`, radius `r`): a rigid glove part worn on the hand (a BasePart named "*Glove*" under the hand,
+-- measured along its own longest axis — rigid gloves sit toward the wrist, tilted), a FightingLabGloveRadius
+-- attribute, a fist part (LeftFist/RightFist), a layered glove accessory; else the open hand as a thin capsule.
 function BodyShape.handVolume(model: Instance?, hand: BasePart): Hand
 	local attr = hand:GetAttribute("FightingLabGloveRadius")
-	if typeof(attr) == "number" and attr > 0 then return { r = attr, len = attr * 0.35, gloved = true, source = "attribute" } end
+	if typeof(attr) == "number" and attr > 0 then return { r = attr, len = attr * 0.35, offset = Vector3.zero, gloved = true, source = "attribute" } end
+	for _, d in hand:GetDescendants() do
+		if d:IsA("BasePart") and string.find(string.lower(d.Name), "glove", 1, true) then
+			-- Capsule along the glove's own longest axis (a rigid glove is worn tilted on the hand); a glove is a rounded
+			-- mitt, so its radius is about the mean of its two smaller half-widths.
+			local rel = hand.CFrame:ToObjectSpace(d.CFrame)
+			local s = d.Size * 0.5
+			local axes = { { s.X, rel.RightVector }, { s.Y, rel.UpVector }, { s.Z, rel.LookVector } }
+			table.sort(axes, function(a, b) return a[1] > b[1] end)
+			local r = (axes[2][1] + axes[3][1]) * 0.5 * 0.95
+			return { r = r, len = math.max(axes[1][1] - r, 0.02), offset = rel.Position, axis = axes[1][2], gloved = true, source = "rigid" }
+		end
+	end
 	local fist = hand:FindFirstChild(if hand.Name == "LeftHand" then "LeftFist" else "RightFist")
 	if fist and fist:IsA("BasePart") then
 		local r = (fist.Size.X + fist.Size.Y + fist.Size.Z) / 6
-		return { r = r, len = r * 0.35, gloved = true, source = "fist" }
+		return { r = r, len = r * 0.35, offset = hand.CFrame:PointToObjectSpace(fist.Position), gloved = true, source = "fist" }
 	end
 	if model then
 		for _, a in model:GetChildren() do
@@ -105,13 +119,20 @@ function BodyShape.handVolume(model: Instance?, hand: BasePart): Hand
 					-- One layered accessory holds both gloves (authored in the T-pose: X spans both arms); a glove's own
 					-- cross-section is its Y x Z.
 					local r = (h.Size.Y + h.Size.Z) * 0.25
-					return { r = r, len = r * 0.35, gloved = true, source = "accessory" }
+					return { r = r, len = r * 0.35, offset = Vector3.zero, gloved = true, source = "accessory" }
 				end
 			end
 		end
 	end
 	local s = hand.Size
-	return { r = (s.X + s.Z) * 0.25, len = s.Y * 0.32, gloved = false, source = "hand" }
+	return { r = (s.X + s.Z) * 0.25, len = s.Y * 0.32, offset = Vector3.zero, gloved = false, source = "hand" }
+end
+
+-- World end points and radius of a hand volume for the hand posed at `cf`.
+function BodyShape.handCapsule(h: Hand, cf: CFrame): (Vector3, Vector3, number)
+	local c = cf:PointToWorldSpace(h.offset)
+	local axis = cf:VectorToWorldSpace(h.axis or Vector3.yAxis) * h.len
+	return c + axis, c - axis, h.r
 end
 
 -- The shape of a rig (parts by name: RigInfo.parts), profiled once and cached on the table passed in.
