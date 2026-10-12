@@ -16,6 +16,8 @@ export type Avatars = {
 	reload: (self: any, player: any) -> (),
 	rescue: ((self: any, player: any) -> ())?,
 	isLoading: ((self: any, player: any) -> boolean)?,
+	-- Server-side character pivot (quick play, quick travel). Stub players (tables) just move their `position`.
+	teleport: ((self: any, player: any, at: CFrame) -> ())?,
 }
 export type Deps = {
 	world: WorldIndex.Index,
@@ -28,17 +30,25 @@ export type Deps = {
 	avatars: Avatars?,
 	stations: Instance?,
 	random: Random?,
+	-- A lobby spawn frame for quick travel back to the plaza (falls back to the world's LobbySpawn parts).
+	spawnFrame: (() -> CFrame?)?,
 }
 export type Record = {
 	player: any, userId: number, displayName: string, fighterId: string, state: string, arenaId: string, padSide: number,
 	matchId: string, slot: number, queuedAt: number, mustStepOff: boolean, tokens: number, tokenTime: number,
 	wins: number, streak: number, practiceMode: string?, lastSelect: number, lobbyTokens: number, lobbyTime: number,
+	-- Quick Duel queue: when the player started searching (nil when not searching) and what the UI shows.
+	quick: { since: number }?, quickStatus: string,
+	-- A pending server move (quick play / travel), the pad claim grace after one, and per-request cooldowns.
+	pending: any?, travelUntil: number, lastTravel: number, lastQuick: number,
 }
 type Station = {
 	id: string, arena: WorldIndex.Arena, kind: string, folder: Instance?, published: { [string]: any },
 	pads: { [number]: Record? }, participants: { [number]: Record? }, state: string,
 	countdownDeadline: number, countdownEndsAt: number, host: any?, cpuSlot: number?, difficulty: string,
 	fighters: { string }, resultsUntil: number?, winnerSlot: number, resultText: string, matchId: string, practiceCount: number,
+	-- Held for players the server is about to teleport onto its pads (no walk-in claims, no second assignment).
+	reserved: boolean,
 }
 
 local DuelService = {}
@@ -69,6 +79,9 @@ function DuelService.new(deps: Deps)
 	self.padAccumulator = 0
 	self.stepAccumulator = 0
 	self.stationAccumulator = 0
+	-- Pending server moves (quick play teleports and quick travel), run once their dueAt passes.
+	self.jobs = {} :: { any }
+	self.lobbyPublished = {} :: { [string]: any }
 	self.stats = { stepMs = 0, maxStepMs = 0, steps = 0, activeMatches = 0, snapshotsSent = 0, sendDrops = 0, lastSent = "" }
 	for _, id in deps.world.order do self:addStation(deps.world.arenas[id]) end
 	return self
@@ -88,6 +101,7 @@ function DuelService:addStation(arena: WorldIndex.Arena)
 		id = arena.id, arena = arena, kind = arena.kind, folder = folder, published = {},
 		pads = {}, participants = {}, state = "Open", countdownDeadline = 0, countdownEndsAt = 0, host = nil,
 		cpuSlot = nil, difficulty = "", fighters = {}, resultsUntil = nil, winnerSlot = 0, resultText = "", matchId = "", practiceCount = 0,
+		reserved = false,
 	}
 	self.stations[arena.id] = station
 	table.insert(self.stationOrder, arena.id)
@@ -111,6 +125,7 @@ function DuelService:stationAttributes(station: Station): { [string]: any }
 	local p2Id, p2Name, p2Fighter = sideAttributes(station, 2)
 	local attrs: { [string]: any } = {
 		ArenaId = arena.id, StageId = arena.stageId, DisplayName = arena.displayName, Kind = arena.kind, State = station.state,
+		Order = arena.order,
 		P1UserId = p1Id, P2UserId = p2Id, P1Name = p1Name, P2Name = p2Name, P1Fighter = p1Fighter, P2Fighter = p2Fighter,
 		CountdownEndsAt = if station.state == "Countdown" then station.countdownEndsAt else 0,
 		Phase = "", Round = 0, P1Rounds = 0, P2Rounds = 0, P1Health = 1, P2Health = 1, Timer = 0,
@@ -158,6 +173,9 @@ function DuelService:publishRecord(rec: Record)
 	player:SetAttribute("PadSide", rec.padSide)
 	player:SetAttribute("MatchId", rec.matchId)
 	player:SetAttribute("QueuedAt", if rec.state == "Queued" then rec.queuedAt + (self.serverTime() - self.now()) else 0)
+	local quick = rec.quick
+	player:SetAttribute("QuickQueue", if quick then quick.since + (self.serverTime() - self.now()) else 0)
+	player:SetAttribute("QuickStatus", rec.quickStatus)
 end
 
 function DuelService:publishStats(rec: Record)
@@ -202,6 +220,7 @@ function DuelService:addPlayer(player: any): Record
 		fighterId = fighter, state = "Lobby", arenaId = "", padSide = 0, matchId = "", slot = 0, queuedAt = 0,
 		mustStepOff = false, tokens = NetProtocol.CommandBurst, tokenTime = self.now(), wins = 0, streak = 0, practiceMode = nil, lastSelect = -math.huge,
 		lobbyTokens = NetProtocol.LobbyBurst, lobbyTime = self.now(),
+		quick = nil, quickStatus = "", pending = nil, travelUntil = -math.huge, lastTravel = -math.huge, lastQuick = -math.huge,
 	}
 	self.records[player] = rec
 	self:publishRecord(rec)
@@ -275,6 +294,9 @@ function DuelService:claimPad(station: Station, side: number, rec: Record)
 	rec.arenaId = station.id
 	rec.padSide = side
 	rec.queuedAt = self.now()
+	-- Waiting on a circle replaces the Quick Duel search (searchers are matched with circle waiters first).
+	rec.quick = nil
+	rec.quickStatus = ""
 	station.winnerSlot = 0
 	station.resultText = ""
 	self:publishRecord(rec)
@@ -326,6 +348,7 @@ function DuelService:startCountdown(station: Station)
 end
 
 function DuelService:pollPads()
+	local now = self.now()
 	for _, id in self.stationOrder do
 		local station = self.stations[id]
 		if station.kind == "Duel" and (station.state == "Waiting" or station.state == "Countdown") then
@@ -333,10 +356,12 @@ function DuelService:pollPads()
 				local rec = station.pads[side]
 				local pad = station.arena.pads[side]
 				if rec then
-					-- No position, or an avatar being reloaded for a fighter change, keeps the claim.
+					-- No position, an avatar being reloaded for a fighter change, or a player the server just teleported
+					-- here (its client may report the old spot for a few frames) keeps the claim.
 					local avatars = self.deps.avatars
 					local loading = avatars ~= nil and avatars.isLoading ~= nil and avatars:isLoading(rec.player)
-					local position = if loading then nil else self.positionOf(rec.player)
+					local settling = rec.travelUntil > now
+					local position = if loading or settling then nil else self.positionOf(rec.player)
 					if not pad or (position and not WorldIndex.onPad(pad, position, 0.75)) then self:leavePad(station, side) end
 				end
 			end
@@ -346,10 +371,10 @@ function DuelService:pollPads()
 		local position = self.positionOf(rec.player)
 		if rec.mustStepOff then
 			if not self:onAnyPad(position) then rec.mustStepOff = false end
-		elseif rec.state == "Lobby" and position then
+		elseif rec.state == "Lobby" and position and rec.pending == nil then
 			for _, id in self.stationOrder do
 				local station = self.stations[id]
-				if station.kind == "Duel" and (station.state == "Open" or station.state == "Waiting") then
+				if station.kind == "Duel" and not station.reserved and (station.state == "Open" or station.state == "Waiting") then
 					for side = 1, 2 do
 						local pad = station.arena.pads[side]
 						if pad and station.pads[side] == nil and WorldIndex.onPad(pad, position) then
@@ -538,10 +563,12 @@ end
 
 function DuelService:update(dt: number)
 	local now = self.now()
+	self:runJobs(now)
 	self.padAccumulator += dt
 	if self.padAccumulator >= 1 / NetProtocol.PadPollHz then
 		self.padAccumulator = 0
 		self:pollPads()
+		self:matchmake()
 	end
 	for _, id in self.stationOrder do
 		local station = self.stations[id]
@@ -604,6 +631,12 @@ function DuelService:onLobby(player: any, rawKind: unknown, rawPayload: unknown)
 		self:endPractice(rec)
 	elseif kind == "LeaveFight" then
 		self:leaveFight(rec)
+	elseif kind == "QuickPlay" then
+		self:quickPlay(rec, payload)
+	elseif kind == "CancelQueue" then
+		self:cancelQueue(rec)
+	elseif kind == "Travel" then
+		self:travel(rec, payload.to)
 	end
 end
 
@@ -664,8 +697,16 @@ function DuelService:startPractice(rec: Record, payload: { [string]: any })
 		self:reject(rec, "StartPractice", "NotOnPad")
 		return
 	end
+	self:beginPractice(rec, station, payload)
+end
+
+-- Starts a local-authority practice session at a dojo station (pad checks are the caller's).
+function DuelService:beginPractice(rec: Record, station: Station, payload: { [string]: any })
+	local mode = payload.mode :: string
 	local matchId = self:nextMatchId(station.id .. "/Practice")
 	local opponent = payload.opponent or self:pickOpponent(rec.fighterId)
+	rec.quick = nil
+	rec.quickStatus = ""
 	rec.state = "Practice"
 	rec.arenaId = station.id
 	rec.padSide = 0
@@ -715,6 +756,328 @@ function DuelService:leaveFight(rec: Record)
 	elseif rec.state == "Practice" then
 		self:endPractice(rec)
 	end
+end
+
+-- PLAY panel (round 5): Quick Duel queue, Fight CPU, Practice and quick travel ----------------------------------------
+-- Every move is server-side: the client is told first (Teleport, so its fade covers the jump), the character is
+-- pivoted TeleportDelay later, then the existing pad / station logic takes over (claimPad -> countdown -> match).
+
+local function sortedSearchers(list: { Record })
+	table.sort(list, function(a, b)
+		local qa, qb = a.quick :: any, b.quick :: any
+		if qa.since ~= qb.since then return qa.since < qb.since end
+		return a.userId < b.userId
+	end)
+end
+
+function DuelService:avatarLoading(rec: Record): boolean
+	local avatars = self.deps.avatars
+	return avatars ~= nil and avatars.isLoading ~= nil and avatars:isLoading(rec.player) == true
+end
+
+-- Pivots a player's character (stub players just move).
+function DuelService:teleport(rec: Record, at: CFrame)
+	rec.travelUntil = self.now() + NetProtocol.TravelGraceSeconds
+	local avatars = self.deps.avatars
+	if avatars and avatars.teleport then
+		avatars:teleport(rec.player, at)
+	elseif not isInstance(rec.player) and typeof(rec.player) == "table" then
+		rec.player.position = at.Position + Vector3.new(0, 3, 0)
+	end
+end
+
+function DuelService:setQuickStatus(rec: Record, status: string)
+	if rec.quickStatus == status then return end
+	rec.quickStatus = status
+	self:publishRecord(rec)
+end
+
+-- A duel arena nobody uses: open, not reserved, no claims and nobody standing on its circles.
+function DuelService:freeArena(): Station?
+	for _, id in self.stationOrder do
+		local station = self.stations[id]
+		if station.kind == "Duel" and station.state == "Open" and not station.reserved and not station.pads[1] and not station.pads[2]
+			and station.arena.pads[1] and station.arena.pads[2] then
+			local occupied = false
+			for _, rec in self.records do
+				local position = self.positionOf(rec.player)
+				for _, pad in station.arena.pads do
+					if position and WorldIndex.onPad(pad, position, 1) then occupied = true end
+				end
+			end
+			if not occupied then return station end
+		end
+	end
+	return nil
+end
+
+function DuelService:freeArenaCount(): number
+	local n = 0
+	for _, id in self.stationOrder do
+		local station = self.stations[id]
+		if station.kind == "Duel" and station.state == "Open" and not station.reserved and not station.pads[1] and not station.pads[2] then n += 1 end
+	end
+	return n
+end
+
+function DuelService:dojo(mode: string): Station?
+	for _, id in self.stationOrder do
+		local station = self.stations[id]
+		if station.kind == "Practice" and station.arena.practicePads[mode] then return station end
+	end
+	return nil
+end
+
+-- Queues a server move: the client hears Teleport now, `run(alive)` happens at dueAt.
+function DuelService:schedule(job: { [string]: any }, recs: { Record }, reason: string, arenaId: string?)
+	job.dueAt = self.now() + NetProtocol.TeleportDelay
+	job.recs = recs
+	for _, rec in recs do
+		rec.pending = job
+		self:sendDuel(rec, "Teleport", { reason = reason, arenaId = arenaId or "", delay = NetProtocol.TeleportDelay })
+	end
+	table.insert(self.jobs, job)
+end
+
+function DuelService:runJobs(now: number)
+	if #self.jobs == 0 then return end
+	local due = {}
+	for i = #self.jobs, 1, -1 do
+		if now >= self.jobs[i].dueAt then table.insert(due, 1, table.remove(self.jobs, i)) end
+	end
+	for _, job in due do
+		-- A move only happens for players still connected and still in the lobby.
+		local alive = true
+		for _, rec in job.recs do
+			if rec.pending == job then rec.pending = nil end
+			if self.records[rec.player] ~= rec or rec.state ~= "Lobby" then alive = false end
+		end
+		local ok, err = pcall(job.run, alive)
+		if not ok then warn("FightingLab DuelService: travel job failed: " .. tostring(err)) end
+	end
+end
+
+-- Sends searchers onto a station's pads: { [side] = record }. `waiter` (optional) is the player already on the other
+-- circle, who must still be there when the move happens.
+function DuelService:sendToPads(station: Station, assignment: { [number]: Record }, waiter: Record?)
+	station.reserved = true
+	local recs, since = {}, {}
+	for _, rec in assignment do
+		since[rec] = if rec.quick then (rec.quick :: any).since else self.now()
+		rec.quick = nil
+		rec.quickStatus = "Matched"
+		self:publishRecord(rec)
+		table.insert(recs, rec)
+	end
+	local job: { [string]: any } = {}
+	job.run = function(alive: boolean)
+		station.reserved = false
+		local waiterOk = waiter == nil or (self.records[waiter.player] == waiter and station.pads[waiter.padSide] == waiter and (station.state == "Waiting"))
+		local free = waiter ~= nil or (station.state == "Open" and not station.pads[1] and not station.pads[2])
+		if not alive or not waiterOk or not free then
+			-- Someone left (or the arena changed): whoever is still here goes back to the front of the queue.
+			for _, rec in recs do
+				if self.records[rec.player] == rec and rec.state == "Lobby" then
+					rec.quick = { since = since[rec] }
+					rec.quickStatus = "Searching"
+					self:publishRecord(rec)
+				end
+			end
+			return
+		end
+		for side, rec in assignment do
+			local pad = station.arena.pads[side]
+			if pad then
+				self:teleport(rec, WorldIndex.padFrame(pad, station.arena.origin))
+				rec.quickStatus = ""
+				self:claimPad(station, side, rec)
+			end
+		end
+	end
+	self:schedule(job, recs, "QuickDuel", station.id)
+end
+
+-- Pairs Quick Duel searchers: first with players waiting alone on a duel circle, then two by two into free arenas.
+function DuelService:matchmake()
+	local searchers: { Record } = {}
+	local count = 0
+	for _, rec in self.records do
+		if rec.quick then
+			count += 1
+			if rec.state == "Lobby" and rec.pending == nil and not self:avatarLoading(rec) then table.insert(searchers, rec) end
+		end
+	end
+	sortedSearchers(searchers)
+	for _, id in self.stationOrder do
+		if #searchers == 0 then break end
+		local station = self.stations[id]
+		if station.kind == "Duel" and station.state == "Waiting" and not station.reserved then
+			local side = if station.pads[1] and not station.pads[2] then 2 elseif station.pads[2] and not station.pads[1] then 1 else nil
+			local waiter = if side then station.pads[3 - side] else nil
+			if side and waiter and not self:avatarLoading(waiter) and station.arena.pads[side] then
+				self:sendToPads(station, { [side] = table.remove(searchers, 1) :: Record }, waiter)
+			end
+		end
+	end
+	while #searchers >= 2 do
+		local station = self:freeArena()
+		if not station then break end
+		local a = table.remove(searchers, 1) :: Record
+		local b = table.remove(searchers, 1) :: Record
+		self:sendToPads(station, { [1] = a, [2] = b }, nil)
+	end
+	local free = self:freeArenaCount()
+	for _, rec in searchers do self:setQuickStatus(rec, if free == 0 then "Busy" else "Searching") end
+	self:publishLobby({ QuickSearching = count, FreeArenas = free })
+end
+
+-- Lobby-wide numbers on the Stations folder (queue length, free arenas) for the PLAY panel.
+function DuelService:publishLobby(values: { [string]: any })
+	local folder = self.deps.stations
+	for key, value in values do
+		if self.lobbyPublished[key] ~= value then
+			self.lobbyPublished[key] = value
+			if folder then folder:SetAttribute(key, value) end
+		end
+	end
+end
+
+function DuelService:cancelQueue(rec: Record)
+	if not rec.quick then return end
+	rec.quick = nil
+	rec.quickStatus = ""
+	self:publishRecord(rec)
+	self:matchmake()
+end
+
+function DuelService:quickPlay(rec: Record, payload: { [string]: any })
+	local now = self.now()
+	if rec.pending ~= nil or now - rec.lastQuick < NetProtocol.QuickPlayCooldown then
+		self:reject(rec, "QuickPlay", "TooFast")
+		return
+	end
+	local mode = payload.mode :: string
+	if rec.state == "Queued" then
+		local station = self.stations[rec.arenaId]
+		if mode == "Duel" then
+			-- Already waiting on a circle: Quick Duel searchers are sent here first.
+			self:reject(rec, "QuickPlay", "OnCircle")
+			return
+		elseif mode == "Cpu" and station and station.state == "Waiting" and station.pads[3 - rec.padSide] == nil then
+			-- Alone on a circle: the CPU joins right here (no wait, no move).
+			rec.lastQuick = now
+			self:startMatch(station, { slot = 3 - rec.padSide, difficulty = NetProtocol.validDifficulty(payload.difficulty) or "Normal" })
+			return
+		elseif station then
+			self:leavePad(station, rec.padSide)
+		end
+	end
+	if rec.state ~= "Lobby" then
+		self:reject(rec, "QuickPlay", "Busy")
+		return
+	end
+	rec.lastQuick = now
+	if mode == "Duel" then
+		if rec.quick then return end
+		rec.quick = { since = now }
+		rec.quickStatus = "Searching"
+		self:publishRecord(rec)
+		self:matchmake()
+		return
+	end
+	-- Fight CPU and Practice leave the queue first.
+	if rec.quick then
+		rec.quick = nil
+		rec.quickStatus = ""
+		self:publishRecord(rec)
+	end
+	if mode == "Cpu" then
+		local station = self:freeArena()
+		if not station then
+			self:reject(rec, "QuickPlay", "ArenasBusy")
+			return
+		end
+		station.reserved = true
+		local difficulty = NetProtocol.validDifficulty(payload.difficulty) or "Normal"
+		local job: { [string]: any } = {}
+		job.run = function(alive: boolean)
+			station.reserved = false
+			if not alive or station.state ~= "Open" or station.pads[1] or station.pads[2] then
+				if alive then self:reject(rec, "QuickPlay", "ArenasBusy") end
+				return
+			end
+			local pad = station.arena.pads[1] :: WorldIndex.Pad
+			self:teleport(rec, WorldIndex.padFrame(pad, station.arena.origin))
+			self:claimPad(station, 1, rec)
+			self:startMatch(station, { slot = 2, difficulty = difficulty })
+		end
+		self:schedule(job, { rec }, "Cpu", station.id)
+	elseif mode == "Practice" then
+		local padMode = payload.practice :: string
+		local station = self:dojo(padMode)
+		if not station then
+			self:reject(rec, "QuickPlay", "NoDojo")
+			return
+		end
+		local practice = { mode = padMode, difficulty = payload.difficulty, opponent = payload.opponent }
+		local job: { [string]: any } = {}
+		job.run = function(alive: boolean)
+			if not alive then return end
+			local pad = station.arena.practicePads[padMode] :: WorldIndex.Pad
+			self:teleport(rec, WorldIndex.padFrame(pad, station.arena.origin))
+			self:beginPractice(rec, station, practice)
+		end
+		self:schedule(job, { rec }, "Practice", station.id)
+	end
+end
+
+-- The plaza: a lobby spawn (deps.spawnFrame, else the world's LobbySpawn parts).
+function DuelService:plazaFrame(): CFrame?
+	local spawnFrame = self.deps.spawnFrame
+	if spawnFrame then return spawnFrame() end
+	local spawns = self.deps.world.spawns
+	if #spawns == 0 then return nil end
+	local spawn = spawns[self.random:NextInteger(1, #spawns)]
+	return spawn.CFrame * CFrame.new(0, spawn.Size.Y * 0.5, 0)
+end
+
+-- Quick travel to an arena's Arrival point (to watch or walk in) or back to the plaza.
+function DuelService:travel(rec: Record, to: string)
+	local now = self.now()
+	if rec.pending ~= nil or now - rec.lastTravel < NetProtocol.TravelCooldown then
+		self:reject(rec, "Travel", "TooFast")
+		return
+	end
+	if rec.state == "Queued" then
+		local station = self.stations[rec.arenaId]
+		if station then self:leavePad(station, rec.padSide) end
+	end
+	if rec.state ~= "Lobby" then
+		self:reject(rec, "Travel", "Busy")
+		return
+	end
+	local target: CFrame? = nil
+	local arenaId = ""
+	if to == NetProtocol.PlazaTravel then
+		target = self:plazaFrame()
+	else
+		local arena = self.deps.world.arenas[to]
+		if arena then
+			target = WorldIndex.arrivalFrame(arena)
+			arenaId = arena.id
+		end
+	end
+	if not target then
+		self:reject(rec, "Travel", "NoArena")
+		return
+	end
+	rec.lastTravel = now
+	local at = target :: CFrame
+	local job: { [string]: any } = {}
+	job.run = function(alive: boolean)
+		if alive then self:teleport(rec, at) end
+	end
+	self:schedule(job, { rec }, "Travel", arenaId)
 end
 
 return DuelService

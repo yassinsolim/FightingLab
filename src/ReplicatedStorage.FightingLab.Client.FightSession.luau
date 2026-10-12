@@ -32,6 +32,7 @@ export type Deps = {
 	arenaModel: ((arenaId: string) -> Instance?)?,
 	changed: BindableEvent?,
 	rejected: BindableEvent?,
+	teleport: BindableEvent?,
 	coreGui: boolean?,
 }
 
@@ -84,8 +85,11 @@ function FightSession.new(deps: Deps)
 	self.serverClock = deps.serverClock or function() return workspace:GetServerTimeNow() end
 	self.changedEvent = deps.changed or Instance.new("BindableEvent")
 	self.rejectedEvent = deps.rejected or Instance.new("BindableEvent")
+	self.teleportEvent = deps.teleport or Instance.new("BindableEvent")
 	self.Changed = self.changedEvent.Event
 	self.Rejected = self.rejectedEvent.Event
+	-- The server is about to move this player's character (PLAY panel / quick travel): {reason, arenaId, delay}.
+	self.Teleport = self.teleportEvent.Event
 	self.current = "Lobby" :: State
 	self.info = nil :: { [string]: any }?
 	self.countdown = nil :: { [string]: any }?
@@ -206,6 +210,13 @@ function Session:handleDuel(kind: unknown, payload: unknown)
 		end
 	elseif kind == "Rejected" then
 		self.rejectedEvent:Fire(payload)
+	elseif kind == "Teleport" then
+		local p: any = if typeof(payload) == "table" then payload else {}
+		self.teleportEvent:Fire({
+			reason = if typeof(p.reason) == "string" then p.reason else "Travel",
+			arenaId = if typeof(p.arenaId) == "string" then p.arenaId else "",
+			delay = if typeof(p.delay) == "number" then math.clamp(p.delay, 0, 2) else NetProtocol.TeleportDelay,
+		})
 	end
 end
 
@@ -400,6 +411,33 @@ function Session:leave(): boolean
 	-- Waiting on a duel pad also counts as "in a fight queue".
 	self:fireLobby("LeaveFight", {})
 	return false
+end
+
+-- PLAY panel (round 5): Quick Duel / Fight CPU / Practice through the server queue; only from the lobby.
+function Session:quickPlay(opts: { [string]: any }?): boolean
+	if self.current ~= "Lobby" then return false end
+	local o: any = opts or {}
+	local mode = o.mode
+	if typeof(mode) ~= "string" or NetProtocol.QuickModes[mode] ~= true then return false end
+	local payload: { [string]: any } = { mode = mode, difficulty = NetProtocol.validDifficulty(o.difficulty) }
+	if mode == "Practice" then
+		payload.practice = if o.practice == "Cpu" then "Cpu" else "Training"
+		payload.opponent = NetProtocol.validFighter(o.opponent)
+	end
+	self:fireLobby("QuickPlay", payload)
+	return true
+end
+
+function Session:cancelQueue(): boolean
+	self:fireLobby("CancelQueue", {})
+	return true
+end
+
+-- Quick travel to an arena (its ArenaId) or back to the plaza ("Plaza").
+function Session:travel(to: string): boolean
+	if self.current ~= "Lobby" or typeof(to) ~= "string" or to == "" then return false end
+	self:fireLobby("Travel", { to = to })
+	return true
 end
 
 function Session:practiceCommand(kind: string, a: any?, b: any?): boolean
@@ -700,9 +738,11 @@ end
 
 local defaultChanged = Instance.new("BindableEvent")
 local defaultRejected = Instance.new("BindableEvent")
+local defaultTeleport = Instance.new("BindableEvent")
 local default: any = nil
 FightSession.Changed = defaultChanged.Event
 FightSession.Rejected = defaultRejected.Event
+FightSession.Teleport = defaultTeleport.Event
 FightSession.Session = Session
 
 local function playerControls(player: Player): Controls?
@@ -736,6 +776,7 @@ function FightSession.init(ctx: any)
 		localPlayer = player,
 		changed = defaultChanged,
 		rejected = defaultRejected,
+		teleport = defaultTeleport,
 		controls = {
 			enable = function() if controlsRef then controlsRef.enable() end end,
 			disable = function() if controlsRef then controlsRef.disable() end end,
@@ -792,6 +833,15 @@ function FightSession.practiceCommand(kind: string, a: any?, b: any?): boolean
 end
 function FightSession.leave(): boolean
 	return if default then default:leave() else false
+end
+function FightSession.quickPlay(opts: { [string]: any }?): boolean
+	return if default then default:quickPlay(opts) else false
+end
+function FightSession.cancelQueue(): boolean
+	return if default then default:cancelQueue() else false
+end
+function FightSession.travel(to: string): boolean
+	return if default then default:travel(to) else false
 end
 function FightSession.isFightActive(): boolean
 	return if default then default:isFightActive() else false

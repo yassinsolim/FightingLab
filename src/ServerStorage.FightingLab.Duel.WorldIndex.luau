@@ -5,11 +5,14 @@ export type Pad = { part: BasePart?, position: Vector3, radius: number, side: nu
 export type Arena = {
 	id: string, stageId: string, displayName: string, kind: string, order: number, model: Model?,
 	origin: Vector3, pads: { [number]: Pad }, practicePads: { [string]: Pad }, exits: { [string]: CFrame },
+	arrival: CFrame?,
 }
 export type Index = { arenas: { [string]: Arena }, order: { string }, spawns: { BasePart }, world: Instance? }
 
 local WorldIndex = {}
 WorldIndex.DefaultPadRadius = 3.5
+-- Quick travel without an Arrival part lands this far behind PadP1 / PadTraining (away from the ring).
+WorldIndex.ArrivalFallbackDistance = 6
 local STAGE_IDS = { MidnightRooftop = true, HarborDusk = true, JungleRuins = true, SnowSummit = true, TrainingBay = true }
 
 local function findPart(root: Instance, name: string): BasePart?
@@ -23,6 +26,22 @@ function WorldIndex.exitFrame(position: Vector3, origin: Vector3): CFrame
 	local target = Vector3.new(origin.X, position.Y, origin.Z)
 	if (target - position).Magnitude < 0.1 then return CFrame.new(position) end
 	return CFrame.lookAt(position, target)
+end
+
+-- Standing on a pad, facing the fight centre (quick play drops players here).
+function WorldIndex.padFrame(pad: Pad, origin: Vector3): CFrame
+	return WorldIndex.exitFrame(pad.position, origin)
+end
+
+-- Quick travel destination of an arena: its Arrival part (world, round 5) facing the ring, else a point
+-- ArrivalFallbackDistance studs behind PadP1 (duel) or PadTraining (dojo) on the line from the fight origin.
+function WorldIndex.arrivalFrame(arena: Arena): CFrame
+	if arena.arrival then return WorldIndex.exitFrame(arena.arrival.Position, arena.origin) end
+	local pad = arena.pads[1] or arena.practicePads.Training or arena.pads[2] or arena.practicePads.Cpu
+	if not pad then return WorldIndex.exitFrame(arena.origin + Vector3.new(0, 0, 30), arena.origin) end
+	local out = Vector3.new(pad.position.X - arena.origin.X, 0, pad.position.Z - arena.origin.Z)
+	local dir = if out.Magnitude > 0.01 then out.Unit else Vector3.new(0, 0, 1)
+	return WorldIndex.exitFrame(pad.position + dir * WorldIndex.ArrivalFallbackDistance, arena.origin)
 end
 
 local function padFrom(part: BasePart, side: number, mode: string?): Pad
@@ -52,8 +71,10 @@ function WorldIndex.scanArena(model: Instance): Arena?
 		order = if typeof(order) == "number" then order else 99,
 		displayName = if typeof(displayName) == "string" then displayName else model.Name,
 		model = if model:IsA("Model") then model else nil,
-		origin = origin, pads = {}, practicePads = {}, exits = {},
+		origin = origin, pads = {}, practicePads = {}, exits = {}, arrival = nil,
 	}
+	local arrival = findPart(model, "Arrival")
+	if arrival then arena.arrival = arrival.CFrame end
 	for side = 1, 2 do
 		local pad = findPart(model, "PadP" .. side)
 		if pad then

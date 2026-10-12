@@ -230,4 +230,59 @@ return function(t)
 		end
 		t.expect.truthy(buffer.len(NetProtocol.encodeEntry(rawB, "m#2").b) < 260, "binary entry stays small")
 	end)
+
+	t.test("round 5 PLAY panel kinds: QuickPlay, CancelQueue and Travel are validated; the server's Teleport notice", function()
+		for _, k in { "QuickPlay", "CancelQueue", "Travel" } do t.expect.truthy(NetProtocol.LobbyKinds[k], k .. " is a lobby kind") end
+		t.expect.truthy(NetProtocol.DuelKinds.Teleport, "Teleport is a server -> client kind")
+		t.expect.falsy(NetProtocol.LobbyKinds.Teleport, "clients cannot send Teleport")
+		local kind, duel = NetProtocol.parseLobby("QuickPlay", { mode = "Duel", difficulty = "Insane", junk = 1 })
+		t.expect.equal(kind, "QuickPlay")
+		t.expect.equal((duel :: any).mode, "Duel")
+		t.expect.equal((duel :: any).difficulty, "Normal")
+		t.expect.equal((duel :: any).junk, nil)
+		local _, cpu = NetProtocol.parseLobby("QuickPlay", { mode = "Cpu", difficulty = "Hard" })
+		t.expect.equal((cpu :: any).difficulty, "Hard")
+		local _, practice = NetProtocol.parseLobby("QuickPlay", { mode = "Practice", practice = "Cpu", opponent = "Nia" })
+		t.expect.equal((practice :: any).practice, "Cpu")
+		t.expect.equal((practice :: any).opponent, "Nia")
+		local _, noOpponent = NetProtocol.parseLobby("QuickPlay", { mode = "Practice", practice = "Training", opponent = "Mystery" })
+		t.expect.equal((noOpponent :: any).opponent, nil, "unknown opponents are dropped")
+		for _, bad in { {}, { mode = "Arcade" }, { mode = 5 }, { mode = "Practice" }, { mode = "Practice", practice = "Lesson" } } do
+			t.expect.falsy(NetProtocol.parseLobby("QuickPlay", bad), "rejects " .. HttpService:JSONEncode(bad))
+		end
+		t.expect.falsy(NetProtocol.parseLobby("QuickPlay", "Duel"))
+		t.expect.equal(NetProtocol.parseLobby("CancelQueue", nil), "CancelQueue")
+		local _, travel = NetProtocol.parseLobby("Travel", { to = "Arena_HarborDusk" })
+		t.expect.equal((travel :: any).to, "Arena_HarborDusk")
+		t.expect.equal(select(2, NetProtocol.parseLobby("Travel", { to = NetProtocol.PlazaTravel })).to, "Plaza")
+		for _, bad in { {}, { to = "" }, { to = 7 }, { to = "../Arena" }, { to = "Arena Harbor" }, { to = string.rep("A", 60) } } do
+			t.expect.falsy(NetProtocol.parseLobby("Travel", bad), "rejects travel " .. HttpService:JSONEncode(bad))
+		end
+		t.expect.truthy(NetProtocol.QuickCpuOfferSeconds >= 10 and NetProtocol.QuickCpuOfferSeconds <= 15, "Fight CPU instead after about 12 s")
+		t.expect.truthy(NetProtocol.TeleportDelay > 0 and NetProtocol.TeleportDelay <= 0.3, "the fade covers the move without a long wait")
+		t.expect.equal(NetProtocol.PlayerDefaults.QuickQueue, 0)
+		t.expect.equal(NetProtocol.PlayerDefaults.QuickStatus, "")
+	end)
+
+	t.test("appearance handshake counts the rigid welded gear (FightingLabExtra) too", function()
+		local model = Instance.new("Model")
+		local hand = Instance.new("Part"); hand.Name = "LeftHand"; hand.Parent = model
+		local glove = Instance.new("Part"); glove.Name = "LeftGlove"; glove:SetAttribute(NetProtocol.ExtraAttribute, true); glove.Parent = hand
+		local holder = Instance.new("Model"); holder.Name = "RightShoeRigid"; holder:SetAttribute(NetProtocol.ExtraAttribute, true); holder.Parent = hand
+		local shoe = Instance.new("Part"); shoe.Name = "RightShoe"; shoe:SetAttribute(NetProtocol.ExtraAttribute, true); shoe.Parent = holder
+		local acc = Instance.new("Accessory"); acc.Parent = model
+		local a, w, e = NetProtocol.appearanceCounts(model)
+		t.expect.equal(a, 1)
+		t.expect.equal(w, 0)
+		t.expect.equal(e, 2, "two welded parts (the Rigid holder model itself is not a part)")
+		t.expect.equal(select(1, NetProtocol.expectedAppearance(model)), nil)
+		model:SetAttribute(NetProtocol.AccessoryCountAttribute, 1)
+		local wa, ww, we = NetProtocol.expectedAppearance(model)
+		t.expect.equal(wa, 1)
+		t.expect.equal(ww, 0)
+		t.expect.equal(we, 0, "older servers without ExtraCount: no extras expected")
+		model:SetAttribute(NetProtocol.ExtraCountAttribute, 2)
+		t.expect.equal(select(3, NetProtocol.expectedAppearance(model)), 2)
+		model:Destroy()
+	end)
 end

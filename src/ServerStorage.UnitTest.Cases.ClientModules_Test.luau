@@ -21,15 +21,21 @@ return function(t)
 		SelectScene = { "init", "showCharacter", "showStage", "showVS", "hide", "update", "isActive", "debugInstanceCount" },
 		CreditsScreen = { "render", "scroll", "hasData" },
 		FrontEnd = { "init", "start", "onSnapshot", "update" },
-		FightSession = { "init", "state", "info", "startPractice", "practiceCommand", "leave", "isFightActive" },
+		FightSession = { "init", "state", "info", "startPractice", "practiceCommand", "leave", "isFightActive", "quickPlay", "cancelQueue", "travel" },
 		-- Hides newly added characters on each client until their layered clothing and assets have loaded.
-		AvatarGate = { "init", "start", "track", "gateCharacter", "isGated", "step" },
+		AvatarGate = { "init", "start", "track", "trackPreview", "gateCharacter", "isGated", "step", "decide", "contentReady" },
+		-- Round 5: the bare-frame / pose-pop detector (QA recorder + the reveal check every preview gate uses).
+		FlashDetector = { "inventory", "contentIds", "allContent", "pendingTextures", "check", "fetchStatus", "templateInventory", "poseOf", "maxJointDelta", "newRecorder", "observe", "start", "summary" },
+		-- Round 5: lobby sprint (Controls.lobby.sprint), driven by LobbyUI.
+		LobbySprint = { "new", "bindInput", "stepAlpha", "speedFor", "fovFor" },
 		SpectatorPresenter = { "init", "onSnapshot", "update", "clear" },
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
+		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).
+		LobbyPrompts = { "worldPrompts" },
 		UIHelpers = { "holdPlayerList" },
 		StationBoards = { "viewModel", "build", "render", "buildPadTag", "renderPadTag", "bind", "start" },
 		Leaderboard = { "sortEntries", "entryFor", "collect", "build", "render", "start" },
-		FighterSelect = { "mount", "acquireModel", "newViewport", "frame", "templatesReady", "awaitTemplates" },
+		FighterSelect = { "mount", "acquireModel", "newViewport", "frame", "templatesReady", "awaitTemplates", "gatePreview" },
 	}
 	t.test("modules require without side effects and expose contract API", function()
 		local beforeWorkspace = #workspace:GetChildren()
@@ -43,6 +49,9 @@ return function(t)
 			for _, fn in api do t.expect.equal(typeof(result[fn]), "function", name .. "." .. fn) end
 		end
 		t.expect.equal(#workspace:GetChildren(), beforeWorkspace, "require must not create workspace instances")
+	end)
+	t.test("the legacy pre-lobby menu modules are gone", function()
+		t.expect.equal(folder:FindFirstChild("ArcadeMode"), nil, "ArcadeMode (title -> arcade ladder) deleted in round 5")
 	end)
 	t.test("character and stage registries include baseline ids", function()
 		local chars = require(folder.CharacterPresenter).listCharacters()

@@ -109,13 +109,24 @@ service = DuelService.new({
 		reload = function(_, p: any) if isPlayer(p) then avatars:reload(p) end end,
 		rescue = function(_, p: any) if isPlayer(p) then avatars:rescue(p) end end,
 		isLoading = function(_, p: any): boolean return isPlayer(p) and avatars:isLoading(p) end,
+		-- Quick play / quick travel: real players are pivoted by AvatarService, stub players just move.
+		teleport = function(_, p: any, at: CFrame)
+			if isPlayer(p) then
+				avatars:teleport(p, at)
+			elseif typeof(p) == "table" then
+				p.position = at.Position + Vector3.new(0, 3, 0)
+			end
+		end,
 	},
 	stations = remotes.stations,
 	random = random,
+	spawnFrame = spawnFrame,
 })
 
 local function onPlayerAdded(player: Player)
 	if NetProtocol.validFighter(player:GetAttribute("FighterId")) == nil then player:SetAttribute("FighterId", NetProtocol.DefaultFighter) end
+	-- Left Shift sprints in the lobby (Client.LobbySprint); Roblox's shift-lock toggle would share the key.
+	pcall(function() player.DevEnableMouseLock = false end)
 	service:addPlayer(player)
 	avatars:attach(player)
 	avatars:spawn(player, nil)
@@ -170,6 +181,26 @@ if RunService:IsStudio() then
 				if not isPlayer(player) then service:removePlayer(player) end
 			end
 			return true
+		elseif command == "quickStub" then
+			-- quickStub(mode?, fighterId?, name?): a stub player in the plaza sends QuickPlay (default "Duel": joins the
+			-- Quick Duel queue, so one real player can test pairing alone). Returns the stub's name.
+			local name = args[3] or ("Quick" .. tostring(#Players:GetPlayers() + math.random(10, 99)))
+			local at = spawnFrame()
+			local stub = { UserId = -200 - math.random(1, 99), Name = name, DisplayName = name, fighterId = args[2] or "Goran", position = if at then at.Position + Vector3.new(0, 3, 0) else Vector3.new(0, 3, 0) }
+			service:addPlayer(stub)
+			service:onLobby(stub, "QuickPlay", { mode = args[1] or "Duel", difficulty = "Normal" })
+			return name
+		elseif command == "quickState" then
+			-- quickState(): queue / reservation summary of the PLAY panel matchmaking.
+			local out = {}
+			for player, rec in service.records do
+				table.insert(out, string.format("%s state=%s quick=%s status=%s pending=%s arena=%s side=%d", tostring(rec.displayName), rec.state, tostring(rec.quick ~= nil), rec.quickStatus, tostring(rec.pending ~= nil), rec.arenaId, rec.padSide))
+			end
+			for _, id in service.stationOrder do
+				local st = service.stations[id]
+				table.insert(out, string.format("%s %s reserved=%s", id, st.state, tostring(st.reserved)))
+			end
+			return table.concat(out, "\n")
 		elseif command == "stubAi" then
 			-- stubAi(arenaId): stub slots of the running match become CPU-driven (the network path stays PvP).
 			local station = service:station(args[1])

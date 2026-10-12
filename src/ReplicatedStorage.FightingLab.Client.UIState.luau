@@ -2,11 +2,6 @@
 local UIHelpers = require(script.Parent.UIHelpers)
 local NetProtocol = require(script.Parent.Parent:WaitForChild("NetProtocol"))
 local M = {}
-export type State = UIHelpers.MenuState
--- Legacy title/menu reducer (pre-lobby front end); kept for its tests and for tools that still read it.
-function M.initial(): State return UIHelpers.initialMenuState() end
-function M.reduce(state: State, action: string, counts: UIHelpers.Counts): State return UIHelpers.menuReduce(state, action, counts) end
-function M.validPause(kind: unknown, value: unknown): boolean return UIHelpers.isValidPauseCommand(kind, value) end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Lobby view model (OV6). Pure: maps session/player/pad facts to what the lobby HUD shows. Every lobby interaction is
@@ -24,9 +19,12 @@ export type LobbyInput = {
 	now: number?,
 	keyboard: boolean?, -- false on touch-only devices: tap wording
 	interactKey: string?, -- Controls lobby interact label ("E")
+	searching: boolean?, -- in the Quick Duel queue (Player attribute QuickQueue > 0)
+	searchSeconds: number?, -- time spent in the queue
+	quickStatus: string?, -- Player attribute QuickStatus: Searching | Busy | Matched
 }
 export type LobbyView = {
-	mode: string, -- Hidden | Results | Practice | Countdown | Waiting | CpuOffer | PracticeChoice | Lobby
+	mode: string, -- Hidden | Results | Practice | Countdown | Waiting | CpuOffer | PracticeChoice | Searching | Lobby
 	title: string,
 	subtitle: string,
 	offer: string,
@@ -36,11 +34,21 @@ export type LobbyView = {
 	canChooseFighter: boolean,
 	menuAllowed: boolean,
 	showIdentity: boolean,
+	-- Searching: the queue offers "Fight CPU instead" (after QUICK_CPU_OFFER seconds).
+	cpuInstead: boolean?,
 }
 
 -- The server accepts RequestCpu after CpuOfferSeconds - 1 (clock-skew allowance); offer it a little after that.
 M.CPU_OFFER_DELAY = math.max(2.5, ((NetProtocol :: any).CpuOfferSeconds or 4) - 0.8)
-M.LOBBY_MODES = { Lobby = true, Waiting = true, CpuOffer = true, PracticeChoice = true }
+-- Quick Duel: "Fight CPU instead" after this long alone in the queue.
+M.QUICK_CPU_OFFER = (NetProtocol :: any).QuickCpuOfferSeconds or 12
+M.LOBBY_MODES = { Lobby = true, Waiting = true, CpuOffer = true, PracticeChoice = true, Searching = true }
+
+-- "0:07" style queue clock.
+function M.clock(seconds: number): string
+	local s = math.max(0, math.floor(seconds))
+	return string.format("%d:%02d", s // 60, s % 60)
+end
 
 function M.lobbyView(input: LobbyInput): LobbyView
 	local session = input.sessionState or "Lobby"
@@ -102,9 +110,25 @@ function M.lobbyView(input: LobbyInput): LobbyView
 		end
 		return view
 	end
+	if input.searching then
+		local seconds = input.searchSeconds or 0
+		view.mode = "Searching"
+		if input.quickStatus == "Matched" then
+			view.title = "OPPONENT FOUND"
+			view.subtitle = "Heading to the arena..."
+			return view
+		end
+		view.title = "SEARCHING  " .. M.clock(seconds)
+		view.subtitle = if input.quickStatus == "Busy" then "All arenas are busy  ·  you are next in line" else "Walk around while you wait  ·  PLAY to cancel"
+		if seconds >= M.QUICK_CPU_OFFER then
+			view.cpuInstead = true
+			view.offer = "No opponent yet? Fight a CPU instead"
+		end
+		return view
+	end
 	view.mode = "Lobby"
-	view.title = "WALK INTO A GLOWING CIRCLE TO DUEL"
-	view.subtitle = "Fighter Kiosk: change fighter  ·  Training Bay: practice"
+	view.title = "PRESS PLAY TO FIGHT"
+	view.subtitle = "Or walk into a glowing circle  ·  Fighter Kiosk: change fighter"
 	return view
 end
 
@@ -130,9 +154,11 @@ function M.prompts(input: PromptInput): PromptSet
 		local t = (M.PROMPT_TEXT :: any)[id]
 		return { enabled = enabled, action = t.action, object = t.object }
 	end
-	-- The kiosk is a walk-up station: only offered while free in the lobby (queued players stand on a circle).
-	local kiosk = spec("kiosk", free and v.mode == "Lobby" and v.canChooseFighter and input.templatesReady ~= false)
-	if input.templatesReady == false and free and v.mode == "Lobby" then kiosk.object = "Fighters loading..." end
+	-- The kiosk is a walk-up station: only offered while free in the lobby (queued players stand on a circle; Quick Duel
+	-- searchers walk around freely).
+	local walking = v.mode == "Lobby" or v.mode == "Searching"
+	local kiosk = spec("kiosk", free and walking and v.canChooseFighter and input.templatesReady ~= false)
+	if input.templatesReady == false and free and walking then kiosk.object = "Fighters loading..." end
 	local cpu = spec("cpu", free and v.mode == "CpuOffer" and input.cpuPending ~= true)
 	cpu.arenaId = input.arenaId
 	cpu.side = input.padSide
@@ -240,6 +266,126 @@ function M.pickerAction(state: Picker, action: string): Picker
 		p.cancelled = true
 	end
 	return p
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- PLAY panel (round 5). Pure: the rows the bottom bar's PLAY panel shows for the current facts, keyboard / gamepad
+-- focus over them and the request each item sends. Every action is two steps: open PLAY, pick an item.
+--   duel     : QUICK DUEL (server matchmaking queue); while searching CANCEL, and FIGHT CPU INSTEAD after
+--              QUICK_CPU_OFFER seconds
+--   cpu      : Easy / Normal / Hard (server teleports you onto a free arena and the CPU match starts at once)
+--   practice : Free training / Guided lesson / Versus CPU (teleport onto the dojo pad, practice starts)
+--   travel   : every arena (its Arrival point, to watch or walk in) and back to the plaza
+--------------------------------------------------------------------------------------------------------------------
+export type PlayItem = { id: string, label: string, sub: string, enabled: boolean, accent: string }
+export type PlayRow = { id: string, title: string, items: { PlayItem } }
+export type PlayArena = { id: string, name: string, kind: string, state: string, order: number }
+export type PlayInput = {
+	searching: boolean?, searchSeconds: number?, quickStatus: string?,
+	pending: boolean?, -- a PLAY request is in flight (debounce)
+	onCircle: boolean?, -- waiting on a duel circle (Quick Duel already effectively running there)
+	freeArenas: number?, -- duel arenas nobody uses (Stations attribute FreeArenas)
+	arenas: { PlayArena }?,
+}
+export type PlayFocus = { row: number, col: number }
+M.PLAY_ROW_IDS = { "duel", "cpu", "practice", "travel" } -- "travel" continues as "travel2", "travel3"... (3 per line)
+M.PLAY_TRAVEL_PER_ROW = 3
+local ARENA_STATE_TEXT: { [string]: string } = { Open = "OPEN", Waiting = "1 WAITING", Countdown = "STARTING", Fighting = "LIVE", Results = "LIVE" }
+local CPU_TEXT: { [string]: string } = { Easy = "Learn the basics", Normal = "A fair fight", Hard = "Reads and punishes" }
+
+function M.playRows(input: PlayInput): { PlayRow }
+	local can = input.pending ~= true
+	local busy = (input.freeArenas or 1) <= 0
+	local rows: { PlayRow } = {}
+	local duel: { PlayItem } = {}
+	if input.searching then
+		local secs = input.searchSeconds or 0
+		local offer = secs >= M.QUICK_CPU_OFFER
+		table.insert(duel, { id = "cpuInstead", label = "FIGHT CPU INSTEAD", sub = if offer then "Nobody yet: a Normal CPU, right now" else string.format("Offered after %d s", M.QUICK_CPU_OFFER), enabled = offer and can and not busy, accent = "warm" })
+		table.insert(duel, { id = "cancel", label = "CANCEL SEARCH", sub = "Searching " .. M.clock(secs), enabled = true, accent = "muted" })
+	else
+		local sub = if input.onCircle then "You are already waiting on a circle" elseif busy then "All arenas busy: you will queue" else "Find an opponent"
+		table.insert(duel, { id = "quick", label = "QUICK DUEL", sub = sub, enabled = can and input.onCircle ~= true, accent = "ember" })
+	end
+	table.insert(rows, { id = "duel", title = "VERSUS A PLAYER", items = duel })
+	local cpu: { PlayItem } = {}
+	for _, d in { "Easy", "Normal", "Hard" } do
+		local ok = can and (input.onCircle == true or not busy)
+		table.insert(cpu, { id = "cpu:" .. d, label = string.upper(d), sub = if ok or not can then CPU_TEXT[d] else "All arenas busy", enabled = ok, accent = d })
+	end
+	table.insert(rows, { id = "cpu", title = "FIGHT CPU", items = cpu })
+	table.insert(rows, { id = "practice", title = "PRACTICE", items = {
+		{ id = "practice:Training", label = "FREE TRAINING", sub = "A dummy, your rules", enabled = can, accent = "cool" },
+		{ id = "practice:Lesson", label = "GUIDED LESSON", sub = "10 short steps", enabled = can, accent = "cool" },
+		{ id = "practice:Cpu", label = "VERSUS CPU", sub = "Practice match", enabled = can, accent = "warm" },
+	} })
+	local travel: { PlayItem } = {}
+	local arenas = table.clone(input.arenas or {})
+	table.sort(arenas, function(a, b)
+		if a.order ~= b.order then return a.order < b.order end
+		return a.id < b.id
+	end)
+	for _, a in arenas do
+		local state = if a.kind == "Practice" then "DOJO" else (ARENA_STATE_TEXT[a.state] or "OPEN")
+		table.insert(travel, { id = "travel:" .. a.id, label = string.upper(a.name), sub = state, enabled = can, accent = if a.kind == "Practice" then "cool" else "gold" })
+	end
+	table.insert(travel, { id = "travel:Plaza", label = "PLAZA", sub = "Start area", enabled = can, accent = "muted" })
+	-- Three per line so every arena name fits: rows "travel", "travel2", ... (arrow keys move between the lines).
+	for i = 1, #travel, M.PLAY_TRAVEL_PER_ROW do
+		local line = table.move(travel, i, math.min(#travel, i + M.PLAY_TRAVEL_PER_ROW - 1), 1, {})
+		local n = (i - 1) // M.PLAY_TRAVEL_PER_ROW + 1
+		table.insert(rows, { id = if n == 1 then "travel" else "travel" .. n, title = if n == 1 then "GO TO" else "", items = line })
+	end
+	return rows
+end
+
+-- Where the focus starts: the item most players want next.
+function M.playDefaultFocus(rows: { PlayRow }): PlayFocus
+	local duel = rows[1]
+	if duel and duel.items[1] and duel.items[1].id == "cpuInstead" and not duel.items[1].enabled then return { row = 1, col = 2 } end
+	return { row = 1, col = 1 }
+end
+
+-- Keyboard / gamepad / mouse focus: Up | Down | Left | Right | Confirm | Set:<row>:<col>. Returns the new focus and
+-- the id of an item that was activated (Confirm on an enabled item).
+function M.playNav(rows: { PlayRow }, focus: PlayFocus, action: string): (PlayFocus, string?)
+	local row = math.clamp(focus.row, 1, math.max(1, #rows))
+	local function clampCol(r: number, c: number): number
+		local items = rows[r] and rows[r].items or {}
+		return math.clamp(c, 1, math.max(1, #items))
+	end
+	local col = clampCol(row, focus.col)
+	local setRow, setCol = string.match(action, "^Set:(%d+):(%d+)$")
+	if setRow then
+		local r = math.clamp(tonumber(setRow) or 1, 1, math.max(1, #rows))
+		return { row = r, col = clampCol(r, tonumber(setCol) or 1) }, nil
+	end
+	if action == "Up" or action == "Down" then
+		local nextRow = math.clamp(row + (if action == "Up" then -1 else 1), 1, math.max(1, #rows))
+		return { row = nextRow, col = clampCol(nextRow, col) }, nil
+	elseif action == "Left" or action == "Right" then
+		return { row = row, col = clampCol(row, col + (if action == "Left" then -1 else 1)) }, nil
+	elseif action == "Confirm" then
+		local item = rows[row] and rows[row].items[col]
+		if item and item.enabled then return { row = row, col = col }, item.id end
+	end
+	return { row = row, col = col }, nil
+end
+
+-- The request an item sends: { kind = Lobby kind, payload = {...}, lesson = guided lesson after practice starts }.
+function M.playRequest(id: string, difficulty: string?): { kind: string, payload: { [string]: any }, lesson: boolean }?
+	local level = if difficulty == "Easy" or difficulty == "Hard" then difficulty else "Normal"
+	if id == "quick" then return { kind = "QuickPlay", payload = { mode = "Duel" }, lesson = false } end
+	if id == "cancel" then return { kind = "CancelQueue", payload = {}, lesson = false } end
+	if id == "cpuInstead" then return { kind = "QuickPlay", payload = { mode = "Cpu", difficulty = "Normal" }, lesson = false } end
+	local cpuLevel = string.match(id, "^cpu:(%a+)$")
+	if cpuLevel then return { kind = "QuickPlay", payload = { mode = "Cpu", difficulty = cpuLevel }, lesson = false } end
+	if id == "practice:Training" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Training" }, lesson = false } end
+	if id == "practice:Lesson" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Training" }, lesson = true } end
+	if id == "practice:Cpu" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Cpu", difficulty = level }, lesson = false } end
+	local to = string.match(id, "^travel:([%w_]+)$")
+	if to then return { kind = "Travel", payload = { to = to }, lesson = false } end
+	return nil
 end
 
 --------------------------------------------------------------------------------------------------------------------

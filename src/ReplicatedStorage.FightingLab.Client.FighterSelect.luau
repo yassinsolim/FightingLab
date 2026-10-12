@@ -13,15 +13,26 @@ local Lab = Client.Parent
 local UIHelpers = require(Client.UIHelpers)
 local MoveList = require(Client.MoveList)
 local SelectScene = require(Client.SelectScene)
+local AvatarGate = require(Client.AvatarGate)
 local Roster = require(Lab.Roster)
 
 local T = UIHelpers.Theme
 local make, text = UIHelpers.make, UIHelpers.text
 local WHITE = Color3.new(1, 1, 1)
 local FighterSelect = {}
-FighterSelect.WARMUP = 0.6 -- fresh template clone: layered clothing refits asynchronously, keep it covered this long
+FighterSelect.WARMUP = 0.6 -- legacy fixed warm-up of a fresh clone (reveals now wait for AvatarGate.trackPreview)
 FighterSelect.RELEASE_AFTER = 45 -- seconds closed before pooled previews are released
 FighterSelect.FLAG_GRACE = 20 -- seconds without a TemplatesReady flag before the saved templates are used anyway
+FighterSelect.POSE_BLEND = 0.22 -- seconds a pose change (stance -> intro on confirm) blends over, so no joint pops
+
+-- Pooled stage rigs that already passed the preview gate (every item and asset there); pooled rigs keep their
+-- content between uses, so they are only gated once.
+local warmedRigs: { [Model]: boolean } = setmetatable({} :: any, { __mode = "k" })
+
+-- Reveals a preview clone only once it is complete (AvatarGate.trackPreview): `hide` keeps it covered, `show` uncovers.
+function FighterSelect.gatePreview(model: Model, id: string, hide: () -> (), show: () -> ()): any
+	return AvatarGate.trackPreview(model, id, function() hide() end, function() show() end)
+end
 
 local BODY_PARTS: { [string]: boolean } = {
 	Head = true, UpperTorso = true, LowerTorso = true, LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
@@ -202,8 +213,15 @@ FighterSelect.CUT_UP = 0.24 -- lights back up after it
 FighterSelect.FLIGHT = 0.45 -- camera flight toward the kiosk before the studio
 FighterSelect.CONFIRM_HOLD = 0.95 -- seconds the confirmed fighter is shown before the select closes
 
-local LEFT_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.Left] = true, [Enum.KeyCode.A] = true, [Enum.KeyCode.DPadLeft] = true, [Enum.KeyCode.Q] = true, [Enum.KeyCode.ButtonL1] = true }
-local RIGHT_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.Right] = true, [Enum.KeyCode.D] = true, [Enum.KeyCode.DPadRight] = true, [Enum.KeyCode.E] = true, [Enum.KeyCode.ButtonR1] = true }
+-- Browsing: every horizontal key, and the vertical ones too (W/S, arrows, D-pad up/down: previous / next fighter).
+local LEFT_KEYS: { [Enum.KeyCode]: boolean } = {
+	[Enum.KeyCode.Left] = true, [Enum.KeyCode.A] = true, [Enum.KeyCode.DPadLeft] = true, [Enum.KeyCode.Q] = true, [Enum.KeyCode.ButtonL1] = true,
+	[Enum.KeyCode.Up] = true, [Enum.KeyCode.W] = true, [Enum.KeyCode.DPadUp] = true,
+}
+local RIGHT_KEYS: { [Enum.KeyCode]: boolean } = {
+	[Enum.KeyCode.Right] = true, [Enum.KeyCode.D] = true, [Enum.KeyCode.DPadRight] = true, [Enum.KeyCode.E] = true, [Enum.KeyCode.ButtonR1] = true,
+	[Enum.KeyCode.Down] = true, [Enum.KeyCode.S] = true, [Enum.KeyCode.DPadDown] = true,
+}
 local CONFIRM_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.Return] = true, [Enum.KeyCode.KeypadEnter] = true, [Enum.KeyCode.Space] = true, [Enum.KeyCode.ButtonA] = true }
 local BACK_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.Backspace] = true, [Enum.KeyCode.ButtonB] = true, [Enum.KeyCode.Tab] = true }
 FighterSelect.KEYS = { left = LEFT_KEYS, right = RIGHT_KEYS, confirm = CONFIRM_KEYS, back = BACK_KEYS }
@@ -333,7 +351,9 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			local vp, cam, world = FighterSelect.newViewport(b, "Bust")
 			vp.Size = UDim2.new(1, 0, 1, -22)
 			vp.ZIndex = 2
-			local cover = make("Frame", { Name = "Cover", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -22), ZIndex = 3, Parent = b })
+			-- Opaque until the portrait clone is complete (same look as the tile background, with the monogram).
+			local cover = make("Frame", { Name = "Cover", BackgroundColor3 = WHITE, BackgroundTransparency = 0, BorderSizePixel = 0, Size = UDim2.new(1, 0, 1, -22), ZIndex = 3, Parent = b })
+			UIHelpers.gradient(cover, def.accentColor:Lerp(T.bg, 0.6), T.bg, 90)
 			local mono = text(cover, "Monogram", string.sub(def.displayName, 1, 1), T.display, 46, def.accentColor, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3 })
 			mono.TextTransparency = 0.2
 			local bar = make("Frame", { Name = "Bar", BackgroundColor3 = def.accentColor, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -22), Size = UDim2.new(1, 0, 0, 3), ZIndex = 4, Parent = b })
@@ -364,24 +384,33 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		table.insert(conns, confirmB.button.Activated:Connect(function() if isOpen then refs.confirm() end end))
 	end
 
-	-- Portrait tiles: template clones in ViewportFrames, created once and kept covered until their clothing settled.
+	-- Portrait tiles: template clones in ViewportFrames, created once and kept under an opaque cover until the preview
+	-- gate says the clone carries every item of its template and every asset is fetched.
+	local function coverTile(tile: Tile)
+		tile.cover.Visible = true
+		tile.cover.BackgroundTransparency = 0
+		local mono = tile.cover:FindFirstChild("Monogram") :: TextLabel?
+		if mono then mono.TextTransparency = 0.2 end
+	end
 	local function ensureTilePortraits()
 		if not previewsOn then return end
 		for _, id in Roster.order do
 			local tile = tiles[id]
 			if tile and not tile.preview then
 				tile.preview = { model = nil :: any, release = function() end }
+				coverTile(tile)
 				task.spawn(function()
 					if not FighterSelect.awaitTemplates(function() return not destroyed and tile.preview ~= nil end) then return end
-					local model, warm, release = FighterSelect.acquireModel(presenter(), id)
+					local model, _, release = FighterSelect.acquireModel(presenter(), id)
 					if not model or destroyed or not tile.preview then if model then release() end; return end
 					tile.preview = { model = model, release = release }
 					model.Parent = tile.world
 					pose(presenter(), model, id, 0)
 					FighterSelect.frame(tile.vp, tile.cam, model, "Bust", 16)
-					task.wait(warm)
-					if destroyed or not tile.preview or tile.preview.model ~= model then return end
-					fadeOut(tile.cover)
+					FighterSelect.gatePreview(model, id, function() coverTile(tile) end, function()
+						if destroyed or not tile.preview or tile.preview.model ~= model then return end
+						fadeOut(tile.cover)
+					end)
 				end)
 			end
 		end
@@ -391,10 +420,7 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			local p = tile.preview
 			tile.preview = nil
 			if p and p.model then p.release() end
-			tile.cover.Visible = true
-			tile.cover.BackgroundTransparency = 1
-			local mono = tile.cover:FindFirstChild("Monogram") :: TextLabel?
-			if mono then mono.TextTransparency = 0.2 end
+			coverTile(tile)
 		end
 	end
 
@@ -470,9 +496,17 @@ function FighterSelect.mount(env: SelectEnv): Controller
 				local ok, model = pcall(p.acquirePreview, id)
 				if ok and typeof(model) == "Instance" and model:IsA("Model") then
 					local cold = coldAcquires() > before
-					-- A fresh (cold) clone refits its layered clothing for a moment: keep it out of sight until warm.
-					rigs[id] = { model = model, ready = not cold, warmAt = os.clock() + (if cold then 1.2 else 0), footDelta = nil, cold = cold }
+					-- Parked below the platform until the preview gate has every item and asset of the fighter (pooled
+					-- rigs parked out of sight have not even asked for their textures yet).
+					local rig: StageRig = { model = model, ready = warmedRigs[model] == true, warmAt = 0, footDelta = nil, cold = cold }
+					rigs[id] = rig
 					model:PivotTo(parkFrame())
+					if not rig.ready then
+						FighterSelect.gatePreview(model, id, function() end, function()
+							warmedRigs[model] = true
+							if rigs[id] == rig then rig.ready = true end
+						end)
+					end
 				end
 			end
 		end
@@ -499,12 +533,38 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		end
 		return lowest
 	end
+	-- A pose change on the shown rig (stance -> intro on confirm) blends from the joints it had, so nothing pops.
+	local blend = { model = nil :: Model?, pose = "", from = {} :: { [Motor6D]: CFrame }, started = -math.huge }
+	local function captureMotors(model: Model): { [Motor6D]: CFrame }
+		local out = {}
+		for _, d in model:GetDescendants() do
+			if d:IsA("Motor6D") then out[d] = d.Transform end
+		end
+		return out
+	end
 	local function poseShown(t: number)
 		local id = shownId
 		local rig = id and rigs[id]
 		if not id or not rig then return end
 		local p = presenter()
-		if p and typeof(p.posePreview) == "function" then pcall(p.posePreview, rig.model, id, stageState.pose, t) end
+		if not p or typeof(p.posePreview) ~= "function" then return end
+		if blend.model == rig.model and blend.pose ~= stageState.pose then
+			blend.from = captureMotors(rig.model)
+			blend.started = os.clock()
+		elseif blend.model ~= rig.model then
+			blend.from = {}
+			blend.started = -math.huge
+		end
+		blend.model = rig.model
+		blend.pose = stageState.pose
+		pcall(p.posePreview, rig.model, id, stageState.pose, t)
+		local u = (os.clock() - blend.started) / FighterSelect.POSE_BLEND
+		if u < 1 then
+			local e = u * u * (3 - 2 * u)
+			for motor, from in blend.from do
+				if motor.Parent then motor.Transform = from:Lerp(motor.Transform, e) end
+			end
+		end
 	end
 	local function placeShown(id: string?)
 		local old = shownId
@@ -584,11 +644,10 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			local k = (stageState.confirmUntil - os.clock()) / FighterSelect.CONFIRM_HOLD
 			level += 0.7 * math.max(0, k - 0.6) / 0.4
 		end
-		-- A cold rig waits off-stage until it is warm, then takes the platform.
+		-- A rig that is not complete yet waits off-stage (the preview gate flips `ready`), then takes the platform.
 		local want = if stageState.cutT >= 0 and not stageState.swapped then shownId else selectedId
 		if want and shownId ~= want and stageState.cutT < 0 then
 			local rig = rigs[want]
-			if rig and not rig.ready and os.clock() >= rig.warmAt then rig.ready = true end
 			if rig and rig.ready then placeShown(want) end
 		end
 		refs.loading.Visible = shownId == nil and isOpen

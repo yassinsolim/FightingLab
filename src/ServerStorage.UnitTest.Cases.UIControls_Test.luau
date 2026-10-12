@@ -14,7 +14,7 @@ local Runner = require(game:GetService("ServerStorage").UnitTest.RunUnitTest)
 
 local FIGHT = { "forward", "back", "sidestepIn", "sidestepOut", "crouch", "lp", "rp", "lk", "rk", "throw", "guide" }
 local PRACTICE = { "reset", "switchMode", "easy", "normal", "hard", "dummy", "pause", "leave" }
-local LOBBY = { "interact", "menu", "jump" }
+local LOBBY = { "interact", "menu", "jump", "play", "fighters", "sprint" }
 
 local function hasGlyph(root: Instance, label: string): boolean
 	for _, d in root:GetDescendants() do
@@ -90,7 +90,7 @@ return function(t: Runner.T)
 			for _, action in FIGHT do
 				t.expect.truthy(hasGlyph(page, UIHelpers.keyLabel("fight", action)), "How to Play shows fight." .. action)
 			end
-			for _, action in { "interact", "jump" } do
+			for _, action in { "interact", "jump", "play", "fighters", "sprint" } do
 				t.expect.truthy(hasGlyph(page, UIHelpers.keyLabel("lobby", action)), "How to Play shows lobby." .. action)
 			end
 		end)
