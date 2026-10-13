@@ -459,7 +459,7 @@ fight".
 |---|---|---|
 | world parts (`PartCount`) | 3,860 | 3,892 (+0.8 %; the World_Test ceiling 3,944 is unchanged) |
 | world lights / casting shadows | 92 / 0 | 92 / 0 |
-| world build | 0.27 s | 0.24 s, plus 0.02 s for the sets |
+| world build (`BuildSeconds`) | not measured | 0.24 s, plus 0.02 s for the sets (0.24-0.27 s across runs) |
 | fight-only parts (one set, one client) | none | Rooftop 86, Harbor 202 (1 light), Jungle 191, Summit 188, Dojo 273 |
 | fight rig | none | 2 spot lights, no shadows |
 
