@@ -13,7 +13,90 @@ Raw outputs: `OV6\work\combat\exploit-base-all.txt`, `exploit-new-all-run.txt`, 
 step-in round `OV6\work\combat\runs-stepin\` (`before-*` = round 2, `fallout-*` = step-in Roster + round-2 CPU,
 `final-*` = this export).
 
-## R4. Round 4: the CPU that stayed crouched (ui report) — latest
+## R6. Round 6: distinct movesets, combos, Surge and the Ultimate — latest
+
+Harness: `OV6\work\r6-combat\harness\` (same loader, sources = the `r6-combat` worktree; `R6_SRC=<dir>` points any
+tool at other sources, e.g. an export of `main`). Tools: `sameness.luau` (`SIMPLE=1` = the baseline definition),
+`combosearch.luau` (greedy true-combo timing search), `aistats.luau <level>` (CPU vs CPU, all 36 pairings),
+`winrate.luau <hi> <lo> <n>` (the Difficulty_Test pairing scheme), `winmatrix.luau`, `passive.luau <level>`.
+
+### R6.1 Moves and sameness (before = `main` c0f160c, after = `r6-combat`)
+
+| | Kael | Sierra | Goran | Lumi | Rhys | Nia |
+|---|---|---|---|---|---|---|
+| moves before | 16 | 17 | 17 | 16 | 17 | 17 |
+| moves after | 23 | 26 | 23 | 24 | 25 | 24 |
+
+Sameness (for every input two fighters share, excluding throws, 1+2 and 3+4: same animation archetype, height, hit
+result, counter-hit result and special property = "the same kind of move"): **33 of 113 (29.2 %) → 6 of 118
+(5.1 %)**; the six are the plain i10 jab on 1 shared by Kael, Sierra, Goran and Rhys. Archetype + height + hit result
+only: 33/113 → 22/118. `CombatCombo_Test` pins ≤ 8 % with only jabs allowed to match.
+
+### R6.2 Combo routes (Roster `combos`; every route verified against all six fighters by `CombatCombo_Test`)
+
+Damage is on a standing 100 HP dummy (the same against every fighter, ±1); "% of 90" = against Lumi, the smallest bar.
+Targets: 30-45 % of a bar, Ultimate enders ≤ 55 %.
+
+| fighter | combo | kind | notation | damage | % of 100 | % of 90 |
+|---|---|---|---|---|---|---|
+| Kael | Uppercut Bread | launch | df+2, 1, b+1, 2,1 | 32 | 32 | 36 |
+| Kael | Pocket Launch | stance | 3+4, PKT+2, 1, b+1, 2,1 | 31 | 31 | 34 |
+| Kael | Counter Uppercut | max (CH) | CH df+2, 1, b+1, 2,1 | 36 | 36 | 40 |
+| Kael | Final Bell Finish | ultimate (Surge) | df+2, 1+2 | 37 | 37 | 41 |
+| Sierra | Switch Teep | launch | df+3, 3, 3+4, SPW+3, 1,3 | 34 | 34 | 38 |
+| Sierra | Counter Knee | counter | CH f+3, 1,3,4 | 32 | 32 | 36 |
+| Sierra | Knee To Southpaw | max (CH) | CH f+3, 1,3, 3+4, SPW+3, 2 | 36 | 36 | 40 |
+| Sierra | Eight Limbs Finish | ultimate (Surge) | df+3, 1+2 | 37 | 37 | 41 |
+| Goran | Lift And Hammer | launch | d+2, f+3, 1,2 | 34 | 34 | 38 |
+| Goran | Counter Haymaker | counter | CH b+2, f+3, 1,2 | 40 | 40 | 44 |
+| Goran | Forearm Finish | max | d+2, f+3, 1,2,1 | 39 | 39 | 43 |
+| Goran | Landslide Finish | ultimate (Surge) | d+2, 1+2 | 42 | 42 | 47 |
+| Lumi | Flip And Spin | launch | df+4, 2, 1,4, 4 | 34 | 34 | 38 |
+| Lumi | Aerial Launch | stance | 3+4, AER+4, 2, 1,4, 4 | 33 | 33 | 37 |
+| Lumi | Cartwheel Counter | counter | CH b+3, 2, 1,4, 4 | 40 | 40 | 44 |
+| Lumi | Crescent Flight | max | df+4, 2, 3,4,4 | 35 | 35 | 39 |
+| Lumi | Skyline Finish | ultimate (Surge) | df+4, 1+2 | 35 | 35 | 39 |
+| Rhys | Knee And Backfist | launch | df+3, 2, b+2, 1 | 31 | 31 | 34 |
+| Rhys | Still Water Answer | stance | 3+4, STW+2, 2, b+2, 1 | 32 | 32 | 36 |
+| Rhys | Counter Knee | max (CH) | CH df+3, 2, b+2, 1 | 34 | 34 | 38 |
+| Rhys | Last Kata Finish | ultimate (Surge) | df+3, 1+2 | 38 | 38 | 42 |
+| Nia | Palm Lift Flurry | launch | db+2, 1, 3, 2,3 | 31 | 31 | 34 |
+| Nia | Coil Whirl | stance | db+2, 4, 3+4, COIL+4,4 | 32 | 32 | 36 |
+| Nia | Whirlwind Rise | low | d+3,4, 4, 3+4, COIL+4,4 | 39 | 39 | 43 |
+| Nia | Monsoon Finish | ultimate (Surge) | d+3,4, 1+2 | 44 | 44 | 49 |
+
+Juggles end within 5-6 hits (`CombatCombo_Test` caps 7); random juggles still stay under 45 % of 90 HP
+(`Balance_Test`). Surge routes include the × 1.1 Surge bonus on the hits before the Ultimate; the Ultimate itself
+deals × 0.7 of its 30-36 when it ends a juggle.
+
+### R6.3 The CPU (CPU vs CPU, both sides at the level, all 36 pairings once; `aistats.luau`)
+
+| | Easy | Normal | Hard |
+|---|---|---|---|
+| rounds (avg length) | 94 (52.2 s) | 89 (30.4 s) | 88 (31.2 s) |
+| Surge entries | 106 | 113 | 117 |
+| Ultimates started / landed / blocked | 0 / 0 / 0 | 28 / 15 / 9 | 21 / 21 / 0 |
+| KOs by an Ultimate | 0 | 4 | 6 |
+| how it uses it | - | comeback gamble under pressure 23, juggle ender 5 | armored answer to a seen attack 13, combo route ender 10, juggle ender 3 |
+| stance entries per round | 0.70 | 1.61 | 2.61 |
+| Bear Trap catches / parries | 0 / 2 | 4 / 14 | 9 / 17 |
+| listed routes started / finished / dropped after the launch | 0 | 44 / 8 / 8 | 150 / 79 / 20 |
+| tumble hits | 0 | 9 | 55 |
+| longest combo (hits) | 3 | 5 | 6 |
+| unfinished matches / longest non-free state | 0 / 95 f (airborne) | 0 / 260 f (Ultimate cinematic) | 0 / 260 f (Ultimate cinematic) |
+
+Win rates (`winrate.luau`, the Difficulty_Test pairing scheme): Hard beats Normal 63/96 (66 %; `main`: 64/96, 67 %;
+the test's 24 matches: 17/24, needs 16), Normal beats Easy 42/48 (88 %; test 22/24, needs 18). Every pairing once
+each way, Hard vs Normal: 53/72 (74 %). Longest in-range stretch without an attack (`passive.luau`, the
+`CombatAI_Test` measure, limit 6 s): Easy 5.2 s, Normal 3.2 s, Hard 2.8 s.
+
+Retune (justification): with the round-6 movesets Easy guarded 6.5 s in range under steady pokes (Lumi vs Goran),
+failing the passivity test; the patience rule only fired against a quiet opponent. A pressured CPU now also takes a
+turn in the next gap after 2 × patience free frames in range (Easy 5 s, Normal 3.7 s, Hard 3 s). Hard vs Normal had
+dropped to 61 % with the new movesets alone (stance launchers thrown into a guard, blind Ultimates); Hard now
+launches out of a stance only on a busy opponent and never gambles its Ultimate, which brought it back to 66 %.
+
+## R4. Round 4: the CPU that stayed crouched (ui report)
 
 ui found it in Training with the dummy on Fight back: after the player threw it at close range, the dummy could stay
 crouched for more than 2 minutes without attacking, with all six fighters (`UITutorial_Test`, seed 4242). The Versus
