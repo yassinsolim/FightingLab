@@ -364,3 +364,141 @@ orientations, in a 16:9 frame:
   Rooftop's status board stand in the background beyond the barrier. They are lobby props, not fighters.
 - Any new thin plate on a walkway needs `Kit.passThrough`, or computed paths will route round it. The walk and pocket
   tests catch this.
+
+## Round 6 (look): an art pass per arena ("more refinements on the whole look of the game")
+
+Every duel arena now has its own world in a fight: a mood, a light rig, fight-only scenery with a crowd, and its
+own floor dressing. The lobby keeps the shared golden hour, so lobby players and spectators see the world as before.
+World version `ov6-world-6`. Anchors, attributes and the compact layout are unchanged: World_Test passes 28 of 28.
+
+### Arena moods (`Client.LightingProfile`, client only)
+
+When the local fight starts, `StageController` calls `LightingProfile.applyArena(stageId)`. When it ends, it calls
+`restore()`. The mood sets the time of day, ambient, atmosphere, sky, clouds, bloom, the colour grade, sun rays, a
+subtle depth of field and the light rig. Every changed value is recorded first and put back exactly. Effects the
+mood creates carry the `FightingLabArenaLook` attribute and are removed on restore. On the server it does nothing.
+
+| arena | mood | clock | bloom (intensity / threshold) | grade (contrast / saturation) | sun rays | DOF far | rig: key / rim |
+|---|---|---|---|---|---|---|---|
+| Midnight Rooftop | Neon Midnight | 0.6, moonlit night | 0.55 / 1.9 | 0.14 / 0.16 | 0 | 0.22 | cool white 0.95 / magenta 2.2 |
+| Harbor Dusk | Last Light | 18.05, sun on the water | 0.45 / 2.0 | 0.10 / 0.20 | 0.03 | 0.18 | amber 0.9 / violet 2.4 |
+| Jungle Ruins | Canopy Haze | 15.6, humid afternoon | 0.34 / 2.3 | 0.12 / 0.12 | 0.04 | 0.20 | warm 0.8 / leaf green 1.8 |
+| Summit Observatory | Blue Hour | 5.85, before sunrise | 0.50 / 1.8 | 0.12 / -0.04 | 0 | 0.20 | warm 1.05 / ice blue 1.5 |
+| Training Bay | Morning Calm | 8.6, low sun | 0.35 / 2.2 | 0.07 / 0.06 | 0.03 | 0.16 | warm 0.7 / amber 1.8 |
+
+- **Ceilings** (`LightingProfile.CEILINGS`, pinned by ArenaLook_Test):
+  - exposure ? 0.3;
+  - bloom ? 0.9, with a threshold of at least 1.35;
+  - grade brightness ? 0.04 and contrast ? 0.16;
+  - sun rays ? 0.06, glare ? 0.4, DOF far ? 0.3;
+  - rig key ? 2.4, rim ? 4.5.
+- **Depth of field:** `setFocus` keeps it on the fighters every frame.
+- **Fight light rig:** two spot lights (no shadows) that follow the fight camera (`StageController.rigFrames`). The key
+  comes from the camera side. The rim is coloured and comes from behind the fighters. Both are aimed at the fighters.
+
+### Fight sets (`World.FightSets` ? `ReplicatedStorage.FightingLab.FightSets.<StageId>`)
+
+The sets are built with the world but never placed in the Workspace. `StageController` clones the local player's
+arena set for that player's fight only. The fight camera then sees the arena's own world instead of the plaza, the
+other arenas and the city.
+
+**Placement rules**
+- A piece only stands on a covered bearing:
+  - `ARC` = 105? either side of the plaza side;
+  - plus `NORTH_ARC` = 50? round north, which is the default fight camera's view (unless the arena's own backdrop is
+    there).
+- Every piece stands at least `MIN_RADIUS` = 38 studs from FightOrigin. The fight camera orbits inside 36, so no set
+  piece can come between the camera and the fighters.
+- Every part is anchored and quiet: no collide, no query, no touch.
+
+**Sets per arena**
+- **Rooftop:** neighbouring rooftops with water tanks and antennas, a big neon billboard, a crowd on a terrace, far
+  towers, drizzle.
+- **Harbor:** stacked freight, a lit warehouse with loading bays and its sign, a dock crane, dock workers watching,
+  warm dust in the low sun.
+- **Jungle:** understory, giant trees, a closed canopy, vines, a ruined gate with glowing glyphs, ground mist, fireflies.
+- **Summit:** a snowy ridge with pines, far peaks, an aurora (beams, no textures), snowfall.
+- **Dojo:** a garden wall with lanterns, blossoming trees, a five-roof pagoda, misty mountains across the bay, students
+  watching, drifting petals.
+
+**Shared pieces**
+- **Far hills** close every horizon, so the city towers behind the plaza disappear in the haze.
+- **Crowd:** spectator silhouettes drawn on transparent SurfaceGui panels (no part per person) and shaded by the
+  scene's light. StageController makes each figure sway (attributes `Phase` and `Rate`).
+
+**District hide**
+- While the local player fights, the Lobby and the other arenas are hidden on that client:
+  - `LocalTransparencyModifier = 1`;
+  - their guis, emitters, beams and lights are switched off.
+- `clearArena` puts everything back.
+- `LobbyAmbience` never writes 1 (it uses 0 and 0.85), so the two never fight over a part.
+
+### In-world dressing (the server's world, seen by everyone)
+
+- **Floor decals:** `ArenaKit.paintBar`, `paintTicks` and `paintCrest` lay flat decals made of thin, non-colliding
+  parts:
+  - a crest in the ring centre: hex (Rooftop), compass (Harbor), flake (Summit), enso (dojo);
+  - minute ticks round every ring edge.
+- **Banners:** named banners on poles behind the rails: MIDNIGHT / ROOFTOP, PIER 9 / DUSK, SUN / GATE, SUMMIT / PEAK.
+- **Reflectance:** the Rooftop deck 0.06, the Summit floor 0.04.
+- **Stair name mats:** they used TextScaled, which splits a word ("HARBO / R DUSK", "TRAININ G BAY"). They now put one
+  word per line (`ArenaKit.nameLines`) at the largest fixed size that fits (`ArenaKit.nameTextSize`, 32 px per stud,
+  at least 18 px).
+
+### Fix: the Rooftop and Summit fight floors turned magenta / cyan
+
+The global `FightingLabCameraOccluder` tag is meant for lower neighbours. `StageController` also applied it to the
+fighting arena's own floor stack, faded it, and the neon EdgeLine disc beneath showed through. Occluders now count
+per arena: a tagged part only fades when its top is above the fight floor + 1.5 (`occluderRelevant`). The
+ArenaLook_Test regression fails without the fix: "Arena_MidnightRooftop: FightFloor must never fade in its own
+fight".
+
+### Numbers (Play, server and client)
+
+| | before (main) | round 6 |
+|---|---|---|
+| world parts (`PartCount`) | 3,860 | 3,892 (+0.8 %; the World_Test ceiling 3,944 is unchanged) |
+| world lights / casting shadows | 92 / 0 | 92 / 0 |
+| world build | 0.27 s | 0.24 s, plus 0.02 s for the sets |
+| fight-only parts (one set, one client) | none | Rooftop 86, Harbor 202 (1 light), Jungle 191, Summit 188, Dojo 273 |
+| fight rig | none | 2 spot lights, no shadows |
+
+### Readability: fighter luma in real fights
+
+The tool is `cap_luma.py`. It runs CPU Easy fights (practice in the dojo) at 1920 x 1080. Each fighter is masked with
+a green Highlight and the mask is eroded by 3 px. About 135,000 fighter pixels are measured per arena.
+
+| arena | fighter luma p50 | p95 | near-white (? 245) |
+|---|---|---|---|
+| Midnight Rooftop | 62.5 | 188.1 | 0 % |
+| Harbor Dusk | 65.5 | 188.0 | 0 % |
+| Jungle Ruins | 70.0 | 220.5 | 0 % |
+| Summit Observatory | 90.1 | 212.5 | 0.32 % |
+| Training Bay | 120.2 | 210.3 | 0.46 % |
+
+### Assets
+
+No external assets were added. Everything uses built-in materials (Slate, Limestone, Wood, LeafyGrass, Rock, Snow,
+Plaster, Metal, CorrodedMetal and others), procedural parts and SurfaceGui silhouettes, so there is nothing new to
+credit.
+
+### Tests
+
+- **ArenaLook_Test** (new, 6 tests):
+  - every mood stays inside the ceilings;
+  - `applyArena` / `restore` put back every value exactly;
+  - a fight never fades its own floor stack;
+  - the light rig is aimed at the fighters;
+  - the sets: one per arena, quiet, inside the part budget, and outside the camera orbit in the fighters' height band;
+  - the stair name mats.
+- World_Test passes 28 of 28.
+
+**Evidence:** `OV6\handoff\look-shots\round6\`.
+
+### Known issues
+
+- The biggest change is in the fight view. From the lobby, the new dressing (crests, ticks, banners) is subtle.
+- The crowd is made of 2D silhouettes.
+- No MaterialVariants or SurfaceAppearance: no new textures were uploaded.
+- In a still frame, the hit flash (CharacterPresenter's white Highlight, owned by motion) can make a fighter look
+  washed out for a few frames.
