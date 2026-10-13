@@ -466,11 +466,13 @@ local function paintGuide()
 	local dev = currentDevice()
 	local touch = touchOnly()
 	if guideShown and dev ~= guideDevice then fillGuide(dev) end
-	panel.Visible = guideShown and not touch
+	-- an Ultimate cinematic owns the screen: the guide and its chip step aside until it ends
+	local cinematic = banners ~= nil and (banners :: HudBanners.Banners).cinematic
+	panel.Visible = guideShown and not touch and not cinematic
 	local chip = refs.guideChip :: Frame
 	if chip then
 		if not guideShown and chip:GetAttribute("Device") ~= dev then chip:SetAttribute("Device", dev); fillChip(dev) end
-		chip.Visible = not guideShown and not touch
+		chip.Visible = not guideShown and not touch and not cinematic
 	end
 end
 function M.guideVisible(): boolean return guideShown end

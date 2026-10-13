@@ -69,7 +69,8 @@ end
 export type Banners = {
 	stage: Frame, root: Frame, centre: Frame, band: Frame, bandLine: Frame, word: TextLabel, wordScale: UIScale, sub: TextLabel,
 	flash: Frame, letterTop: Frame, letterBottom: Frame, ult: Frame, ultFighter: TextLabel, ultName: TextLabel, ultBand: Frame,
-	ultSweep: Frame, ultScale: UIScale, winner: Frame, winnerTitle: TextLabel, winnerName: TextLabel, winnerPlayer: TextLabel,
+	ultSweep: Frame, ultScale: UIScale, ultTab: any, ultMono: TextLabel, ultChip: any, ultGlow: Frame, ultStreak: Frame,
+	ultNameStroke: UIStroke, winner: Frame, winnerTitle: TextLabel, winnerName: TextLabel, winnerPlayer: TextLabel,
 	winnerScore: TextLabel, winnerBar: Frame, token: number, ultToken: number, cinematic: boolean,
 }
 
@@ -91,20 +92,30 @@ function M.build(stage: Frame, root: Frame): Banners
 	local wordScale: UIScale = make("UIScale", { Parent = word })
 	local sub = text(centre, "Sub", "", T.title, 30, T.gold, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -30), Size = UDim2.new(1, 0, 0, 34), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
 	UIHelpers.textStroke(sub, 0.3, 2)
-	-- Ultimate title card: a long slanted band with the fighter's name over the Ultimate's name
-	local ult: Frame = make("Frame", { Name = "UltimateCard", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.74), Size = UDim2.fromOffset(820, 118), Visible = false, ZIndex = 32, Parent = stage })
+	-- Ultimate title card: an accent streak and glow across the screen, a dark slanted plate with the fighter's colour
+	-- tab (monogram) on its leading edge, the fighter's name, and the Ultimate's name in big type outlined in the accent.
+	local ult: Frame = make("Frame", { Name = "UltimateCard", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.74), Size = UDim2.fromOffset(880, 132), Visible = false, ZIndex = 32, Parent = stage })
+	local ultGlow: Frame = make("Frame", { Name = "Glow", BackgroundColor3 = T.ember, BackgroundTransparency = 0.72, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 76), Size = UDim2.new(2.6, 0, 0, 112), ZIndex = 30, Parent = ult })
+	make("UIGradient", { Transparency = UIHelpers.ramp({ { 0, 1 }, { 0.3, 0.35 }, { 0.5, 0 }, { 0.7, 0.35 }, { 1, 1 } }), Parent = ultGlow })
+	local ultStreak: Frame = make("Frame", { Name = "Streak", BackgroundColor3 = T.ember, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 120), Size = UDim2.new(2.4, 0, 0, 5), ZIndex = 31, Parent = ult })
+	make("UIGradient", { Transparency = UIHelpers.ramp({ { 0, 1 }, { 0.25, 0.2 }, { 0.5, 0 }, { 0.75, 0.2 }, { 1, 1 } }), Parent = ultStreak })
 	local ultBand: Frame = make("Frame", { Name = "Band", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 32, Parent = ult })
-	local slab = HudKit.slab(ultBand, "Plate", 820, 92, 34, "/", Color3.fromRGB(10, 10, 16), 0.08, { Position = UDim2.fromOffset(0, 22), ZIndex = 32 })
+	local slab = HudKit.slab(ultBand, "Plate", 880, 100, 38, "/", Color3.fromRGB(10, 10, 16), 0.06, { Position = UDim2.fromOffset(0, 26), ZIndex = 32 })
 	for _, d in slab.holder:GetDescendants() do if d:IsA("GuiObject") then d.ZIndex = 32 end end
-	local accent = HudKit.slab(ultBand, "Accent", 820, 5, 2, "/", M.COLORS.ult, 0, { Position = UDim2.fromOffset(-6, 112), ZIndex = 33 })
+	local ultTab = HudKit.slab(ultBand, "Tab", 132, 100, 38, "/", T.ember, 0, { Position = UDim2.fromOffset(0, 26), ZIndex = 33 })
+	for _, d in ultTab.holder:GetDescendants() do if d:IsA("GuiObject") then d.ZIndex = 33 end end
+	local ultMono = text(ultTab.holder, "Monogram", "", T.display, 72, T.ink, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
+	local accent = HudKit.slab(ultBand, "Accent", 880, 5, 2, "/", M.COLORS.ult, 0, { Position = UDim2.fromOffset(-6, 128), ZIndex = 33 })
 	for _, d in accent.holder:GetDescendants() do if d:IsA("GuiObject") then d.ZIndex = 33 end end
-	local ultFighter = text(ult, "Fighter", "", T.title, 26, T.ember, { Position = UDim2.fromOffset(64, 0), Size = UDim2.fromOffset(600, 30), ZIndex = 34 })
+	local ultFighter = text(ult, "Fighter", "", T.title, 28, T.ember, { Position = UDim2.fromOffset(150, 0), Size = UDim2.fromOffset(560, 30), ZIndex = 34 })
 	UIHelpers.textStroke(ultFighter, 0.25, 2)
-	local ultName = text(ult, "UltName", "", T.display, 60, M.COLORS.ult, { Position = UDim2.fromOffset(52, 30), Size = UDim2.fromOffset(740, 70), ZIndex = 34, TextScaled = true })
-	make("UITextSizeConstraint", { MaxTextSize = 60, Parent = ultName })
-	UIHelpers.textStroke(ultName, 0.2, 2.5)
-	local ultSweepClip: Frame = make("Frame", { Name = "SweepClip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(34, 22), Size = UDim2.fromOffset(752, 92), ZIndex = 35, Parent = ult })
-	local ultSweep: Frame = make("Frame", { Name = "Sweep", BackgroundColor3 = WHITE, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(-0.2, 0), Size = UDim2.new(0, 120, 1, 0), ZIndex = 35, Parent = ultSweepClip })
+	local ultChip = HudKit.chip(ult, "Tag", "ULTIMATE", 22, T.heavy, 14, M.COLORS.ult, T.ink, "/", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -40, 0, 2), ZIndex = 34 })
+	for _, d in ultChip.holder:GetDescendants() do if d:IsA("GuiObject") then d.ZIndex = 34 end end
+	local ultName = text(ult, "UltName", "", T.display, 72, WHITE, { Position = UDim2.fromOffset(148, 34), Size = UDim2.fromOffset(680, 84), ZIndex = 34, TextScaled = true })
+	make("UITextSizeConstraint", { MaxTextSize = 72, Parent = ultName })
+	local ultNameStroke = UIHelpers.textStroke(ultName, 0.1, 3)
+	local ultSweepClip: Frame = make("Frame", { Name = "SweepClip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(38, 26), Size = UDim2.fromOffset(804, 100), ZIndex = 35, Parent = ult })
+	local ultSweep: Frame = make("Frame", { Name = "Sweep", BackgroundColor3 = WHITE, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(-0.2, 0), Size = UDim2.new(0, 140, 1, 0), ZIndex = 35, Parent = ultSweepClip })
 	make("UIGradient", { Rotation = 20, Transparency = UIHelpers.ramp({ { 0, 1 }, { 0.5, 0.55 }, { 1, 1 } }), Parent = ultSweep })
 	local ultScale: UIScale = make("UIScale", { Parent = ult })
 	-- winner presentation: a wide card across the middle of the screen
@@ -122,7 +133,8 @@ function M.build(stage: Frame, root: Frame): Banners
 	return {
 		stage = stage, root = root, centre = centre, band = band, bandLine = bandLine, word = word, wordScale = wordScale, sub = sub,
 		flash = flash, letterTop = letterTop, letterBottom = letterBottom, ult = ult, ultFighter = ultFighter, ultName = ultName,
-		ultBand = ultBand, ultSweep = ultSweep, ultScale = ultScale, winner = winner, winnerTitle = winnerTitle,
+		ultBand = ultBand, ultSweep = ultSweep, ultScale = ultScale, ultTab = ultTab, ultMono = ultMono, ultChip = ultChip,
+		ultGlow = ultGlow, ultStreak = ultStreak, ultNameStroke = ultNameStroke, winner = winner, winnerTitle = winnerTitle,
 		winnerName = winnerName, winnerPlayer = winnerPlayer, winnerScore = winnerScore, winnerBar = winnerBar, token = 0, ultToken = 0,
 		cinematic = false,
 	}
@@ -189,21 +201,33 @@ function M.setCinematic(b: Banners, on: boolean)
 	end
 end
 
--- The Ultimate title card: fighter name (accent colour) over the Ultimate's name, swept by a light.
+-- The Ultimate title card: fighter name (accent colour) over the Ultimate's name, swept by a light. The streak and glow
+-- take the fighter's accent; the small ULTIMATE tag shows only when the card carries a real move name.
 function M.showUltimate(b: Banners, fighterName: string, ultName: string, accent: Color3?, fromRight: boolean?)
 	b.ultToken += 1
 	local myToken = b.ultToken
+	local color = accent or T.ember
 	b.ultFighter.Text = string.upper(fighterName)
-	b.ultFighter.TextColor3 = accent or T.ember
+	b.ultFighter.TextColor3 = color
 	b.ultName.Text = ultName
 	b.ultName.TextTransparency = 0
 	b.ultFighter.TextTransparency = 0
+	b.ultNameStroke.Color = color:Lerp(Color3.new(0, 0, 0), 0.35)
+	b.ultMono.Text = string.upper(string.sub(fighterName, 1, 1))
+	HudKit.paintSlab(b.ultTab, color)
+	b.ultGlow.BackgroundColor3 = color
+	b.ultStreak.BackgroundColor3 = color:Lerp(WHITE, 0.25)
+	b.ultChip.holder.Visible = ultName ~= M.ULTIMATE_FALLBACK
 	b.ult.Visible = true
 	local x = if fromRight then 1.25 else -0.25
 	b.ult.Position = UDim2.fromScale(x, 0.74)
 	tween(b.ult, 0.28, { Position = UDim2.fromScale(0.5, 0.74) }, Enum.EasingStyle.Quint)
-	b.ultScale.Scale = 1.08
-	tween(b.ultScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Quad)
+	b.ultScale.Scale = 1.1
+	tween(b.ultScale, 0.55, { Scale = 1 }, Enum.EasingStyle.Quad)
+	b.ultGlow.BackgroundTransparency = 0.35
+	tween(b.ultGlow, 0.6, { BackgroundTransparency = 0.72 })
+	b.ultStreak.Size = UDim2.new(0.2, 0, 0, 5)
+	tween(b.ultStreak, 0.35, { Size = UDim2.new(2.4, 0, 0, 5) }, Enum.EasingStyle.Quint)
 	b.ultSweep.Position = UDim2.fromScale(-0.2, 0)
 	task.delay(0.25, function()
 		if myToken == b.ultToken then tween(b.ultSweep, 0.7, { Position = UDim2.fromScale(1.2, 0) }, Enum.EasingStyle.Sine) end

@@ -263,8 +263,12 @@ return function(t: Runner.T)
 			t.expect.equal(card.UltName.Text, "ULTIMATE", "fallback name without a roster entry")
 			local ult = { archetype = "ultimate", move = "Ultimate", frame = 10, duration = 210, impactFrame = 36 }
 			Hud.onSnapshot(snap(5, { state = "Ultimate", throw = ult }, { state = "Ultimate", throw = ult }))
+			Hud.setGuide(true)
 			Hud.update(frame())
 			t.expect.truthy(root.LetterboxTop.Visible and root.LetterboxBottom.Visible, "letterbox during the cinematic")
+			local guide = root.Stage:FindFirstChild("ControlsGuide", true) :: Frame?
+			t.expect.truthy(guide ~= nil and not guide.Visible, "the controls guide steps aside during the cinematic")
+			t.expect.truthy((card :: any).Tag.Visible == false, "no ULTIMATE tag next to the fallback name")
 			for i = 1, 5 do Hud.onEvent({ kind = "UltHit", attacker = 1, target = 2, move = "Ultimate", combo = i, damage = 6 }) end
 			Hud.update(frame())
 			t.expect.truthy(root.Stage.Combo1.Visible, "impacts count on the attacker's side")
@@ -274,6 +278,8 @@ return function(t: Runner.T)
 			Hud.update(frame())
 			task.wait(0.45)
 			t.expect.falsy(root.LetterboxTop.Visible, "letterbox retracts after the cinematic")
+			t.expect.truthy(guide and guide.Visible, "the guide comes back after the cinematic")
+			Hud.setGuide(false)
 			-- names: the roster's Ultimate name, upper case; anything missing falls back
 			local fake = { has = function(id: string) return id == "A" or id == "B" end, get = function(id: string): any
 				if id == "A" then return { displayName = "Ace", moves = { Ultimate = { name = "Final Bell" } } } end
