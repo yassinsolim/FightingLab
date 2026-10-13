@@ -1,5 +1,5 @@
 {
-  "count": 309,
+  "count": 311,
   "exportedFrom": "FightingLab.rbxlx (exported 2026-10-12)",
   "paths": [
     "ReplicatedStorage.FightingLab.Client.AudioController",
@@ -84,6 +84,7 @@
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.Juggle",
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.KOBack",
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.KOFront",
+    "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.ProneTurnOver",
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.SideRoll",
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.SidestepLeft",
     "ReplicatedStorage.FightingLab.Client.Motion.Clips.Core.SidestepRight",
@@ -296,6 +297,7 @@
     "ServerStorage.UnitTest.Cases.MotionMovesStrikesCoverage_Test",
     "ServerStorage.UnitTest.Cases.MotionMovesThrowsCoverage_Test",
     "ServerStorage.UnitTest.Cases.MotionPlayer_Test",
+    "ServerStorage.UnitTest.Cases.MotionQARound5_Test",
     "ServerStorage.UnitTest.Cases.MotionQA_Test",
     "ServerStorage.UnitTest.Cases.MotionStrikes_Test",
     "ServerStorage.UnitTest.Cases.RenderBuffer_Test",

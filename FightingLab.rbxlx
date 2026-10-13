@@ -756664,6 +756664,15 @@ export type Pose = {
 	selfClear: boolean?,
 	-- cut: the pose starts a new round (no continuity with the previous frame: IK bend directions start over).
 	cut: boolean?,
+	-- pushBack: how far (studs) the attack's body is held back so its strike rests on the opponent (ContactPushBack).
+	pushBack: number?,
+	-- lyingFrames: the knockdown smoother is on for this pose (frames since the last shown one); apply limits every
+	-- part's turn relative to the pelvis (MotionPlayer.LyingJointDeg).
+	lyingFrames: number?,
+	-- defenderClear: a thrown defender (the self clearance keeps its gloves out of its own body).
+	defenderClear: boolean?,
+	-- ankleRange: a getup clip's pose (unplanted feet keep inside the ankle's range, MotionPlayer.GetupAnkleRange).
+	ankleRange: boolean?,
 }
 export type RigInfo = {
 	motors: { [string]: Motor6D }, parts: { [string]: BasePart }, rootHeight: number, legLength: number, armLength: number,
@@ -756683,6 +756692,10 @@ export type RigInfo = {
 	aimResidual: { [string]: { r: number, clock: number? } }?,
 	-- Strike contact retraction (fraction of the reach) per limb on the latest frame (MotionPlayer.applyContact).
 	contactHold: { [string]: { s: number, clock: number? } }?,
+	-- Deepest striking limb still inside the partner after the latest contact pass (studs beyond ContactAllowance).
+	contactResidual: number?,
+	-- Every part's rotation relative to the pelvis in the latest apply and its clock (MotionPlayer.LyingJointDeg).
+	lyingRel: { [string]: any }?,
 	-- Leg treatment of a lying body (0 standing .. 1 lying) on the latest frame and its real time (ramped).
 	lyingLegs: { v: number, t: number }?,
 	-- Relaxed-feet weight of a lying body on the latest frame and its real time (ramped, MotionPlayer.RelaxFeetRamp).
@@ -756691,6 +756704,10 @@ export type RigInfo = {
 	selfPush: { [string]: any }?,
 	-- The same for the forced pass after a contact retraction, and the arms that retraction drew back this frame.
 	selfPushForced: { [string]: any }?,
+	-- The throw grips' clearance pass (a defender's gripping hands, MotionPlayer.presentFrame) and the hands the latest
+	-- grip pass re-solved.
+	selfPushGrip: { [string]: any }?,
+	gripMoved: { [string]: boolean }?,
 	contactMoved: { [string]: boolean }?,
 	-- Body shapes for contact checks (Motion.BodyShape.of caches them here).
 	bodyShape: any?,
@@ -756727,6 +756744,13 @@ type SlotState = {
 	-- holds the body where it was when the sim pushed it on a hit, released over glideDur of animation time.
 	real: number, fadeReal: boolean?, fadeLinear: boolean?, hitStamp: string?, hitSeen: boolean?, glide: Vector3?, glideStart: number?, glideDur: number?,
 	absorbUntil: number?, timeKey: string?, resetSnapUntil: number?, entryPos: Vector3?, entryFrame: number?,
+	-- Point-blank spacing (MotionPlayer.LungeSpacing): the attack's lunge scale and the clock it was last set at.
+	lungeK: number?, lungeAt: number?,
+	-- Contact push-back of the current attack (studs) and the clock it was last set at (MotionPlayer.ContactPushBack).
+	pushBack: number?, pushAt: number?, pushGrow: number?,
+	-- Knockdown smoothing (MotionPlayer.LyingSmooth): the last shown pose in body frames, its real time, and until when
+	-- the stance after a getup stays smoothed.
+	lyingPrev: any?, lyingAt: number?, lyingTail: number?,
 }
 local slots: { [number]: SlotState } = {}
 local FINAL_HIT_HOLD = 1.1
@@ -756909,9 +756933,30 @@ local function blendHandPos(name: string, a: Vector3, b: Vector3, alpha: number)
 	return pivot + CFrame.fromAxisAngle(axis.Unit, ang * alpha):VectorToWorldSpace(ua) * (la + (lb - la) * alpha)
 end
 
-local function blendEffector(a: Effector, b: Effector, alpha: number, name: string?): Effector
+local function blendEffector(a: Effector, b: Effector, alpha: number, name: string?, chests: { CFrame }?): Effector
 	local rot: CFrame? = nil
 	local ra, rb = a.rot, b.rot
+	if chests and name and SHOULDER_PIVOT[name] then
+		-- Chest-frame blend (MotionPlayer.ChestBlend): the hand's reach from the shoulder, its pole and its rotation are
+		-- blended in each pose's chest frame and carried by the blended chest.
+		local ca, cb, cm = chests[1], chests[2], chests[3]
+		local pivot = SHOULDER_PIVOT[name]
+		local va = ca:VectorToObjectSpace(libVector(a.pos - pivot))
+		local vb = cb:VectorToObjectSpace(libVector(b.pos - pivot))
+		local pos = pivot + libVector(cm:VectorToWorldSpace(blendHandPos(name, pivot + va, pivot + vb, alpha) - pivot))
+		local pa = ca:VectorToObjectSpace(libVector(a.pole or Vector3.yAxis))
+		local pb = cb:VectorToObjectSpace(libVector(b.pole or a.pole or Vector3.yAxis))
+		local pole = libVector(cm:VectorToWorldSpace(pa:Lerp(pb, alpha)))
+		if ra and rb then rot = cm * (ca:Inverse() * ra):Lerp(cb:Inverse() * rb, alpha) elseif alpha >= 0.5 then rot = rb else rot = ra end
+		return {
+			pos = pos, pole = pole,
+			orient = a.orient, weight = (a.weight or 1) + ((b.weight or 1) - (a.weight or 1)) * alpha, rot = rot,
+			aimWorldY = b.aimWorldY or a.aimWorldY,
+			aimWeight = if a.aimWeight or b.aimWeight then (a.aimWeight or 0) + ((b.aimWeight or 0) - (a.aimWeight or 0)) * alpha else nil,
+			aimPhase = b.aimPhase or a.aimPhase,
+			sole = if a.sole and b.sole then a.sole + (b.sole - a.sole) * alpha else nil,
+		}
+	end
 	if ra and rb then rot = ra:Lerp(rb, alpha) elseif alpha >= 0.5 then rot = rb else rot = ra end
 	return {
 		pos = if name then blendHandPos(name, a.pos, b.pos, alpha) else a.pos:Lerp(b.pos, alpha),
@@ -756924,18 +756969,29 @@ local function blendEffector(a: Effector, b: Effector, alpha: number, name: stri
 	}
 end
 
--- Blends two heading-space poses (rotations slerp).
+-- Blends two heading-space poses (rotations slerp). Round 5 (ChestBlend): hands blend in the chest frames of the two
+-- poses — a crossfade that turns the body (a thrown defender squaring up from a bladed stance, a getup rising) carried
+-- the heading-space hand targets straight through the turning chest (up to 0.3 studs inside it).
+MotionPlayer.ChestBlend = true
 local function blendPose(a: Pose, b: Pose, alpha: number): Pose
 	if alpha <= 0 then return a end
 	if alpha >= 1 then return b end
+	local rootRot = (a.rootRot or anglesOf(a.rootRotation)):Lerp(b.rootRot or anglesOf(b.rootRotation), alpha)
+	local waistRot = (a.waistRot or anglesOf(a.waist)):Lerp(b.waistRot or anglesOf(b.waist), alpha)
+	local chests: { CFrame }? = nil
+	if MotionPlayer.ChestBlend then
+		chests = {
+			(a.rootRot or anglesOf(a.rootRotation)) * (a.waistRot or anglesOf(a.waist)),
+			(b.rootRot or anglesOf(b.rootRotation)) * (b.waistRot or anglesOf(b.waist)),
+			rootRot * waistRot,
+		}
+	end
 	local targets: { [string]: Effector } = {}
 	for name, ea in a.targets do
 		local eb = b.targets[name]
-		targets[name] = if eb then blendEffector(ea, eb, alpha, name) else copyEffector(ea)
+		targets[name] = if eb then blendEffector(ea, eb, alpha, name, chests) else copyEffector(ea)
 	end
 	for name, eb in b.targets do if not targets[name] then targets[name] = copyEffector(eb) end end
-	local rootRot = (a.rootRot or anglesOf(a.rootRotation)):Lerp(b.rootRot or anglesOf(b.rootRotation), alpha)
-	local waistRot = (a.waistRot or anglesOf(a.waist)):Lerp(b.waistRot or anglesOf(b.waist), alpha)
 	local neckRot = (a.neckRot or anglesOf(a.neck)):Lerp(b.neckRot or anglesOf(b.neck), alpha)
 	local ca = a.contact or { LeftFoot = 1, RightFoot = 1 }
 	local cb = b.contact or { LeftFoot = 1, RightFoot = 1 }
@@ -757335,6 +757391,164 @@ local function addArmor(pose: Pose, view: FighterView)
 	end
 end
 
+-- Knockdown smoothing (round 5). From the frame a fighter reaches the floor (Landing, KO; a getup) to LyingTail seconds
+-- into the stance after a getup, the shown pose changes by at most a few degrees per frame: the pelvis yaws (about the
+-- vertical) and rolls (about its own spine) at most LyingYawRoll and pitches (sit-ups, back rolls, falls) at most
+-- LyingPitch; each hand and foot keeps its place relative to the chest / pelvis and moves at most LyingLimb (direction)
+-- and LyingReach (extension, share of the reference limb) per frame, its elbow/knee pole LyingPole, the waist and neck
+-- LyingSpine, the feet LyingFoot. Limbs follow the body: a clamped pelvis carries them along instead of leaving them
+-- where the clip put them in heading space. Getup clips and the crossfades between them (a fall into a getup, a roll's
+-- first frame, the getup into the guard) used to whip arms and legs up to 180 degrees in a frame. Real time (hitstop
+-- impact fades keep moving); a round reset cuts.
+MotionPlayer.LyingSmooth = true
+MotionPlayer.LyingYawRoll = 12
+MotionPlayer.LyingPitch = 28
+MotionPlayer.LyingLimb = 18
+MotionPlayer.LyingReach = 0.08
+MotionPlayer.LyingPole = 22
+MotionPlayer.LyingSpine = 14
+MotionPlayer.LyingFoot = 22
+MotionPlayer.LyingTail = 0.6
+local LYING_SMOOTH_STATES = { Landing = true, Getup = true, KO = true, Knockdown = true }
+local LYING_TAIL_STATES = { Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true }
+local ARM_PIVOTS = { LeftHand = Vector3.new(-0.5, 1.1, 0), RightHand = Vector3.new(0.5, 1.1, 0) }
+local LEG_PIVOTS = { LeftFoot = Vector3.new(-0.3, -0.35, 0), RightFoot = Vector3.new(0.3, -0.35, 0) }
+type BodyLimb = { dir: Vector3, len: number, pole: Vector3?, rot: CFrame? }
+type BodyFrame = { root: CFrame, waist: CFrame, neck: CFrame, limbs: { [string]: BodyLimb } }
+local function rotOf(rot: CFrame?, euler: Vector3?): CFrame
+	if rot then return rot.Rotation end
+	return anglesOf(euler or Vector3.zero)
+end
+-- A pose's limbs in its own body frames (hands in the chest frame, feet in the pelvis frame; Roblox axes).
+local function bodyFrame(pose: Pose, scale: number): BodyFrame
+	local root = rotOf(pose.rootRot, pose.rootRotation)
+	local waist = rotOf(pose.waistRot, pose.waist)
+	local neck = rotOf(pose.neckRot, pose.neck)
+	local chest = root * waist
+	local limbs = {}
+	for limb, e in pose.targets do
+		local pivot = ARM_PIVOTS[limb] or LEG_PIVOTS[limb]
+		if pivot then
+			local frame = if ARM_PIVOTS[limb] then chest else root
+			local v = frame:VectorToObjectSpace(libVector(e.pos - pivot * scale))
+			local len = v.Magnitude
+			if len > 1e-4 then
+				limbs[limb] = {
+					dir = v / len, len = len,
+					pole = if e.pole and e.pole.Magnitude > 1e-4 then frame:VectorToObjectSpace(libVector(e.pole)).Unit else nil,
+					rot = if LEG_PIVOTS[limb] and e.rot then root:Inverse() * (e.rot :: CFrame).Rotation else nil,
+				}
+			end
+		end
+	end
+	return { root = root, waist = waist, neck = neck, limbs = limbs }
+end
+local function clampRotation(prev: CFrame, new: CFrame, maxDeg: number): CFrame
+	local axis, ang = (new * prev:Inverse()):ToAxisAngle()
+	local maxA = math.rad(maxDeg)
+	if ang <= maxA or ang ~= ang then return new end
+	return CFrame.fromAxisAngle(axis, maxA) * prev
+end
+local function clampDirection(prev: Vector3, new: Vector3, maxDeg: number): Vector3
+	local ang = math.acos(math.clamp(prev:Dot(new), -1, 1))
+	local maxA = math.rad(maxDeg)
+	if ang <= maxA then return new end
+	local axis = prev:Cross(new)
+	if axis.Magnitude < 1e-6 then
+		axis = prev:Cross(Vector3.xAxis)
+		if axis.Magnitude < 1e-6 then axis = prev:Cross(Vector3.yAxis) end
+	end
+	return CFrame.fromAxisAngle(axis.Unit, maxA):VectorToWorldSpace(prev)
+end
+-- The pelvis step split into its yaw/roll part (the plane of the vertical and the spine) and its pitch part.
+local function clampPelvis(prev: CFrame, new: CFrame, yawRollDeg: number, pitchDeg: number): CFrame
+	local axis, ang = (new * prev:Inverse()):ToAxisAngle()
+	if ang < 1e-6 or ang ~= ang then return new end
+	local w = axis * ang
+	local spine = prev.UpVector
+	local ys = Vector3.yAxis * w.Y
+	local s2 = spine - Vector3.yAxis * spine.Y
+	if s2.Magnitude > 0.05 then
+		local e2 = s2.Unit
+		ys += e2 * w:Dot(e2)
+	end
+	local pp = w - ys
+	local maxYS, maxP = math.rad(yawRollDeg), math.rad(pitchDeg)
+	if ys.Magnitude <= maxYS and pp.Magnitude <= maxP then return new end
+	if ys.Magnitude > maxYS then ys *= maxYS / ys.Magnitude end
+	if pp.Magnitude > maxP then pp *= maxP / pp.Magnitude end
+	local w2 = ys + pp
+	if w2.Magnitude < 1e-6 then return prev end
+	return CFrame.fromAxisAngle(w2.Unit, w2.Magnitude) * prev
+end
+-- How a shown pose lies (Motion.States RequestContext.shownLie): nil standing; else face up/down and the head toward or away
+-- from the opponent (heading space: -Z toward it).
+local function lieOf(pose: Pose?): string?
+	if not pose then return nil end
+	local r = rotOf(pose.rootRot, pose.rootRotation)
+	local up = r.UpVector
+	if math.abs(up.Y) > 0.6 then return nil end
+	return (if r.LookVector.Y > 0 then "Supine" else "Prone") .. (if up.Z > 0 then "Away" else "Toward")
+end
+-- A limb's own frame from its direction and pole (up along the limb toward its root, forward toward the pole).
+local function limbFrame(dir: Vector3, pole: Vector3?): CFrame?
+	if not pole then return nil end
+	local up = -dir
+	local fwd = pole - up * pole:Dot(up)
+	if fwd.Magnitude < 1e-3 then return nil end
+	local back = -fwd.Unit
+	return CFrame.fromMatrix(Vector3.zero, up:Cross(back), up, back)
+end
+local function lyingSmooth(pose: Pose, prev: BodyFrame, frames: number, scale: number): Pose
+	local new = bodyFrame(pose, scale)
+	local root = clampPelvis(prev.root, new.root, MotionPlayer.LyingYawRoll * frames, MotionPlayer.LyingPitch * frames)
+	local waist = clampRotation(prev.waist, new.waist, MotionPlayer.LyingSpine * frames)
+	local neck = clampRotation(prev.neck, new.neck, MotionPlayer.LyingSpine * frames)
+	local chest = root * waist
+	local out = table.clone(pose)
+	out.rootRot, out.waistRot, out.neckRot = root, waist, neck
+	out.rootRotation, out.waist, out.neck = eulerOf(root), eulerOf(waist), eulerOf(neck)
+	local targets = table.clone(pose.targets)
+	for limb, info in new.limbs do
+		local before = prev.limbs[limb]
+		local e = targets[limb]
+		if before and e then
+			local isArm = ARM_PIVOTS[limb] ~= nil
+			local reach = (if isArm then 1.95 else 2.75) * scale
+			local dir = clampDirection(before.dir, info.dir, MotionPlayer.LyingLimb * frames)
+			local step = MotionPlayer.LyingReach * reach * frames
+			local len = math.clamp(info.len, before.len - step, before.len + step)
+			local frame = if isArm then chest else root
+			local pivot = (ARM_PIVOTS[limb] or LEG_PIVOTS[limb]) :: Vector3
+			local copy = table.clone(e)
+			copy.pos = pivot * scale + libVector(frame:VectorToWorldSpace(dir * len))
+			local poleC: Vector3? = nil
+			if info.pole and before.pole then
+				poleC = clampDirection(before.pole, info.pole, MotionPlayer.LyingPole * frames)
+			elseif info.pole then
+				poleC = info.pole
+			end
+			if poleC then copy.pole = libVector(frame:VectorToWorldSpace(poleC)) end
+			if info.rot and before.rot then
+				-- The foot turns relative to its leg (a frame from the leg's direction and pole), so a clamped leg carries the
+				-- foot along: clamped separately, a back roll's legs swinging overhead left the foot 180 degrees off the shin.
+				local fPrev, fNew, fNow = limbFrame(before.dir, before.pole), limbFrame(info.dir, info.pole), limbFrame(dir, poleC)
+				if fPrev and fNew and fNow then
+					local rel = clampRotation(fPrev:Inverse() * before.rot, fNew:Inverse() * info.rot, MotionPlayer.LyingFoot * frames)
+					copy.rot = root * (fNow * rel)
+				else
+					copy.rot = root * clampRotation(before.rot, info.rot, MotionPlayer.LyingFoot * frames)
+				end
+			elseif info.rot then
+				copy.rot = root * info.rot
+			end
+			targets[limb] = copy
+		end
+	end
+	out.targets = targets
+	return out
+end
+
 local function validatePose(pose: Pose)
 	if not finiteVector(pose.rootOffset) or not finiteVector(pose.rootRotation) or not finiteVector(pose.waist) or not finiteVector(pose.neck) then error("MotionPlayer produced a non-finite body pose") end
 	for name, target in pose.targets do if not finiteVector(target.pos) or (target.pole and not finiteVector(target.pole)) then error("MotionPlayer produced non-finite target " .. name) end end
@@ -757399,6 +757613,55 @@ local function stepInScale(st: SlotState, view: FighterView, moveKey: string, re
 	local designed = st.stepDesigned or 0
 	if designed <= 0.05 * scale then return 1 end
 	return math.clamp((st.stepApplied or 0) / designed, 0, 1)
+end
+
+-- Point-blank spacing (round 5). Attack clips carry their own body lunge (the pelvis travels toward the contact on top
+-- of the sim's `advance`), authored for the move's designed range. Against an opponent standing closer (keepApart holds
+-- the bodies at Separation; mid range), that lunge carried the whole body into the opponent and no limb retraction
+-- could clear it (Rhys Jab 0.57 studs deep, a teep's hip inside the opponent's belly). The clip's forward pelvis travel
+-- from its first frame is scaled down by the distance missing at the predicted contact (the sim distance minus the
+-- advance still to come, never below Separation; the move's designed contact distance is its `range`), so the body
+-- stops where the strike can land; the contact pass (applyContact) then bends the limb onto the surface. The contact
+-- frame and the clip's timing are unchanged. The scale changes at most LungeRate per frame.
+MotionPlayer.LungeSpacing = true
+MotionPlayer.LungeRate = 0.15
+local function lungeSpacing(pose: Pose, clip: ClipLibrary.Clip, resolved: ResolvedMove, view: FighterView, frame: any?, slot: number, st: SlotState, legLength: number, config: any)
+	if not MotionPlayer.LungeSpacing then return end
+	local move = resolved.move
+	if type(move) ~= "table" or move.height == "Throw" then return end
+	local holder = clip :: any
+	local cache = holder._lunge
+	if cache == nil then
+		-- The clip's largest forward pelvis offset from the sim root (a lunge can peak after the contact and carry the body
+		-- on into the recovery; string follow-ups start where the previous hit left the body).
+		local zMax = 0
+		for i = 0, 24 do
+			zMax = math.max(zMax, ClipPlayer.sample(clip, clip.duration * i / 24, { legLength = 1, scale = 1 }).rootOffset.Z)
+		end
+		cache = { zMax = zMax }
+		holder._lunge = cache
+	end
+	local lunge = cache.zMax * legLength
+	local target = 1
+	local dist = opponentDistance(view, frame, slot)
+	if lunge > 0.02 and dist and type(move.range) == "number" then
+		local startup = math.max(resolved.timing.startup, 1)
+		local mf = view.moveFrame or 0
+		local remaining = (move.advance or 0) * math.max(0, startup - math.max(mf - 1, 0)) / startup
+		local sep = if type(config) == "table" and type(config.Separation) == "number" then config.Separation else 2.6
+		local predicted = math.max(sep, dist - remaining)
+		target = 1 - math.clamp((move.range - predicted) / lunge, 0, 1)
+	end
+	-- The scale carries over between consecutive attack frames (string hits included) and moves at most LungeRate a frame.
+	local k = target
+	local clock = st.clock
+	if st.lungeK and st.lungeAt and clock - (st.lungeAt :: number) <= 2.5 / 60 and clock >= (st.lungeAt :: number) then
+		k = math.clamp(target, (st.lungeK :: number) - MotionPlayer.LungeRate, (st.lungeK :: number) + MotionPlayer.LungeRate)
+	end
+	st.lungeK, st.lungeAt = k, clock
+	if k >= 0.999 then return end
+	local ro = pose.rootOffset
+	if ro.Z > 0 then pose.rootOffset = Vector3.new(ro.X, ro.Y, ro.Z * k) end
 end
 
 -- Identity of the last hit a fighter took (CombatSim's lastHit: frame + move + kind), nil before any.
@@ -757516,6 +757779,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		local clip = ClipLibrary.forMove(characterId, moveKey, view.stringIndex)
 		if clip then
 			pose = ClipPlayer.sample(clip, ClipPlayer.moveTime(clip, resolved.timing, view.moveFrame or 0), { mirror = clip.mirror, legLength = legLength, scale = scale })
+			lungeSpacing(pose :: Pose, clip, resolved, view, frame, s, st, legLength, config)
 			aimContact(pose :: Pose, clip, resolved, view.moveFrame or 0, scale, rootHeight, opponentRootHeight(frame, s), opponentAimHeights(frame, s), legLength)
 		else
 			local normalized = moveTime(resolved.timing, view.moveFrame or 0)
@@ -757527,9 +757791,22 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		moveStartup = resolved.timing.startup
 		local step = stepInScale(st, view, moveKey, resolved, scale)
 		if step < 1 then (pose :: Pose).stepScale = step end
+		-- The contact push-back of the previous frames carries on, released on the animation clock.
+		st.pushGrow = 0
+		if MotionPlayer.ContactPushBack and st.pushBack and st.pushAt and st.clock >= (st.pushAt :: number) and st.clock - (st.pushAt :: number) < 0.25 then
+			local carried = math.max(0, (st.pushBack :: number) - (st.clock - (st.pushAt :: number)) * 60 * MotionPlayer.ContactPushRelease)
+			st.pushBack, st.pushAt = carried, st.clock
+			if carried > 1e-3 then
+				local p = pose :: Pose
+				p.rootOffset -= Vector3.new(0, 0, carried)
+				p.pushBack = carried
+			end
+		else
+			st.pushBack, st.pushAt = nil, nil
+		end
 	else
 		local style = if Roster.has(characterId) then Roster.get(characterId).stanceStyle else "boxer"
-		local req = States.request(view, frame, s, characterId, scale, { clock = st.clock, keyStarted = st.keyStarted, key = st.key, settling = settling, config = config, legLength = legLength })
+		local req = States.request(view, frame, s, characterId, scale, { clock = st.clock, keyStarted = st.keyStarted, key = st.key, settling = settling, config = config, legLength = legLength, shownLie = lieOf(previous) })
 		if req.key ~= st.key then
 			if req.timeKey == nil or req.timeKey ~= st.timeKey then st.keyStarted = st.clock end
 			if req.restart then st.travel = 0 end
@@ -757682,11 +757959,27 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	else
 		st.resetSnapUntil = nil
 	end
+	-- Knockdowns: the lying smoother (see lyingSmooth).
+	if LYING_SMOOTH_STATES[view.state] then st.lyingTail = st.real + MotionPlayer.LyingTail end
+	local smoothing = MotionPlayer.LyingSmooth and not roundReset and not settling and type(view.move) ~= "string" and type(view.throw) ~= "table"
+		and (LYING_SMOOTH_STATES[view.state] or (st.lyingTail ~= nil and st.real <= (st.lyingTail :: number) and LYING_TAIL_STATES[view.state] ~= nil))
+	if smoothing and st.lyingPrev and st.lyingAt then
+		local frames = math.clamp((st.real - (st.lyingAt :: number)) * 60, 0.25, 3)
+		result = lyingSmooth(result, st.lyingPrev, frames, scale)
+		result.lyingFrames = frames
+		-- Getup clips only (the stand-up lead in Landing's last frames and the Getup state): their feet swing with the shins
+		-- (MotionPlayer.GetupAnkleRange); lying and KO feet keep their relaxed pose.
+		if MotionPlayer.GetupAnkleRange and string.sub(key, 1, 6) == "Getup:" then result.ankleRange = true end
+	end
+	st.lyingPrev, st.lyingAt = bodyFrame(result, scale), st.real
 	validatePose(result)
 	result.clock = st.clock
 	result.real = st.real
 	result.selfClear = SELF_CLEAR_STATES[view.state] == true and type(view.move) ~= "string" and type(view.throw) ~= "table"
 		and (type(frame) ~= "table" or frame.phase == nil or frame.phase == "Fight")
+	-- A thrown defender keeps its gloves out of its own body too (clearArms; grips re-solve their limbs afterwards), and
+	-- so does a defender breaking the throw (MotionPlayer.DefenderClearBreak).
+	result.defenderClear = type(view.throw) == "table" and view.throw.role == "Defender" and (view.throw.broken ~= true or MotionPlayer.DefenderClearBreak == true)
 	if roundReset then result.cut = true end
 	st.pose = result
 	return result
@@ -757753,17 +758046,28 @@ local function restChain(motors: { [string]: Motor6D }, joint: string, mid: stri
 	-- A visible foot in a shoe longer or wider than the bare foot publishes the shoe's ground box (foot space; same
 	-- height and bottom as the foot box): feet then rest on the shoe, not on the bare foot inside it.
 	local tipCenter = Vector3.zero
+	-- The shoe worn on the foot (its part box, foot space): a foot the runtime re-orients after the solver rested it (the
+	-- getup ankle range, the knockdown whip limit) keeps its shoe no lower than the solve had it (a high-top's collar
+	-- reaches below the foot box once the foot turns).
+	local shoeBox: CFrame?, shoeSize: Vector3? = nil, nil
 	if isLeg and endPart then
-		local shoeSize, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
-		if typeof(shoeSize) == "Vector3" and typeof(shoeCenter) == "Vector3" then
-			tipSize, tipCenter = shoeSize, shoeCenter
+		local shoeSize0, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
+		if typeof(shoeSize0) == "Vector3" and typeof(shoeCenter) == "Vector3" then
+			tipSize, tipCenter = shoeSize0, shoeCenter
+		end
+		for _, d in endPart:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local weld = d:FindFirstChildOfClass("Weld")
+				if weld then shoeBox, shoeSize = weld.C0, d.Size end
+				break
+			end
 		end
 	end
 	return {
 		joint = joint, mid = mid, tip = tip, target = target, isLeg = isLeg, upperBone = upperBone, l1 = l1, l2 = l2,
 		ankleHeight = ankleHeight, refPivot = refPivotV, refReach = refReach, fullReach = fullReach, side = side,
 		upperSize = if upperPart then upperPart.Size else Vector3.one * 0.4, lowerSize = if lowerPart then lowerPart.Size else Vector3.one * 0.4,
-		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter),
+		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter), shoeBox = shoeBox, shoeSize = shoeSize,
 		handRadius = math.min(tipSize.X, tipSize.Z) * 0.5 + 0.02,
 		midRadius = math.max(if upperPart then math.min(upperPart.Size.X, upperPart.Size.Z) else 0.4, if lowerPart then math.min(lowerPart.Size.X, lowerPart.Size.Z) else 0.4) * 0.5 + 0.02,
 	}
@@ -757824,6 +758128,17 @@ local function extentY(cf: CFrame, size: Vector3): number
 	return (box + ellipsoid) * 0.25
 end
 MotionPlayer.extentY = extentY
+-- Lowest point of an oriented box (its exact extent: a little below extentY's rounded estimate). Used where the runtime
+-- turns a foot after the solver rested it (the getup ankle range, the knockdown whip limit): a shoe mesh fills its box.
+local function boxBottom(cf: CFrame, size: Vector3): number
+	return cf.Position.Y - (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z) * 0.5
+end
+-- Lowest point of a foot given its part frame: its (ground) box, and its shoe's box when it wears one.
+local function footBottom(chain: any, footCF: CFrame): number
+	local b = boxBottom(footCF * chain.tipBox, chain.tipSize)
+	if chain.shoeBox then b = math.min(b, boxBottom(footCF * chain.shoeBox, chain.shoeSize)) end
+	return b
+end
 
 local function flatYaw(rot: CFrame): CFrame
 	local look = rot.LookVector
@@ -757953,6 +758268,40 @@ local function footLift(chain: any, r: CFrame): number
 	return r:VectorToWorldSpace(chain.tipOffset).Y + extentY(r, chain.tipSize)
 end
 
+-- Getup ankle range (round 5). On the knockdown smoother's poses (lying, rolling, getting up) a foot that is not planted
+-- keeps the clip's orientation in the world while its shin swings under it: the side roll's kneeling foot read 100-146
+-- deg of dorsiflexion and 60-95 deg of roll against its shin. Such a foot's turn against the shin is kept inside the
+-- ankle's range (toes toward the knee, sideways, about the foot's long axis — as MotionQA measures it; pointed toes are
+-- left alone: a lying foot lays its toes out along the floor), fading out as the foot plants (planted feet are flattened
+-- onto the floor as before).
+MotionPlayer.GetupAnkleRange = true
+MotionPlayer.AnkleRange = { dorsi = 40, plantar = 180, roll = 35, yaw = 40 }
+local function clampAnkle(shin: CFrame, foot: CFrame, w: number): CFrame
+	local a = shin.Rotation:Inverse() * foot.Rotation
+	local toe = a.LookVector
+	local pitch = math.deg(math.atan2(toe.Y, -toe.Z))
+	local yaw = math.deg(math.asin(math.clamp(toe.X, -1, 1)))
+	local ax, ang = a:ToAxisAngle()
+	local along = ax.Z * math.sin(ang * 0.5)
+	local qw = math.cos(ang * 0.5)
+	local len = math.sqrt(along * along + qw * qw)
+	local roll = if len > 1e-9 then math.deg(2 * math.atan2(along / len, qw / len)) else 0
+	while roll > 180 do roll -= 360 end
+	while roll < -180 do roll += 360 end
+	local R = MotionPlayer.AnkleRange
+	local p2 = math.clamp(pitch, -R.plantar, R.dorsi)
+	local y2 = math.clamp(yaw, -R.yaw, R.yaw)
+	local r2 = math.clamp(roll, -R.roll, R.roll)
+	if p2 == pitch and y2 == yaw and r2 == roll then return foot end
+	local cy = math.cos(math.rad(y2))
+	local toe2 = Vector3.new(math.sin(math.rad(y2)), cy * math.sin(math.rad(p2)), -cy * math.cos(math.rad(p2)))
+	local from = -Vector3.zAxis
+	local axis = from:Cross(toe2)
+	local swing = if axis.Magnitude > 1e-6 then CFrame.fromAxisAngle(axis.Unit, math.acos(math.clamp(from:Dot(toe2), -1, 1))) else CFrame.identity
+	local clamped = shin.Rotation * swing * CFrame.fromAxisAngle(Vector3.zAxis, math.rad(r2))
+	return foot.Rotation:Lerp(clamped, math.clamp(w, 0, 1))
+end
+
 -- The foot rises onto its ball — toes pitched down about the ankle, at most `limit` below the floor plane — just enough
 -- for its ankle (ankleAt: ankle height of the foot shown in a rotation, its lowest point keeping its clearance above the
 -- floor) to reach `needY`. When no rise within the limit gets there, the rise that lifts the ankle most (none when
@@ -758060,11 +758409,15 @@ end
 function MotionPlayer.resetRig(rig: RigInfo)
 	table.clear(rig.footLock)
 	rig.aimResidual = nil
+	rig.lyingRel = nil
 	rig.contactHold = nil
 	rig.lyingLegs = nil
 	rig.relaxFeet = nil
 	rig.selfPush = nil
 	rig.selfPushForced = nil
+	rig.selfPushGrip = nil
+	rig.gripMoved = nil
+	(rig :: any).clampJoints = nil
 	rig.contactMoved = nil
 	for _, chain in rig.chains do
 		chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
@@ -758108,7 +758461,7 @@ local function flattenRef(rig: RigInfo, chain: any): number?
 	return chain.flatRef
 end
 
-local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading: CFrame, legacyFrame: CFrame, effector: Effector, floorY: number, footFlat: CFrame, scale: number, headingSpace: boolean, contact: number, settle: number?, lying: number?, relax: number?, stepScale: number?): number
+local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading: CFrame, legacyFrame: CFrame, effector: Effector, floorY: number, footFlat: CFrame, scale: number, headingSpace: boolean, contact: number, settle: number?, lying: number?, relax: number?, stepScale: number?, ankleRange: number?): number
 	local motors = rig.motors
 	local jm, mm, tm = motors[chain.joint], motors[chain.mid], motors[chain.tip]
 	local pivot = parentFrame * jm.C0
@@ -758320,6 +758673,29 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 			-- derived from it. Keyframe fallbacks without a foot rotation flatten their planted feet here.
 			local wanted: CFrame? = footRot
 			if not wanted and planted > 0 then wanted = footFlat end
+			-- On getup poses an unplanted foot stays inside the ankle's range against this solve's shin (GetupAnkleRange),
+			-- as far as that does not take the foot or its shoe lower than the solve rested it (or below the floor).
+			if wanted and footRot and ankleRange and ankleRange > 0 and planted < 1 then
+				local w0 = ankleRange * (1 - planted)
+				local turned = clampAnkle(lowerWorld, wanted :: CFrame, w0)
+				if turned ~= wanted then
+					local base = lowerWorld * tm.C0
+					local c1 = tm.C1
+					local function bottomOf(rot: CFrame): number
+						return footBottom(chain, base * (base.Rotation:Inverse() * rot * c1.Rotation) * c1:Inverse())
+					end
+					local need = math.min(floorY, bottomOf(wanted :: CFrame))
+					if bottomOf(turned) < need then
+						local lo, hi = 0, w0
+						for _ = 1, 6 do
+							local mid = (lo + hi) * 0.5
+							if bottomOf(clampAnkle(lowerWorld, wanted :: CFrame, mid)) >= need then lo = mid else hi = mid end
+						end
+						turned = clampAnkle(lowerWorld, wanted :: CFrame, lo)
+					end
+					wanted = turned
+				end
+			end
 			if wanted then
 				local flat = (lowerWorld * tm.C0).Rotation:Inverse() * wanted * tm.C1.Rotation
 				tipTransform = if footRot then flat else CFrame.identity:Lerp(flat, planted)
@@ -758354,6 +758730,159 @@ end
 
 -- Applies a pose to a rig whose HumanoidRootPart has already been placed (fighter position + rootOffset).
 -- floorY: world floor height (defaults to HRP height - RootHeight).
+-- Knockdown whip limit (round 5), the last step of apply for the poses the knockdown smoother marks (lyingFrames): every
+-- body part's rotation relative to the pelvis turns at most LyingJointDeg per frame (real time) from the previous shown
+-- frame, parts processed from the pelvis outward (a clamped elbow carries its hand along), so neither a clip's fast
+-- getup or roll nor the floor rules (hands caught on the floor, the settle of a lying spine, knee lifts) whip a limb.
+-- Every apply records the parts' rotations, so a knockdown starting next frame has its reference.
+MotionPlayer.LyingJointDeg = 26
+-- Most a clamped leg is lifted about the hip in a frame to keep it out of the floor (degrees).
+MotionPlayer.LyingLiftMaxDeg = 3.5
+local CLAMP_CHAIN = {
+	{ "Waist", "UpperTorso" }, { "Neck", "Head" },
+	{ "LeftShoulder", "LeftUpperArm" }, { "LeftElbow", "LeftLowerArm" }, { "LeftWrist", "LeftHand" },
+	{ "RightShoulder", "RightUpperArm" }, { "RightElbow", "RightLowerArm" }, { "RightWrist", "RightHand" },
+	{ "LeftHip", "LeftUpperLeg" }, { "LeftKnee", "LeftLowerLeg" }, { "LeftAnkle", "LeftFoot" },
+	{ "RightHip", "RightUpperLeg" }, { "RightKnee", "RightLowerLeg" }, { "RightAnkle", "RightFoot" },
+}
+-- Per rig: the clamp chain's motors with their fixed offsets and part names (only Transform is read per frame); leg
+-- joints are grouped per side (`leg`).
+local function clampJoints(rig: RigInfo): { any }
+	local cached = (rig :: any).clampJoints
+	if cached then return cached end
+	local list = {}
+	for _, j in CLAMP_CHAIN do
+		local m = rig.motors[j[1]]
+		if m and m.Part0 and m.Part1 then
+			local side = string.match(j[1], "^(%a-)Hip$") or string.match(j[1], "^(%a-)Knee$") or string.match(j[1], "^(%a-)Ankle$")
+			table.insert(list, { motor = m, part = j[2], parent = (m.Part0 :: BasePart).Name, child = (m.Part1 :: BasePart).Name, c0 = m.C0, c1i = m.C1:Inverse(), c1r = m.C1.Rotation, leg = side })
+		end
+	end
+	(rig :: any).clampJoints = list
+	return list
+end
+-- Lowest point of a leg (thigh, shin, foot box and shoe) in the world frames `world`: the oriented boxes' exact extent, so
+-- a clamped leg is never shown lower than the solve rested it.
+local function legLowest(rig: RigInfo, side: string, world: { [string]: CFrame }): number
+	local chain = rig.chains[side .. "Leg"]
+	local up, low, foot = world[side .. "UpperLeg"], world[side .. "LowerLeg"], world[side .. "Foot"]
+	if not (chain and up and low and foot) then return math.huge end
+	return math.min(boxBottom(up, chain.upperSize), boxBottom(low, chain.lowerSize), footBottom(chain, foot))
+end
+local function jointClamp(rig: RigInfo, pose: Pose, floorY: number?)
+	local motors = rig.motors
+	local rootPart = motors.Root.Part0
+	if not rootPart then return end
+	local root = motors.Root
+	local pelvis = rootPart.CFrame * root.C0 * root.Transform * root.C1:Inverse()
+	local pelvisRot = pelvis.Rotation
+	local pelvisInv = pelvisRot:Inverse()
+	local world: { [string]: CFrame } = { [(rig :: any).pelvisName or (root.Part1 :: BasePart).Name] = pelvis }
+	if not (rig :: any).pelvisName then (rig :: any).pelvisName = (root.Part1 :: BasePart).Name end
+	local rel: { [string]: any } = {}
+	local prev = rig.lyingRel
+	local clock = pose.real or pose.clock
+	local frames = pose.lyingFrames
+	local fresh = frames ~= nil and prev ~= nil and clock ~= nil and prev.t ~= nil and clock > prev.t and clock - prev.t < 0.1 and not pose.cut
+	local limit = MotionPlayer.LyingJointDeg * (frames or 1)
+	-- One joint from its solved transform tr0 with the turn limit lim (degrees); returns whether it was clamped.
+	local function step(j: any, tr0: CFrame, lim: number): boolean
+		local parent = world[j.parent]
+		if not parent then return false end
+		local m = j.motor
+		local tr = tr0
+		local child = parent * j.c0 * tr * j.c1i
+		local r = pelvisInv * child.Rotation
+		local before = if fresh then (prev :: any)[j.part] else nil
+		local did = false
+		if before then
+			local limited = clampRotation(before, r, lim)
+			if limited ~= r then
+				local t = (parent * j.c0).Rotation:Inverse() * (pelvisRot * limited) * j.c1r
+				tr = CFrame.new(tr.Position) * t
+				child = parent * j.c0 * tr * j.c1i
+				r = limited
+				did = true
+			end
+		end
+		m.Transform = tr
+		world[j.child] = child
+		rel[j.part] = r
+		return did
+	end
+	local clamped = false
+	local legs: { [string]: { any } } = {}
+	for _, j in clampJoints(rig) do
+		if j.leg then
+			local list = legs[j.leg] or {}
+			legs[j.leg] = list
+			table.insert(list, j)
+		elseif step(j, j.motor.Transform, limit) then
+			clamped = true
+		end
+	end
+	-- Legs: a clamped leg that would end up lower than the solve rested it (or below the floor) — a foot held at last frame's
+	-- turn while the solver laid it down sank shoes 0.03-0.08 studs into the floor — is lifted rigidly about the hip by the
+	-- least angle that clears it (at most LyingLiftMaxDeg: clamp and lift stay within the whip limit). Relaxing the clamp
+	-- instead brought back the solver's foot flips (up to 146 deg in a frame).
+	for side, list in legs do
+		local orig = {}
+		for i, j in list do orig[i] = j.motor.Transform end
+		local any = false
+		for i, j in list do
+			if step(j, orig[i], limit) then any = true end
+		end
+		if any and floorY then
+			local low = legLowest(rig, side, world)
+			if low < (floorY :: number) + 0.02 then
+				local clampedTr = {}
+				for i, j in list do clampedTr[i] = j.motor.Transform end
+				for i, j in list do step(j, orig[i], 181) end
+				local need = math.min(floorY :: number, legLowest(rig, side, world))
+				for i, j in list do step(j, clampedTr[i], 181) end
+				local hipJ = list[1]
+				local parent = world[hipJ.parent]
+				local foot = world[side .. "Foot"]
+				if low < need and parent and foot and string.find(hipJ.motor.Name, "Hip", 1, true) then
+					local pivotCF = parent * hipJ.c0
+					local pivot = pivotCF.Position
+					local d = foot.Position - pivot
+					local dh = Vector3.new(d.X, 0, d.Z)
+					if dh.Magnitude > 0.05 then
+						local axis = dh:Cross(Vector3.yAxis).Unit
+						local upper0 = world[hipJ.child]
+						local c1 = hipJ.motor.C1
+						local function lift(theta: number): number
+							local upperNew = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, theta) * CFrame.new(-pivot) * upper0
+							step(hipJ, pivotCF:Inverse() * upperNew * c1, 181)
+							for i = 2, #list do step(list[i], clampedTr[i], 181) end
+							return legLowest(rig, side, world)
+						end
+						local hi = math.rad(MotionPlayer.LyingLiftMaxDeg)
+						if lift(hi) >= need then
+							local lo = 0
+							for _ = 1, 6 do
+								local mid = (lo + hi) * 0.5
+								if lift(mid) >= need then hi = mid else lo = mid end
+							end
+							lift(hi)
+						end
+					end
+				end
+			end
+		end
+		if any then clamped = true end
+	end
+	rel.t = clock
+	rig.lyingRel = rel
+	if clamped then
+		for name in rig.tips do
+			local w = world[name]
+			if w then rig.tips[name] = w end
+		end
+	end
+end
+
 function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local motors = rig.motors
 	local rootPart = motors.Root.Part0
@@ -758419,6 +758948,8 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 		relaxFeet = prevRelax.v + math.clamp(relaxFeet - prevRelax.v, -step, step)
 	end
 	if tReal then rig.relaxFeet = { v = relaxFeet, t = tReal } end
+	-- Getup ankle range (clampAnkle): the getup clips' poses only (Pose.ankleRange).
+	local ankleRange = if headingSpace and pose.ankleRange == true then 1 else 0
 	local limbLowest = math.huge
 	local armLowest, legLowest = math.huge, math.huge
 	local hang = rig.footHang
@@ -758436,7 +758967,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 			local effector = pose.targets[chain.target]
 			if effector then
 				local lowest = solveChain(rig, chain, if chain.isLeg then lower else upper, heading, if chain.isLeg then legFrame else armFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0,
-					nil, if chain.isLeg then lyingLegs else 0, if chain.isLeg then relaxFeet else 0, stepScale)
+					nil, if chain.isLeg then lyingLegs else 0, if chain.isLeg then relaxFeet else 0, stepScale, if chain.isLeg then ankleRange else 0)
 				limbLowest = math.min(limbLowest, lowest)
 				if chain.isLeg then legLowest = math.min(legLowest, lowest) else armLowest = math.min(armLowest, lowest) end
 			else
@@ -758512,7 +759043,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 				for _, chain in rig.chains do
 					local effector = pose.targets[chain.target]
 					if chain.isLeg and effector then
-						low = math.min(low, solveChain(rig, chain, lowerFrame, heading, legFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0, s, lyingLegs, relaxFeet))
+						low = math.min(low, solveChain(rig, chain, lowerFrame, heading, legFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0, s, lyingLegs, relaxFeet, nil, ankleRange))
 					end
 				end
 				return low
@@ -758546,7 +759077,10 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	end
 	rig.stats.groundShift = dy
 	rig.stats.lowest = math.min(coreAbs, limbLowest) - floor
+	-- The knockdown whip limit runs last: it also bounds what the self clearance's pushes and elbow swivels turn (a swivel
+	-- re-planes a nearly straight arm, twisting the upper arm and forearm far more than the pole moved).
 	if MotionPlayer.SelfClearance and headingSpace then MotionPlayer.clearArms(rig, pose, floor) end
+	jointClamp(rig, pose, floor)
 end
 
 -- Throw grips (FLThrow1 `grips`): call after BOTH fighters were applied this frame. Each active grip of this fighter's
@@ -758586,6 +759120,7 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
 	local moved = 0
+	local movedHands: { [string]: boolean } = {}
 	for _, g in tc.grips do
 		if g.role == role then
 			local w = gripWeight(g, t)
@@ -758607,10 +759142,12 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 					local heading = hrp.Rotation
 					solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
 					moved += 1
+					if not chain.isLeg then movedHands[limb] = true end
 				end
 			end
 		end
 	end
+	rig.gripMoved = if next(movedHands) then movedHands else nil
 	return moved
 end
 
@@ -758626,6 +759163,41 @@ function MotionPlayer.rootCFrame(pos: Vector3, facing: Vector3, rootHeight: numb
 	if right.Magnitude < 0.01 then right = Vector3.xAxis else right = right.Unit end
 	local center = floorPos + Vector3.new(0, rootHeight + airborne, 0) + right * offset.X + Vector3.yAxis * offset.Y + forward * offset.Z
 	return CFrame.lookAt(center, center + forward)
+end
+
+-- Contact push-back (round 5). After the contact pass bent the striking limb as far as it can, whatever still sinks into
+-- the partner (an elbow or knee strike's own joint, a hammer fist on a folded arm, a clip lunge that carries the body
+-- past the target) is cleared by holding the attacker's body back along its facing by the residual depth (at most
+-- ContactPushMax): the root moves back, the pose is applied again (planted feet stay locked in the world; the legs
+-- re-solve under the shifted pelvis) and the contact pass runs once more. The hold grows as needed in the same frame —
+-- the strike stops on the surface the frame it arrives — and lets go at ContactPushRelease per frame of animation time.
+MotionPlayer.ContactPushBack = true
+MotionPlayer.ContactPushMax = 0.8
+MotionPlayer.ContactPushRelease = 0.04
+-- Most the hold may grow in one frame (studs): a strike that would need more stays a little inside for a frame.
+MotionPlayer.ContactPushRate = 0.15
+local function pushBack(e: PresentEntry, pose: Pose, origin: Vector3, partner: RigInfo): boolean
+	local residual = e.rig.contactResidual
+	if not residual or residual <= 0.005 or type(e.view.move) ~= "string" or type(e.view.throw) == "table" then return false end
+	local carried = pose.pushBack or 0
+	local st = slotState(e.slot)
+	-- The hold grows at most ContactPushRate per shown frame (sample resets pushGrow) during the startup; from the first
+	-- active frame on the strike rests on the surface whatever it takes.
+	local grown = st.pushGrow or 0
+	local rateCap = math.huge
+	local mv = e.view.moveFrame
+	local def = if type(e.view.characterId) == "string" then Roster.getMove(e.view.characterId, rosterMoveKey(e.view.characterId, e.view.move :: string)) else nil
+	if type(mv) == "number" and type(def) == "table" and type(def.startup) == "number" and mv <= def.startup then rateCap = MotionPlayer.ContactPushRate - grown end
+	local extra = math.min(residual + 0.02, MotionPlayer.ContactPushMax - carried, rateCap)
+	if extra <= 0.005 then return false end
+	local total = carried + extra
+	pose.rootOffset -= Vector3.new(0, 0, extra)
+	pose.pushBack = total
+	st.pushBack, st.pushAt, st.pushGrow = total, st.clock, grown + extra
+	e.root.CFrame = MotionPlayer.rootCFrame(e.view.pos, e.view.facing, e.rig.rootHeight, pose.rootOffset, origin)
+	MotionPlayer.apply(e.rig, pose, origin.Y)
+	MotionPlayer.applyContact(e.rig, pose, e.view, partner, origin.Y)
+	return true
 end
 
 -- Poses the two fighters of one render frame (CharacterPresenter, MotionQA): sample each view (slot = its index in
@@ -758654,10 +759226,28 @@ function MotionPlayer.presentFrame(entries: { PresentEntry? }, frame: any, origi
 				end
 			end
 		end
+		-- Round 5: a thrown defender's grip (a hand on the attacker's arm or shoulder, the bodies pressed together) re-solves
+		-- the arm after the self clearance and drove the glove or forearm up to 0.35 studs into the defender's own chest:
+		-- the gripping hands get their own clearance pass (its own push record), the grip giving way by the overlap.
+		if MotionPlayer.SelfClearance and MotionPlayer.LyingSelfClear then
+			for i = 1, 2 do
+				local e = entries[i] :: PresentEntry
+				local pose = poses[i] :: Pose
+				if pose.defenderClear and (e.rig.gripMoved ~= nil or e.rig.selfPushGrip ~= nil) then
+					MotionPlayer.clearArms(e.rig, pose, origin.Y, true, e.rig.gripMoved or {}, "selfPushGrip")
+				end
+			end
+		end
 		if MotionPlayer.StrikeContact then
 			for i = 1, 2 do
 				local e = entries[i] :: PresentEntry
-				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, (entries[3 - i] :: PresentEntry).rig, origin.Y)
+				local partner = (entries[3 - i] :: PresentEntry).rig
+				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, partner, origin.Y)
+				-- A strike its limb cannot bend clear (the elbow or knee itself, a folded hammer arm, a lunge that reaches past
+				-- the target) holds the body back instead: the pose is applied again with the root moved back.
+				if MotionPlayer.ContactPushBack and pushBack(e, poses[i] :: Pose, origin, partner) then
+					moved = math.max(moved, 1)
+				end
 				-- A strike drawn back toward its shoulder must not end inside its own head or chest.
 				-- Only the arms the contact pass drew back (the other arm is the clip's).
 				if MotionPlayer.SelfClearance and (moved > 0 or e.rig.selfPushForced ~= nil) then MotionPlayer.clearArms(e.rig, poses[i] :: Pose, origin.Y, true, e.rig.contactMoved or {}) end
@@ -758734,6 +759324,7 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	if pose.space ~= "heading" or type(view.throw) == "table" or not (striking or held) then
 		rig.contactHold = nil
 		rig.contactMoved = nil
+		rig.contactResidual = nil
 		return 0
 	end
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -758748,6 +759339,8 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	local nextHold = {}
 	local moved = 0
 	local movedLimbs: { [string]: boolean } = {}
+	-- Deepest striking limb left inside the partner after the retraction (studs beyond the allowance; <= 0: clear).
+	local residual = -math.huge
 	local dbg = rig.debug
 	for limb, chainName in CONTACT_LIMBS do
 		local effector = pose.targets[limb]
@@ -758806,15 +759399,19 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 					s = best
 				end
 			end
-			solveAt(s)
+			local finalDepth = solveAt(s)
+			residual = math.max(residual, finalDepth - allow)
 			if s > 0 then nextHold[limb] = { s = s, clock = clock } end
 			if dbg then dbg["contact" .. limb].s = s; dbg["contact" .. limb].steps = table.concat(steps :: { string }, " ") end
 			moved += 1
 			movedLimbs[limb] = true
+		elseif effector and chain and striking then
+			residual = math.max(residual, depth - allow)
 		end
 	end
 	rig.contactHold = if next(nextHold) then nextHold else nil
 	rig.contactMoved = movedLimbs
+	rig.contactResidual = if striking then residual else nil
 	return moved
 end
 
@@ -758878,22 +759475,138 @@ local function sdfNormal(fn: (Vector3) -> number, p: Vector3): Vector3
 	return safeUnit(g, Vector3.yAxis)
 end
 MotionPlayer.SelfPushRate = 0.05
+-- Self clearance on the floor (knockdowns, getups, rolls, KO, thrown defenders) and its faster push rate (studs/frame).
+MotionPlayer.LyingSelfClear = true
+MotionPlayer.LyingPushRate = 0.3
+MotionPlayer.LyingPushRamp = 6
+MotionPlayer.DefenderSwivelRamp = 3
+-- A defender breaking a throw gets the same clearance as a thrown one (its break pose pulls a glove into its chest).
+MotionPlayer.DefenderClearBreak = true
+-- Profile clearance (round 5). The player's own fight camera watches the local fighter's right side (that fighter always
+-- stands on the left of the screen) from slightly in front and below; a guard's rear glove held at the cheek sat between
+-- that camera and the face and hid Kael's nose and mouth (0-46% of his eye, nose and mouth landmarks visible in guard,
+-- walk, backwalk and blockstun). In the states the self clearance runs in, the right glove (or hand) is moved off the
+-- sight lines from the camera-side eye, nose and mouth (Motion.BodyShape.faceLandmarks) down along the jaw (a little
+-- forward: back would drive it into the shoulder), by the least distance that clears them (ProfileMargin): the glove
+-- stays at the chin, the profile reads. The push goes through the self clearance's rate-limited push.
+MotionPlayer.ProfileClearance = true
+MotionPlayer.ProfileHand = "RightHand"
+MotionPlayer.ProfileMargin = 0.03
+-- Share of the newly wanted profile shift taken each frame (the rest is the previous frame's shift).
+MotionPlayer.ProfileSmooth = 0.5
+-- How fast the shift lets go once the guard ends (studs per frame).
+MotionPlayer.ProfileRelease = 0.04
+-- Heading space (Roblox axes: +X right, +Y up, -Z toward the opponent): from the face toward the camera (the shot of a
+-- close and of a mid-range spacing: the camera stands at the middle of the pair), and the push.
+MotionPlayer.ProfileViews = { Vector3.new(0.995, -0.06, -0.07).Unit, Vector3.new(0.975, -0.06, -0.21).Unit }
+MotionPlayer.ProfileDir = Vector3.new(0, -1, -0.25).Unit
+local function pointSegDistance2(p: Vector2, a: Vector2, b: Vector2): number
+	local ab = b - a
+	local l2 = ab:Dot(ab)
+	local t = if l2 > 1e-9 then math.clamp((p - a):Dot(ab) / l2, 0, 1) else 0
+	return (p - (a + ab * t)).Magnitude
+end
+local function profileWant(rig: RigInfo, shape: any, frames: { [string]: CFrame }, limb: string, heading: CFrame): Vector3
+	local head = rig.parts.Head
+	local headCF = frames.Head
+	local h = shape.hand[limb]
+	local tip = rig.tips[limb]
+	if not (head and headCF and h and tip) then return Vector3.zero end
+	local a, b, r = BodyShape.handCapsule(h, tip)
+	local need = r + MotionPlayer.ProfileMargin
+	local best: Vector3 = Vector3.zero
+	for _, view in MotionPlayer.ProfileViews do
+		local d = heading:VectorToWorldSpace(view)
+		local up = (Vector3.yAxis - d * d.Y).Unit
+		local across = d:Cross(up)
+		local function flat(p: Vector3): Vector2 return Vector2.new(p:Dot(across), p:Dot(up)) end
+		local side = if headCF:VectorToObjectSpace(d).X >= 0 then 1 else -1
+		local gloveDepth = math.max(a:Dot(d), b:Dot(d)) + r
+		-- Landmarks the glove can hide (it is nearer the camera than they are).
+		local pts = {}
+		for _, lp in BodyShape.faceLandmarks(head, side) do
+			local w = headCF:PointToWorldSpace(lp)
+			if w:Dot(d) < gloveDepth then table.insert(pts, flat(w)) end
+		end
+		if #pts > 0 then
+			local dir = heading:VectorToWorldSpace(MotionPlayer.ProfileDir)
+			dir = (dir - d * dir:Dot(d)).Unit
+			local dir2 = flat(dir)
+			local a2, b2 = flat(a), flat(b)
+			local function blocked(t: number): boolean
+				local pa, pb = a2 + dir2 * t, b2 + dir2 * t
+				for _, q in pts do
+					if pointSegDistance2(q, pa, pb) < need then return true end
+				end
+				return false
+			end
+			local t = 0
+			while t < 0.8 and blocked(t) do t += 0.02 end
+			-- Refined (the shift follows the glove continuously instead of in 0.02 steps).
+			if t > 0 and t < 0.8 then
+				local lo, hi = t - 0.02, t
+				for _ = 1, 4 do
+					local mid = (lo + hi) * 0.5
+					if blocked(mid) then lo = mid else hi = mid end
+				end
+				t = hi
+			end
+			if t > 0 and t > best.Magnitude then best = dir * t end
+		end
+	end
+	return best
+end
+MotionPlayer._profileWant = profileWant
 -- Push passes per arm and frame (each re-solves the arm once and re-measures the overlap).
 MotionPlayer.SelfClearPasses = 3
+-- Elbow swivel before the hand push (round 5): passes and how far each turns the pole along the body's outward normal.
+MotionPlayer.ElbowSwivel = true
+MotionPlayer.ElbowSwivelPasses = 4
+MotionPlayer.ElbowSwivelGain = 0.6
+-- The swivel starts before the arm touches the body (centreline this close to the surface, studs): the elbow is already
+-- turning out when a throw's entry or a KO's impact fade carries it toward the chest.
+MotionPlayer.ElbowSwivelMargin = 0.25
+-- Most the swivel angle may change per frame (degrees): it builds up and lets go over a few frames.
+MotionPlayer.ElbowSwivelRate = 10
+-- An arm this deep inside the body (studs) doubles that rate (proportionally).
+MotionPlayer.ElbowSwivelDeep = 0.08
 -- Frames over which a push's base eases between the solve's goal and the landed hand (see clearArms).
 MotionPlayer.SelfBaseFrames = 6
-function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?, onlyLimbs: { [string]: boolean }?): number
+-- Most the elbow swivel may twist the upper arm about its own axis relative to the chest (degrees; the QA limit is 120).
+MotionPlayer.SwivelTwistMax = 112
+-- Twist of the upper arm about its long axis relative to the chest (degrees, 0-180: swing-twist, as MotionQA measures it).
+local function upperArmTwist(rig: RigInfo, limb: string): number
+	local side = if limb == "LeftHand" then "Left" else "Right"
+	local ut, ua = partWorld(rig, "UpperTorso"), partWorld(rig, side .. "UpperArm")
+	if not ut or not ua then return 0 end
+	local ax, ang = (ut.Rotation:Inverse() * ua.Rotation):ToAxisAngle()
+	local along = ax.Y * math.sin(ang * 0.5)
+	local qw = math.cos(ang * 0.5)
+	local len = math.sqrt(along * along + qw * qw)
+	if len < 1e-9 then return 0 end
+	local d = math.deg(2 * math.atan2(along / len, qw / len))
+	while d > 180 do d -= 360 end
+	while d < -180 do d += 360 end
+	return math.abs(d)
+end
+function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?, onlyLimbs: { [string]: boolean }?, record: string?): number
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
 	-- Lying and getting up the hands push on the floor beside the body, attacks fold the arm on purpose: left to the clip
 	-- (an existing push lets go gradually). `force`: a strike the contact pass drew back toward its own head.
 	local ground = pose.ground or 0
-	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5)
+	-- Round 5: on the floor too — knockdowns, getups, rolls and the KO (the knockdown smoother's poses, LyingSelfClear) and
+	-- a thrown defender — the gloves and forearms are kept out of the own body (rolls drove them 0.4-0.7 studs into it); the
+	-- push only moves a hand out along the body's surface, and the IK floor rules keep it above the floor.
+	local lyingPush = MotionPlayer.LyingSelfClear and (pose.lyingFrames ~= nil or pose.defenderClear == true)
+	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5) or lyingPush
 	-- The forced pass after a contact retraction (onlyLimbs: the arms the contact drew back) runs on top of the frame's
 	-- first pass, so it keeps its own push: rate-limited from zero when it starts (it used to apply in full in one
 	-- frame), and let go gradually once the contact releases (arms no longer listed).
 	local forcedPass = onlyLimbs ~= nil
-	local prevPush = if forcedPass then rig.selfPushForced else rig.selfPush
+	-- Push record (continuity and rate limit): the frame's first pass, the contact's forced pass, a grip's pass.
+	local recordKey = record or (if forcedPass then "selfPushForced" else "selfPush")
+	local prevPush = (rig :: any)[recordKey]
 	local clock = pose.real or pose.clock
 	local fresh = prevPush ~= nil and clock ~= nil and prevPush.t ~= nil and not pose.cut and clock > prevPush.t and clock - prevPush.t < 0.25
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -758906,13 +759619,23 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 	local hrp = (rootPart :: BasePart).CFrame
 	local heading = hrp.Rotation
 	local nextPush: { [string]: any } = { t = clock }
+	-- Frames the floor / thrown-defender clearance has been on: its push rate and the elbow swivel's depth boost ramp in
+	-- over LyingPushRamp frames (switching on at full rate turned a shoulder ~30 degrees on the first lying frame).
+	local lyingN = if lyingPush then ((if fresh then (prevPush :: any).lyingN else nil) or 0) + 1 else nil
+	nextPush.lyingN = lyingN
+	-- (A thrown defender's clearance starts at full rate: the grab carries its arms across its chest within a few frames;
+	-- a ramp left a slam's glove in the chest. Only its elbow swivel eases in over the throw's first DefenderSwivelRamp
+	-- frames: at full rate on the first frame it turned a guard's tucked elbow out 20-30 deg in that frame.)
+	local ramp = if lyingN and pose.lyingFrames == nil then 1 elseif lyingN then math.clamp((lyingN - 1) / math.max(MotionPlayer.LyingPushRamp, 1), 0, 1) else 0
+	local swivelRamp = if lyingN and pose.lyingFrames == nil then math.clamp((lyingN :: number) / math.max(MotionPlayer.DefenderSwivelRamp, 1), 0, 1) else ramp
+	local lyingRate = MotionPlayer.SelfPushRate + (MotionPlayer.LyingPushRate - MotionPlayer.SelfPushRate) * ramp
 	local moved = 0
 	for limb, chainName in ARM_LIMBS do
 		local chain = rig.chains[chainName]
 		local effector = pose.targets[limb]
 		local limbPush = allowPush and (not forcedPass or (onlyLimbs :: any)[limb] == true)
 		local kKey = limb .. "Base"
-		if forcedPass and not limbPush and not (fresh and ((prevPush :: any)[limb] or (prevPush :: any)[kKey])) then
+		if forcedPass and not limbPush and not (fresh and ((prevPush :: any)[limb] or (prevPush :: any)[kKey] or (prevPush :: any)[limb .. "Swivel"])) then
 			-- The forced pass leaves an arm it never pushed alone.
 			continue
 		elseif chain and effector then
@@ -758938,16 +759661,148 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 				solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
 				solvedAt = at
 			end
-			if limbPush then
-				local hand, arm = armSelfDepth(rig, shape, frames, limb)
-				for _ = 1, MotionPlayer.SelfClearPasses do
-					if hand.e <= 0 and arm.e <= 0 then break end
-					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
-					-- the body moves the hand out further (it carries the elbow along only partly).
-					if hand.e > 0 and hand.p and hand.fn then want += sdfNormal(hand.fn, hand.p) * (hand.e + 0.005) end
-					if arm.e > 0 and arm.p and arm.fn then want += sdfNormal(arm.fn, arm.p) * (arm.e * 2.5 + 0.005) end
+			-- Profile clearance first (the self passes below keep the moved glove out of the own body).
+			local profileOn = limbPush and MotionPlayer.ProfileClearance and limb == MotionPlayer.ProfileHand and pose.selfClear == true
+			if profileOn then
+				local pw = profileWant(rig, shape, frames, limb, heading)
+				-- Smoothed: the wanted shift follows the glove's sway across the sight lines; taking it frame by frame
+				-- zig-zagged Sierra's backwalk glove (3 reversals in 6 frames).
+				local prevPw = if fresh then (prevPush :: any).profile else nil
+				if prevPw then pw = heading:VectorToWorldSpace(prevPw):Lerp(pw, MotionPlayer.ProfileSmooth) end
+				if pw.Magnitude > 1e-4 then
+					nextPush.profile = heading:VectorToObjectSpace(pw)
+					want += pw
+					solveAt(want)
+				end
+			elseif limb == MotionPlayer.ProfileHand and fresh and (prevPush :: any).profile then
+				-- Out of the guard (an attack, a throw) the shift lets go at ProfileRelease per frame: dropped at the self
+				-- push's rate it added to the attack's first frame (Kael's hooks turned the shoulder 16 deg in that frame).
+				local was = heading:VectorToWorldSpace((prevPush :: any).profile)
+				local left = was.Magnitude - MotionPlayer.ProfileRelease * frameStep
+				if left > 1e-3 then
+					local pw = was.Unit * left
+					nextPush.profile = heading:VectorToObjectSpace(pw)
+					want += pw
+					solveAt(want)
+				end
+			end
+			-- Round 5 (on the floor and for a thrown defender; the standing guard keeps its tucked elbows): an elbow or upper
+			-- arm inside the body (or within ElbowSwivelMargin of it) swivels out first — the pole (the elbow's bend
+			-- direction) turns along the body's outward normal so the elbow comes out around the shoulder-hand line while the
+			-- hand stays where the clip put it (pushing the hand instead swung a thrown defender's glove behind her back).
+			-- The swivel angle (from the clip's pole) is kept per arm and changes at most ElbowSwivelRate per frame, also
+			-- while it lets go after the body stood up.
+			local swivelKey = limb .. "Swivel"
+			local prevSwivel = if fresh then ((prevPush :: any)[swivelKey] or 0) else 0
+			local swivelOn = MotionPlayer.ElbowSwivel and limbPush and lyingPush
+			local hand: SelfHit?, arm: SelfHit? = nil, nil
+			if swivelOn or (MotionPlayer.ElbowSwivel and prevSwivel > 0) then
+				local h0, a0 = armSelfDepth(rig, shape, frames, limb)
+				hand, arm = h0, a0
+				local clipPole = heading:VectorToWorldSpace(libVector(grip.pole or defaultPole(limb)))
+				local margin = -MotionPlayer.ElbowSwivelMargin
+				local depth0 = if swivelOn then math.max(a0.e, 0) else 0
+				local poleW = clipPole
+				-- Warm start: last frame's swivel, a step relaxed (most frames then need no pass at all; the swivel lets go by
+				-- itself once the arm stays clear).
+				local lastAxis = if fresh and prevSwivel > 0 then (prevPush :: any)[swivelKey .. "Axis"] else nil
+				if swivelOn and lastAxis then
+					local relaxed = math.max(prevSwivel - math.rad(MotionPlayer.ElbowSwivelRate) * math.max(frameStep, 1), 0)
+					if relaxed > 1e-4 then
+						poleW = CFrame.fromAxisAngle(heading:VectorToWorldSpace(lastAxis), relaxed):VectorToWorldSpace(clipPole)
+						grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+						solveAt(want)
+						hand, arm = armSelfDepth(rig, shape, frames, limb)
+					end
+				end
+				if swivelOn then
+					for _ = 1, MotionPlayer.ElbowSwivelPasses do
+						local a = arm :: SelfHit
+						if a.e <= margin or not a.p or not a.fn then break end
+						local n = sdfNormal(a.fn, a.p)
+						poleW = safeUnit(poleW + n * MotionPlayer.ElbowSwivelGain, poleW)
+						grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+						solveAt(want)
+						hand, arm = armSelfDepth(rig, shape, frames, limb)
+					end
+				end
+				local wantAngle = math.acos(math.clamp(clipPole:Dot(poleW), -1, 1))
+				-- Faster while an arm is deep in the body (a slam swinging the arm through the chest in a frame or two).
+				-- (It also ramps in with the floor clearance: a full-rate swivel on the first lying frame read as a shoulder jump.)
+				local step = math.rad(MotionPlayer.ElbowSwivelRate * (0.3 + 0.7 * swivelRamp)) * math.max(frameStep, 1) * (1 + swivelRamp * depth0 / MotionPlayer.ElbowSwivelDeep)
+				local angle = math.clamp(wantAngle, prevSwivel - step, prevSwivel + step)
+				if math.abs(angle - wantAngle) > 1e-3 then
+					-- Rate-limited: turn the clip's pole toward the wanted swivel by the allowed angle (a released swivel keeps
+					-- its last axis: it relaxes back toward the clip's pole).
+					local axis = clipPole:Cross(poleW)
+					if axis.Magnitude < 1e-4 then
+						local last = if fresh then (prevPush :: any)[swivelKey .. "Axis"] else nil
+						axis = if last then heading:VectorToWorldSpace(last) else Vector3.zero
+					end
+					if axis.Magnitude > 1e-4 and angle > 1e-4 then
+						poleW = CFrame.fromAxisAngle(axis.Unit, angle):VectorToWorldSpace(clipPole)
+					else
+						poleW, angle = clipPole, 0
+					end
+					grip.pole = libVector(heading:VectorToObjectSpace(poleW))
 					solveAt(want)
 					hand, arm = armSelfDepth(rig, shape, frames, limb)
+				end
+				-- The swivel never twists the upper arm about its own axis (relative to the chest) past SwivelTwistMax when the
+				-- clip's own pole stays within it: turning the elbow out around an arm reaching overhead or behind the back
+				-- twisted the shoulder 140-170 deg. (A clip pose already past the limit is left alone; so is a guarded swivel
+				-- that would leave the arm deeper in the body — the self clearance comes first.)
+				if angle > 1e-4 and MotionPlayer.SwivelTwistMax then
+					local limit = MotionPlayer.SwivelTwistMax :: number
+					local axis = clipPole:Cross(poleW)
+					if upperArmTwist(rig, limb) > limit and axis.Magnitude > 1e-4 then
+						axis = axis.Unit
+						local fullAngle, fullPole = angle, poleW
+						local fullDepth = math.max((hand :: SelfHit).e, (arm :: SelfHit).e)
+						local function poleAt(a: number): Vector3 return CFrame.fromAxisAngle(axis, a):VectorToWorldSpace(clipPole) end
+						grip.pole = libVector(heading:VectorToObjectSpace(clipPole))
+						solveAt(want)
+						local guarded = false
+						if upperArmTwist(rig, limb) <= limit then
+							local lo, hi = 0, angle
+							for _ = 1, 5 do
+								local mid = (lo + hi) * 0.5
+								grip.pole = libVector(heading:VectorToObjectSpace(poleAt(mid)))
+								solveAt(want)
+								if upperArmTwist(rig, limb) <= limit then lo = mid else hi = mid end
+							end
+							grip.pole = libVector(heading:VectorToObjectSpace(poleAt(lo)))
+							solveAt(want)
+							local h2, a2 = armSelfDepth(rig, shape, frames, limb)
+							if math.max(h2.e, a2.e) <= math.max(fullDepth, 0) + 0.01 then
+								angle, poleW, hand, arm = lo, poleAt(lo), h2, a2
+								guarded = true
+							end
+						end
+						if not guarded then
+							angle, poleW = fullAngle, fullPole
+							grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+							solveAt(want)
+						end
+					end
+				end
+				if angle > 1e-4 then
+					nextPush[swivelKey] = angle
+					local axis = clipPole:Cross(poleW)
+					if axis.Magnitude > 1e-4 then nextPush[swivelKey .. "Axis"] = heading:VectorToObjectSpace(axis.Unit) end
+				end
+			end
+			if limbPush then
+				if not hand or not arm then hand, arm = armSelfDepth(rig, shape, frames, limb) end
+				local h, a = hand :: SelfHit, arm :: SelfHit
+				for _ = 1, MotionPlayer.SelfClearPasses do
+					if h.e <= 0 and a.e <= 0 then break end
+					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
+					-- the body moves the hand out further (it carries the elbow along only partly).
+					if h.e > 0 and h.p and h.fn then want += sdfNormal(h.fn, h.p) * (h.e + 0.005) end
+					if a.e > 0 and a.p and a.fn then want += sdfNormal(a.fn, a.p) * (a.e * 2.5 + 0.005) end
+					solveAt(want)
+					h, a = armSelfDepth(rig, shape, frames, limb)
 				end
 			end
 			-- The push follows at most SelfPushRate studs per frame (heading space, so it turns with the body): a hand
@@ -758956,11 +759811,13 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 			local prev = if fresh then (prevPush :: any)[limb] else nil
 			if prev then
 				local was = heading:VectorToWorldSpace(prev)
-				local maxStep = MotionPlayer.SelfPushRate * math.max((clock - (prevPush :: any).t) * 60, 1)
+				local rate = if lyingPush then lyingRate else MotionPlayer.SelfPushRate
+				local maxStep = rate * math.max((clock - (prevPush :: any).t) * 60, 1)
 				local d = want - was
 				shown = if d.Magnitude > maxStep then was + d.Unit * maxStep else want
 			elseif want.Magnitude > 0 and (fresh or (forcedPass and not pose.cut)) then
-				shown = if want.Magnitude > MotionPlayer.SelfPushRate then want.Unit * MotionPlayer.SelfPushRate else want
+				local rate = if lyingPush then lyingRate else MotionPlayer.SelfPushRate
+				shown = if want.Magnitude > rate then want.Unit * rate else want
 			end
 			local pushing = shown.Magnitude > 1e-4
 			local k = if pushing then kUp else math.max(0, prevK - kStep)
@@ -758979,9 +759836,9 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 		end
 	end
 	if forcedPass then
-		rig.selfPushForced = if nextPush.LeftHand or nextPush.RightHand or nextPush.LeftHandBase or nextPush.RightHandBase then nextPush else nil
+		(rig :: any)[recordKey] = if nextPush.LeftHand or nextPush.RightHand or nextPush.LeftHandBase or nextPush.RightHandBase or nextPush.LeftHandSwivel or nextPush.RightHandSwivel then nextPush else nil
 	else
-		rig.selfPush = nextPush
+		(rig :: any)[recordKey] = nextPush
 	end
 	return moved
 end
@@ -760952,7 +761809,8 @@ export type MotionRequest = {
 	settle: (boolean | string)?,
 	adjust: ((any, any) -> ())?,
 }
-export type RequestContext = { clock: number, keyStarted: number, key: string?, settling: boolean, config: any, legLength: number? }
+-- shownLie: how the previous shown pose lies (MotionPlayer: "SupineAway", "SupineToward", "ProneAway", "ProneToward"; nil standing).
+export type RequestContext = { clock: number, keyStarted: number, key: string?, settling: boolean, config: any, legLength: number?, shownLie: string? }
 
 local STYLE_NAMES = { boxer = "Boxer", kickboxer = "Kickboxer", grappler = "Grappler", flow = "Flow", karate = "Karate", kungfu = "KungFu" }
 States.STYLE_NAMES = STYLE_NAMES
@@ -760964,7 +761822,7 @@ States.CLIPS = {
 	Blockstun = "Blockstun", CrouchBlockstun = "CrouchBlockstun",
 	Airborne = "Juggle", KnockdownFaceUp = "FallBack", KnockdownFaceDown = "FallFront", KnockdownFaceDownAir = "FallFrontAir", GetupFaceUp = "GetupBack", GetupFaceDown = "GetupFront",
 	BackRoll = "BackRoll", SideRoll = "SideRoll", KOFaceUp = "KOBack", KOFaceDown = "KOFront", Intro = "Intro", Victory = "Victory", Defeat = "Defeat",
-	Stagger = "Stagger", ThrowBreak = "ThrowBreak",
+	Stagger = "Stagger", ThrowBreak = "ThrowBreak", ProneTurnOver = "ProneTurnOver",
 }
 
 -- Knockdown timing (sim: Landing 34 f on the floor, then Getup 26 f, rolls +10): a grounded knockdown reaches the floor
@@ -760972,6 +761830,10 @@ States.CLIPS = {
 -- GETUP_LEAD frames before the Getup state (the sit-up), so the rise plays over 36 frames.
 States.FALL_FRAMES = 18
 States.GETUP_LEAD = 10
+-- A juggle's face-down landing (head away) rolls over onto the back over Landing frames TURN_START .. +TURN_FRAMES, done
+-- before a standing getup's lead begins (LandingFrames - GETUP_LEAD).
+States.TURN_START = 6
+States.TURN_FRAMES = 18
 -- Seconds after a grounded KO starts until the body hits the floor (KO fall clips: contact ~0.85 s).
 States.KO_IMPACT_SECONDS = 0.85
 
@@ -761285,10 +762147,16 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	end
 	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.
 	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or string.find(ctx.key, ":Air", 1, true) ~= nil)
+	-- The pose actually shown decides for a body that is already lying when the knockdown starts (a throw's defender
+	-- track, whatever the sim's knockdown side): face down with the head away it continues like a juggle's face-down
+	-- landing below.
+	if fromAirKey and ctx.shownLie == "ProneAway" and (state == "Landing" or state == "Knockdown") then knockdown = "FaceDown" end
 	-- Two prone poses: a grounded fall or KO lands face down with the head toward the opponent (FallFront/KOFront end on
-	-- GetupFront's first frame), and every getup from it starts with GetupFront (a 180-degree turn into the other prone
-	-- pose whipped the legs and arms up to 178 degrees a frame). A body falling out of a juggle lands face down with the
-	-- head away (FallFrontAir), the pose the side roll passes at its half turn; `:Air` in the getup key keeps the choice.
+	-- GetupFront's first frame), and every getup from it starts with GetupFront. A body falling out of a juggle lands face
+	-- down with the head away (FallFrontAir): it rolls over onto its back while it lies (ProneTurnOver, TURN_START to
+	-- TURN_START + TURN_FRAMES Landing frames, at most 12 degrees a frame) and every getup then rises from the back like a
+	-- face-up one (round 5: the standing getup used to turn the prone body 180 degrees into GetupFront's pose). `:Air` in
+	-- the keys keeps the choice.
 	local airProne = knockdown == "FaceDown" and fromAirKey
 	if state == "Landing" or state == "Knockdown" then
 		local total = if type(config.LandingFrames) == "number" then config.LandingFrames else 34
@@ -761299,11 +762167,23 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		-- The last frames on the floor already start a standing getup (the fighter is invulnerable and cannot act), so
 		-- the short Getup state shows a believable rise instead of a jump to the feet.
 		local kind = view.getupKind
+		-- Face down with the head away: rolled over onto the back from TURN_START + TURN_FRAMES on.
+		local turned = airProne and elapsed >= States.TURN_START + States.TURN_FRAMES
+		local lying = if airProne then "FaceUp" else knockdown
 		if (kind == nil or kind == "Stand") and elapsed >= total - lead then
-			return { key = "Getup:" .. knockdown .. ":Stand" .. (if airProne then ":Air" else ""),
-				clip = if knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
+			return { key = "Getup:" .. lying .. ":Stand" .. (if airProne then ":Air" else ""),
+				clip = if lying == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
 				timeMode = "progress", progress = (elapsed - (total - lead)) / (lead + getupFrames),
-				keyframe = States.getup(0, scale, knockdown), fade = 0.12, styled = false, settle = "ground" }
+				keyframe = States.getup(0, scale, lying), fade = 0.12, styled = false, settle = "ground" }
+		end
+		if airProne and elapsed >= States.TURN_START then
+			if not turned then
+				return { key = "Down:FaceDown:Turn:Air", clip = States.CLIPS.ProneTurnOver, timeMode = "progress",
+					progress = (elapsed - States.TURN_START) / States.TURN_FRAMES, keyframe = States.knockdown(math.max(elapsed, 20), scale, "FaceUp"),
+					fade = 0.05, styled = false, ground = 1 }
+			end
+			return { key = "Down:FaceUp:Turned:Air", clip = States.CLIPS.KnockdownFaceUp, timeMode = "progress", progress = 1,
+				keyframe = States.knockdown(math.max(elapsed, 20), scale, "FaceUp"), fade = 0.05, styled = false, ground = 1, settle = true }
 		end
 		return { key = "Down:" .. knockdown .. (if fromAirKey then ":Air" else ""), clip = if knockdown == "FaceDown" then (if fromAirKey then States.CLIPS.KnockdownFaceDownAir else States.CLIPS.KnockdownFaceDown) else States.CLIPS.KnockdownFaceUp,
 			timeMode = "impact", frames = elapsed, impactFrames = fallFrames, fromContact = fromAirKey,
@@ -761318,18 +762198,19 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		local done = math.clamp(total - stun, 0, total)
 		local progress = if kind == "Stand" then (lead + done) / (lead + getupFrames) else done / math.max(total, 1)
 		-- Face down with the head toward the opponent (a grounded fall), every getup rises with GetupFront (a roll pushes
-		-- up while the sim slides the body back or aside). Out of a juggle (head away) the rolls play as before.
+		-- up while the sim slides the body back or aside). Out of a juggle the body lies on its back by now (rolled over
+		-- during Landing): the face-up getups.
 		local groundProne = knockdown == "FaceDown" and not airProne
+		local lying = if airProne then "FaceUp" else knockdown
 		local clip = if groundProne then States.CLIPS.GetupFaceDown
 			elseif kind == "BackRoll" then States.CLIPS.BackRoll elseif kind == "SideRoll" then States.CLIPS.SideRoll
-			elseif knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp
-		-- Side roll: a log roll whose chest turns toward the travel side first. Face up it is one full turn from the
-		-- clip's first frame (the lying pose itself, so a short fade); face down (prone) it is the second half turn.
+			else States.CLIPS.GetupFaceUp
+		-- Side roll: a quarter turn onto the travel-side hip, a push into a crouch turning toward the opponent, the
+		-- stance (Motion.Clips.Core.SideRoll, tools/mocap/lying.py); mirrored for the other side.
 		local sideRoll = clip == States.CLIPS.SideRoll
-		return { key = "Getup:" .. knockdown .. ":" .. kind .. (if airProne then ":Air" else ""), clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
-			startTag = if sideRoll and knockdown == "FaceDown" then "proneStart" else nil,
-			keyframe = States.getup(math.clamp(done / math.max(total, 1), 0, 1) * 32, scale, knockdown),
-			fade = if sideRoll then (if knockdown == "FaceDown" then 0.06 else 0.03) else 0.08, styled = false,
+		return { key = "Getup:" .. lying .. ":" .. kind .. (if airProne then ":Air" else ""), clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
+			keyframe = States.getup(math.clamp(done / math.max(total, 1), 0, 1) * 32, scale, lying),
+			fade = if sideRoll then 0.05 else 0.08, styled = false,
 			settle = if kind == "Stand" then "ground" else nil }
 	end
 	if state == "KO" then
@@ -764072,23 +764953,22 @@ return {
 								<Properties>
 									<Content name="LinkedSource"><null></null></Content>
 									<ProtectedString name="Source"><![CDATA[-- sources: original:motioncore, quat-ual2-hit-knockback, cmu-140_08
--- SideRoll: generated by OV6/tools/mocap/keyed.py. Do not edit by hand.
--- Source: hand-keyed (core-keyed.json)
--- License: Original hand-keyed animation (FightingLab motioncore), built on mocap stance frames (ACCAD CC BY 3.0 / Quaternius CC0)
--- Log roll to the fighter's left (mirrored at runtime for rollDir -1), rolling without slipping: face up the chest turns toward the travel side first (side, belly, other side, back = one full turn by getup frame 13.5 of 36; the sim carries 2.2 studs over the first 10). Face down (prone) the runtime starts at tags.proneStart (belly down) and plays the second half turn (~8 frames). Then a quick sit-up and the face-up mocap getup with the squat hold shortened.
+-- SideRoll: generated by tools/mocap/lying.py. Do not edit by hand.
+-- Source: hand-keyed (tools/mocap/lying.py)
+-- License: Original hand-keyed animation (FightingLab motioncore), built on mocap lying frames (Quaternius CC0 / CMU)
+-- Side roll getup (round 5): a quarter turn onto the travel-side hip with the knees drawn up, push up into a crouch turning toward the opponent, the stance; rolls left, mirrored at runtime for right.
 return {
 	format = "FLClip1",
 	name = "SideRoll",
-	fps = 30,
-	frames = 31,
+	fps = 60,
+	frames = 37,
 	loop = false,
 	speed = 0.0000,
 	travel = { 0.0000, 0.0000, 0.0000 },
-	tags = { proneStart = 0.1667 },
 	sources = { "original:motioncore", "quat-ual2-hit-knockback", "cmu-140_08" },
-	source = "hand-keyed (core-keyed.json)",
-	layout = "cvcvvvvvvvvvvvvvvvvvvccccvvvvvvccccvvvvvvvvvvvvvvvvvvvvvvv",
-	data = "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",
+	source = "hand-keyed (tools/mocap/lying.py)",
+	layout = "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+	data = "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BwEzJnPFTfVSZBgYppye458V9W+Z+6/z/x9n47yWrRlRhqg6hOh1iojekNkvlDlHlCk4kxkukfkCjainhugxfxeuduc4cQb3bqbmeZemfNgQhtjblLmtnzoWoZoOn3nSmeldkTjHiAhGgbgEfqcTWZPgJSE5CkB2AzAFBpGJMVRyUDxZxxyrzv0l070qz7y/yNx2xTwLudsIpPl/infacqamZbZLY0YPXrXRXHXMYZbFdseddlcwcScJg2hcjEljoor+vLx4z1071C0/1F1Q1d1o1v1y1w1r1m1j1c0VyQvcsVpcnZmylQiGeHaCWjUKTSb2cmelhWkZnRpmrQsQswtBtEs4ser6rPqgpxpGohoGn3nynWmglZkJi/iHhfglf1fVefdYcab/6g6W5v4g2fzuwitZq4pkpnqnsSuXwjyi0H1I1n1q1f1T1X2c4P6M759G9x+S/K/1/5/T+R9R81AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMcbQqE44////////////////////////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANoccrQ6E//////////////////////////////////////////6PzCr2kpddWRPEJaIoH2HEGRFfEtD7DJCXBkAyAA",
 }
 ]]></ProtectedString>
 									<string name="ScriptGuid">{57EB2139-B0D8-4207-B2C4-88E1B7D9A29E}</string>
@@ -764726,6 +765606,36 @@ return {
 									<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
 									<bool name="DefinesCapabilities">false</bool>
 									<string name="Name">WalkFwd</string>
+									<BinaryString name="Tags"></BinaryString>
+								</Properties>
+							</Item>
+						<Item class="ModuleScript" referent="RBX1B0BC57376CF4062B627926B86C8EF67">
+								<Properties>
+									<Content name="LinkedSource"><null></null></Content>
+									<ProtectedString name="Source"><![CDATA[-- sources: original:motioncore, cmu-90_16, quat-ual2-hit-knockback
+-- ProneTurnOver: generated by tools/mocap/lying.py. Do not edit by hand.
+-- Source: hand-keyed (tools/mocap/lying.py)
+-- License: Original hand-keyed animation (FightingLab motioncore), built on mocap lying frames (Quaternius CC0 / CMU)
+-- Juggle face-down landing (head away from the opponent) rolled over onto the back at <= 12 deg/frame, the lower arm reaching overhead along the floor, the upper arm guarding the face, legs together, ending in FallBack's lying pose (round 5).
+return {
+	format = "FLClip1",
+	name = "ProneTurnOver",
+	fps = 60,
+	frames = 19,
+	loop = false,
+	speed = 0.0000,
+	travel = { 0.0000, 0.0000, 0.0000 },
+	sources = { "original:motioncore", "cmu-90_16", "quat-ual2-hit-knockback" },
+	source = "hand-keyed (tools/mocap/lying.py)",
+	layout = "cvcvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvccc",
+	data = "gARjRmRtR6SHSSScSkSpSsSsSqSlSeSWSMSCR8R6gAeXd9jPlLnPpOrGs2udv8xPyYzW0H0t1G1S1U1U2Q2TJoJsKBKnLeMlN7PgRSTQVYXqaEcje3gSgx2421JXJ0KhLZMeNtPFQoSSUCV5X0Zzb0dqeyfKhRg0ghivlLnkp4sGuMwJx6zf0119203b3v3030gwgxg2g8hEhLhThbhihqhxh5iAiIiPiXidiiijdtdudwdzd2d6d9eBeEeHeLeOeSeVeZecefeheiesetewe0e5e+fDfIfNfSfYfdfifnfsfxf1f4f5/3/4/4/4/4/4/4/4/4/4/4/4/4/4/3/3/3/2/2pDpBo8o0oqogoWoLoBn2nrngnUnJm9mxmmmfmdVEVKVbV3WWW2XWX2YWY2ZXZ4aZa6bbb9cbcuc0apata4bKbebycGcacvdDdYdseBeWerfAfTfefi8K8O8Y8o859J9Y9n91+C+O+Z+k+u+3+//F/J/KhhhQgzgxhXifj9lbmpnjoIoWoNn5n+lfgUckbfdodNcHarZTYiYrZwbIctebgNh+jzm5pQmxg4dzopomoTnnmhlYkwk2k6k6k1ktkjkIg8agUFRaRR/N+/9j5YyyrvmMiee5bgYYVpTYRIK4DyA3CHDbc+eyjpp2uLvvvuvsvFt3sFp0nKkeihepZcWhV4ZqYJUSPNKVGvE1EOD0DhDYDXDfEBIGQ+csmaqPgAfwescYZjo4q1suuhwLxszC0N07y5uDnxiTgAgAiRn6unznKUKdLbMqOKP4R0T9WWZgcte9f1gAgAizpwxi14KNMQNgOzQPRzTfVQW/YVaUdEfNgA///y9Y2Hq2gOnPpzr9t9vyxby10S3x7++4/5//cJbcZsXrWmXtZdbadhfrh0j3mcqLtIuju5qqm+cfcZcKbhaQYyXnWzWXWWWuXeXzX/Zscbe3gBf/mWm/oUpeqHqfq2rMrfrur5r+rDn8kSigcKUZRrGKGKI9OiRvNgIlErB7AeAZBqEXIjNqS5XcaCa1bRhfuj418V501Xv/p7jcc1WWQVLTHnEsClBiBNNvNMPQV5b1cIbobZbcbucMcycIZPWXVrWyYPY/gAfpeLblmvozq0suuhwLxszC0N1M1+2SwXlzgAgAkMtL0ZJbJuKcLbMqOKP4R0T9WQYtbUeOfugAgAkruj1YKYLbMXNgOzQPRzTfVQXGY+a3cue7gA///X5MrchJlJnhpzr9t9vyxby10A07137P/c//nPnAmalpk4kVkDj3jjjHikh6hKgDerdVcWb2bse5e/fNfcfdfYfhgAgfg8hVhoh1hzhYgffWeceFTJTDSzSiSWSPSMSISDR+R5R0RxRqRkRjRpRwRzV/Xxc/lMtt0z529E/D/u/F9I550asXipZZTiRjCMBhATAbDLIEN3TpZ4gXm0s/yt4n9f/3/P9W8ZaFa1c1fmiQkOlJlEkrkFjUiehohBg0hFh0iki5bGbFlLmEndpMrFs2udv8xPyYzVzyzmy0xowkwHr2soRbPDM8LpLiMlN7PgRSTQVbYObie+iCj8km9T8+EBF0IJKhMaNtPFQoSSUCV4XmZWbRdOefe7gogHhZjvl+n8p6sGuMwJx6zf032Y3+5a6d7C7Oaea4b/dvfrhUiSiri9jIjMjIi7iXhlg1gRgBf8fWe8d8c4cbcmc/dOdid7eYe4fXfqfnfReweTeGSdSWSIR/R+SDSHSISISGSDR/R6RxRmRfRbRbRboSo5q9urym2U569E/D/u/F9I5/2fzBvfsLqXp2BjBnCEDkGDJdN9TpZ4gXm0s/yl2v5u7+9j+O+ZaubadPfviNkKlJlEkrkFjUiehog0gEfYe1egeZjni+hGh4lQodrDs2udv8xPyYzVzxzrzKyZxsxZv2wfyAMULNK8LfMlN7PgRSTQVZXzaWc4fHgbg27V7H6ZG7IwKuMbNtPFQoSSUCV3XVYiZva8bob2jcizg8h6k2ngp4sGuMwJx6zf022I3b4p5q6S6gAAAA//",
+}
+]]></ProtectedString>
+									<string name="ScriptGuid">{36711FA3-4544-49D4-893E-68B12C94A67F}</string>
+									<BinaryString name="AttributesSerialize"></BinaryString>
+									<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+									<bool name="DefinesCapabilities">false</bool>
+									<string name="Name">ProneTurnOver</string>
 									<BinaryString name="Tags"></BinaryString>
 								</Properties>
 							</Item>
@@ -769498,6 +770408,51 @@ function BodyShape.coreDistance(shape: Shape, frames: { [string]: CFrame }, p: V
 		end
 	end
 	return best, which
+end
+
+-- Face landmarks (round 5): the camera-side eye, the nose (bridge to tip) and the mouth, as offsets from the head's
+-- FaceFrontAttachment in units of the head's half size (x: + = toward the side the face is seen from, y up, z: + = back
+-- into the head), each then snapped onto the head's real surface by a ray cast from in front of the face (the nose and
+-- lips sit on the face whatever the head mesh). Used by the runtime's profile clearance (MotionPlayer.clearArms) and by
+-- MotionQA's face-visibility measure.
+BodyShape.FACE = {
+	{ "eye", 0.40, 0.18, 0.10 }, { "eye", 0.24, 0.18, 0.04 }, { "eye", 0.56, 0.17, 0.22 }, { "eye", 0.40, 0.25, 0.10 }, { "eye", 0.40, 0.11, 0.09 },
+	{ "nose", 0.0, 0.10, -0.02 }, { "nose", 0.0, -0.02, -0.08 }, { "nose", 0.0, -0.13, -0.12 }, { "nose", 0.12, -0.17, 0.0 },
+	{ "mouth", 0.0, -0.36, -0.02 }, { "mouth", 0.20, -0.37, 0.05 }, { "mouth", 0.0, -0.30, -0.04 }, { "mouth", 0.0, -0.43, 0.0 },
+}
+local landmarkCache: { [Instance]: { [number]: { Vector3 } } } = setmetatable({}, { __mode = "k" }) :: any
+-- Head-space landmark points of `head` seen from its right (side = 1) or left (side = -1), cached per head part.
+function BodyShape.faceLandmarks(head: BasePart, side: number): { Vector3 }
+	local byHead = landmarkCache[head]
+	if not byHead then
+		byHead = {}
+		landmarkCache[head] = byHead
+	end
+	local cached = byHead[side]
+	if cached then return cached end
+	local h = head.Size * 0.5
+	local att = head:FindFirstChild("FaceFrontAttachment")
+	local f = if att and att:IsA("Attachment") then att.Position else Vector3.new(0, 0, -head.Size.Z * 0.45)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { head }
+	local wasQuery = head.CanQuery
+	head.CanQuery = true
+	local list = {}
+	for _, l in BodyShape.FACE do
+		local lp = Vector3.new(f.X + side * (l[2] :: number) * h.X, f.Y + (l[3] :: number) * h.Y, f.Z + (l[4] :: number) * h.Z)
+		local from = head.CFrame:PointToWorldSpace(Vector3.new(lp.X, lp.Y, -h.Z * 2))
+		local to = head.CFrame:PointToWorldSpace(Vector3.new(lp.X, lp.Y, h.Z))
+		local hit = workspace:Raycast(from, to - from, params)
+		if hit then
+			local hl = head.CFrame:PointToObjectSpace(hit.Position)
+			if math.abs(hl.Z - lp.Z) < h.Z * 0.6 then lp = Vector3.new(lp.X, lp.Y, hl.Z - 0.01) end
+		end
+		table.insert(list, lp)
+	end
+	head.CanQuery = wasQuery
+	byHead[side] = list
+	return list
 end
 
 return BodyShape
@@ -783627,7 +784582,9 @@ return function(t)
 		if not ClipLibrary.get("SideRoll") then return end
 		local L, G, R = Config.LandingFrames or 34, Config.GetupFrames or 26, Config.RollFrames or 10
 		-- Chest direction in heading space (lying body: rootRot's look vector); rollDir +1 travels to the fighter's left (-X).
-		-- The getup crossfades in over up to GetupCrossfadeMax (0.1 s), so the turn is judged on the roll's third frame.
+		-- Round 5: the roll is a quarter turn onto the travel-side hip over the sim's 10 roll frames (the knockdown smoother
+		-- caps the body's turn at 12 deg/frame; the round-4 clip spun a full turn in 14 frames, 27 deg/frame), so the turn is
+		-- judged on the roll's sixth frame and the quarter turn by its tenth.
 		local function chest(pose: any): Vector3 return (pose.rootRot or CFrame.identity).LookVector end
 		for _, face in { "FaceUp", "FaceDown" } do
 			for _, dir in { 1, -1 } do
@@ -783647,8 +784604,8 @@ return function(t)
 						local c = chest(pose)
 						local toward = -c.X * dir
 						if not firstChestY then firstChestY = c.Y end
-						if f <= L + 8 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
-						if f == L + 3 then towardAtTurn = toward end
+						if f <= L + 10 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
+						if f == L + 6 then towardAtTurn = toward end
 					end
 					local rot = pose.rootRot or CFrame.identity
 					if prevRot and f >= L - 2 then
@@ -783662,6 +784619,7 @@ return function(t)
 					t.expect.truthy(firstChestY > 0.5, tag .. " starts on its back")
 					t.expect.truthy((towardAtTurn or -1) > 0.6, string.format("%s: the chest turns toward the travel side first (%.2f)", tag, towardAtTurn or -1))
 					t.expect.truthy(towardMax > 0.85, string.format("%s: quarter turn reached (%.2f)", tag, towardMax))
+					t.expect.truthy(maxTurn <= 15, string.format("%s: the pelvis turns %.1f degrees in one frame", tag, maxTurn))
 				else
 					-- A grounded face-down knockdown lies head toward the opponent (FallFront lands in GetupFront's first
 					-- frame) and rises with GetupFront while the sim slides the body aside: the log roll's prone half turn
@@ -792841,6 +793799,28 @@ end
 -- with the defender on all six rigs; max range (the sim carries the root `advance` / startup studs per frame up to and
 -- including the first active frame) and close range (Separation: keepApart cancels the advance). LEAD frames of the
 -- held stance first.
+-- Case groups of the move-clip sweeps (see the step-in and lock-release tests). The throw groups are split by the rig
+-- that plays the track (the attacker's own rig for the attacker role, each defender's rig for the defender role).
+local RIG_HALVES: { { [string]: boolean } } = { {}, {} }
+local HALF_NAMES: { { string } } = { {}, {} }
+for i, id in Roster.order do
+	local h = if i <= math.ceil(#Roster.order / 2) then 1 else 2
+	RIG_HALVES[h][id] = true
+	table.insert(HALF_NAMES[h], id)
+end
+local GROUND_GROUPS: { any } = { { label = "attacks", throw = false } }
+for _, far in { true, false } do
+	for h = 1, 2 do
+		table.insert(GROUND_GROUPS, { label = string.format("throws at %s range, %s rigs", if far then "max" else "close", table.concat(HALF_NAMES[h], ", ")), throw = true, far = far, ids = RIG_HALVES[h] })
+	end
+end
+local function groupCases(cases: { any }, group: any): { any }
+	local out = {}
+	for _, c in cases do
+		if (c.throw == true) == group.throw and (group.far == nil or c.far == group.far) and (group.ids == nil or group.ids[c.id]) then table.insert(out, c) end
+	end
+	return out
+end
 local function moveClipCases(rigs: { [string]: Staged }): { any }
 	local SEP = (Config :: any).Separation or 2.6
 	local BREAK_FRAMES = (Config :: any).ThrowBreakFrames or 16
@@ -793216,155 +794196,162 @@ return function(t)
 		print(string.format("[MotionGround] all other moves (information): %d planted foot-frames, %d over %.2f studs: %s", sweepPlanted, sweepOver, TOL, if #sweepList > 0 then table.concat(sweepList, ", ") else "none"))
 	end)
 
-	t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range)", function()
-		-- Step-ins: the sim carries the attacker's root forward by `advance` over the startup (at close range keepApart
-		-- cancels it) while the rear foot stays planted or trails, and a keyed clip can place a foot beyond a rig's leg
-		-- reach; the IK clamp then lifted the foot off the floor. Wherever the displayed pose's own sole (the clip's,
-		-- blended through crossfades) is within GATE leg lengths of the floor, the shown foot's lowest point stays within
-		-- TOL studs of the height the runtime intends for it (MotionPlayer rig.footClear: 0 for a planted foot, the clip's
-		-- own clearance for a released one; the clip's sole height on this rig when the runtime does not report it).
-		-- Every installed move clip (Moves.Strikes / Kicks / Throws: attacks, grab attempts, both throw roles and their
-		-- break tracks) on its fighter's rig — throw defenders on all six rigs — at max range (full sim advance) and at
-		-- close range (Separation: no advance). A foot the contact aim layer pulls to the opponent (aimWeight > 0) is the
-		-- strike itself and is not gated. Information: feet shown more than TOL above the floor at all (clip-side hover:
-		-- released near-floor feet, feet of a pelvis posed differently from the clip's).
-		local GATE, TOL = 0.05, 0.05
-		local rigs = stageAll()
-		local cases = moveClipCases(rigs)
-		type Stat = { checked: number, lifts: number, worst: number, where: string, over: number, worstGap: number, gapWhere: string, liftClips: { [string]: number }, gapClips: { [string]: number }, plays: number }
-		local stats: { [string]: Stat } = {}
-		local played: { [string]: boolean } = {}
-		local before = sweepFrames
-		for _, case in cases do
-			local s = stats[case.agent]
-			if not s then
-				s = { checked = 0, lifts = 0, worst = 0, where = "-", over = 0, worstGap = 0, gapWhere = "-", liftClips = {}, gapClips = {}, plays = 0 }
-				stats[case.agent] = s
+	-- The two sweeps over every move clip run in five groups (attacks; throws at max and at close range, each split by
+	-- the rig that plays the track) so each test stays well inside the runner's time limit (round 5: the knockdown and
+	-- thrown-defender clearance made a throw frame dearer). Same cases, same targets.
+	for _, group in GROUND_GROUPS do
+		t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range): " .. group.label, function()
+			-- Step-ins: the sim carries the attacker's root forward by `advance` over the startup (at close range keepApart
+			-- cancels it) while the rear foot stays planted or trails, and a keyed clip can place a foot beyond a rig's leg
+			-- reach; the IK clamp then lifted the foot off the floor. Wherever the displayed pose's own sole (the clip's,
+			-- blended through crossfades) is within GATE leg lengths of the floor, the shown foot's lowest point stays within
+			-- TOL studs of the height the runtime intends for it (MotionPlayer rig.footClear: 0 for a planted foot, the clip's
+			-- own clearance for a released one; the clip's sole height on this rig when the runtime does not report it).
+			-- Every installed move clip (Moves.Strikes / Kicks / Throws: attacks, grab attempts, both throw roles and their
+			-- break tracks) on its fighter's rig — throw defenders on all six rigs — at max range (full sim advance) and at
+			-- close range (Separation: no advance). A foot the contact aim layer pulls to the opponent (aimWeight > 0) is the
+			-- strike itself and is not gated. Information: feet shown more than TOL above the floor at all (clip-side hover:
+			-- released near-floor feet, feet of a pelvis posed differently from the clip's).
+			local GATE, TOL = 0.05, 0.05
+			local rigs = stageAll()
+			local cases = groupCases(moveClipCases(rigs), group)
+			type Stat = { checked: number, lifts: number, worst: number, where: string, over: number, worstGap: number, gapWhere: string, liftClips: { [string]: number }, gapClips: { [string]: number }, plays: number }
+			local stats: { [string]: Stat } = {}
+			local played: { [string]: boolean } = {}
+			local before = sweepFrames
+			for _, case in cases do
+				local s = stats[case.agent]
+				if not s then
+					s = { checked = 0, lifts = 0, worst = 0, where = "-", over = 0, worstGap = 0, gapWhere = "-", liftClips = {}, gapClips = {}, plays = 0 }
+					stats[case.agent] = s
+				end
+				s.plays += 1
+				played[case.clipName] = true
+				local rig = rigs[case.id].rig
+				playCase(rigs, case, function(f: number, pose: any, _v: any, clip: any?, t: number?)
+					if not (clip and t) then return end
+					local soleL, soleR = clipSoles(clip, t)
+					for i, foot in FEET do
+						local e = pose.targets[foot]
+						-- The displayed pose's own sole (crossfades blend it) when the runtime reports it, else the clip's.
+						local sole = (e and e.sole) or (if i == 1 then soleL else soleR)
+						if sole <= GATE and not (e and (e.aimWeight or 0) > 0.01) then
+							local gap = soleGap(rig, foot)
+							local intended = if rig.footClear and rig.footClear[foot] then rig.footClear[foot] else math.max(sole, 0) * rig.legLength
+							local lift = gap - intended
+							local key = case.label .. " " .. foot
+							s.checked += 1
+							if lift > TOL then
+								s.lifts += 1
+								s.liftClips[key] = math.max(s.liftClips[key] or 0, lift)
+							end
+							if lift > s.worst then s.worst, s.where = lift, string.format("%s f%d", key, f - LEAD) end
+							if gap > TOL then
+								s.over += 1
+								s.gapClips[key] = math.max(s.gapClips[key] or 0, gap)
+							end
+							if gap > s.worstGap then s.worstGap, s.gapWhere = gap, string.format("%s f%d (clip sole %.3f L)", key, f - LEAD, sole) end
+						end
+					end
+				end)
 			end
-			s.plays += 1
-			played[case.clipName] = true
-			local rig = rigs[case.id].rig
-			playCase(rigs, case, function(f: number, pose: any, _v: any, clip: any?, t: number?)
-				if not (clip and t) then return end
-				local soleL, soleR = clipSoles(clip, t)
-				for i, foot in FEET do
-					local e = pose.targets[foot]
-					-- The displayed pose's own sole (crossfades blend it) when the runtime reports it, else the clip's.
-					local sole = (e and e.sole) or (if i == 1 then soleL else soleR)
-					if sole <= GATE and not (e and (e.aimWeight or 0) > 0.01) then
-						local gap = soleGap(rig, foot)
-						local intended = if rig.footClear and rig.footClear[foot] then rig.footClear[foot] else math.max(sole, 0) * rig.legLength
-						local lift = gap - intended
-						local key = case.label .. " " .. foot
-						s.checked += 1
-						if lift > TOL then
-							s.lifts += 1
-							s.liftClips[key] = math.max(s.liftClips[key] or 0, lift)
+			destroyAll(rigs)
+			local count = 0
+			for _ in played do count += 1 end
+			local agents = {}
+			for agent in stats do table.insert(agents, agent) end
+			table.sort(agents)
+			print(string.format("[MotionGround] step-in feet: %d move clips played (%d frames); net %s", count, sweepFrames - before, tostring((MotionPlayer :: any).FootReachNet)))
+			for _, agent in agents do
+				local s = stats[agent]
+				print(string.format("[MotionGround] step-in feet %s: %d plays, %d gated foot-frames; lifted above the intended height by > %.2f: %d (worst %.3f, %s) | top: %s", agent, s.plays, s.checked, TOL, s.lifts, s.worst, s.where, topList(s.liftClips, 10)))
+				print(string.format("[MotionGround] step-in feet %s (information): displayed sole > %.2f above the floor: %d foot-frames (worst %.3f, %s) | top: %s", agent, TOL, s.over, s.worstGap, s.gapWhere, topList(s.gapClips, 8)))
+			end
+			t.expect.truthy(count >= 1, "move clips installed")
+			for _, agent in agents do
+				local s = stats[agent]
+				t.expect.truthy(s.lifts == 0, string.format("%s: %d foot-frames lifted off the floor (worst %.3f studs above the intended height, %s)", agent, s.lifts, s.worst, s.where))
+			end
+		end)
+	end
+
+	for _, group in GROUND_GROUPS do
+		t.test("a released foot lock lets go smoothly: no foot snaps when its contact drops (every move clip, max and close range): " .. group.label, function()
+			-- A planted foot is locked in world space; where the body travels differently from the clip (keepApart capping a
+			-- step-in's root, pushback) the anchor holds the foot up to the leash away from the clip's spot. When the contact
+			-- drops, the lock lets go over MotionPlayer.FootLockRelease instead of in one frame, and a foot landing again
+			-- while still letting go locks where it is shown: around every release and re-landing (the frames up to WINDOW
+			-- after a contact below 0.5) the shown foot never moves more than JUMP studs in a frame beyond the clip's own foot
+			-- motion (the same play with the leash at 0, where the foot follows the clip) plus a quarter of that foot's speed
+			-- over the last frames. Steady locks are not gated: there the reach net may slide a held foot. Every installed
+			-- move clip as in the step-in test.
+			local JUMP, WINDOW = 0.2, 5
+			local rigs = stageAll()
+			local cases = groupCases(moveClipCases(rigs), group)
+			local leash = MotionPlayer.FootLockLeash
+			local worst: { [string]: { v: number, where: string, over: number, clips: { [string]: number } } } = {}
+			local ok, err = pcall(function()
+				for _, case in cases do
+					local rig = rigs[case.id].rig
+					local contacts: { [string]: { number } } = { LeftFoot = {}, RightFoot = {} }
+					local function path(free: boolean): { [string]: { Vector3 } }
+						MotionPlayer.FootLockLeash = if free then 0 else leash
+						local out = { LeftFoot = {}, RightFoot = {} }
+						playCase(rigs, case, function(f: number, pose: any)
+							for _, foot in FEET do
+								local p = rig.tips[foot].Position
+								out[foot][f] = Vector3.new(p.X, 0, p.Z)
+								contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
+							end
+						end)
+						return out
+					end
+					local held, free = path(false), path(true)
+					local w = worst[case.agent]
+					if not w then
+						w = { v = 0, where = "-", over = 0, clips = {} }
+						worst[case.agent] = w
+					end
+					for _, foot in FEET do
+						local a, b, c = held[foot], free[foot], contacts[foot]
+						for f = LEAD + 2, case.n do
+							local near = false
+							for g = math.max(1, f - WINDOW), f do
+								if c[g] < 0.5 then near = true; break end
+							end
+							if near then
+								-- A foot already moving fast (a kick whipping out of its lock, a break shove) may lag and catch up
+								-- by a quarter of its recent speed; a foot at rest may not jump.
+								local recent = 0
+								for g = math.max(LEAD + 2, f - 2), f do recent = math.max(recent, (b[g] - b[g - 1]).Magnitude) end
+								local extra = (a[f] - a[f - 1]).Magnitude - (b[f] - b[f - 1]).Magnitude - 0.25 * recent
+								if extra > JUMP then
+									w.over += 1
+									local key = case.label .. " " .. foot
+									w.clips[key] = math.max(w.clips[key] or 0, extra)
+								end
+								if extra > w.v then w.v, w.where = extra, string.format("%s %s f%d", case.label, foot, f - LEAD) end
+							end
 						end
-						if lift > s.worst then s.worst, s.where = lift, string.format("%s f%d", key, f - LEAD) end
-						if gap > TOL then
-							s.over += 1
-							s.gapClips[key] = math.max(s.gapClips[key] or 0, gap)
-						end
-						if gap > s.worstGap then s.worstGap, s.gapWhere = gap, string.format("%s f%d (clip sole %.3f L)", key, f - LEAD, sole) end
 					end
 				end
 			end)
-		end
-		destroyAll(rigs)
-		local count = 0
-		for _ in played do count += 1 end
-		local agents = {}
-		for agent in stats do table.insert(agents, agent) end
-		table.sort(agents)
-		print(string.format("[MotionGround] step-in feet: %d move clips played (%d frames); net %s", count, sweepFrames - before, tostring((MotionPlayer :: any).FootReachNet)))
-		for _, agent in agents do
-			local s = stats[agent]
-			print(string.format("[MotionGround] step-in feet %s: %d plays, %d gated foot-frames; lifted above the intended height by > %.2f: %d (worst %.3f, %s) | top: %s", agent, s.plays, s.checked, TOL, s.lifts, s.worst, s.where, topList(s.liftClips, 10)))
-			print(string.format("[MotionGround] step-in feet %s (information): displayed sole > %.2f above the floor: %d foot-frames (worst %.3f, %s) | top: %s", agent, TOL, s.over, s.worstGap, s.gapWhere, topList(s.gapClips, 8)))
-		end
-		t.expect.truthy(count >= 1, "move clips installed")
-		for _, agent in agents do
-			local s = stats[agent]
-			t.expect.truthy(s.lifts == 0, string.format("%s: %d foot-frames lifted off the floor (worst %.3f studs above the intended height, %s)", agent, s.lifts, s.worst, s.where))
-		end
-	end)
-
-	t.test("a released foot lock lets go smoothly: no foot snaps when its contact drops (every move clip, max and close range)", function()
-		-- A planted foot is locked in world space; where the body travels differently from the clip (keepApart capping a
-		-- step-in's root, pushback) the anchor holds the foot up to the leash away from the clip's spot. When the contact
-		-- drops, the lock lets go over MotionPlayer.FootLockRelease instead of in one frame, and a foot landing again
-		-- while still letting go locks where it is shown: around every release and re-landing (the frames up to WINDOW
-		-- after a contact below 0.5) the shown foot never moves more than JUMP studs in a frame beyond the clip's own foot
-		-- motion (the same play with the leash at 0, where the foot follows the clip) plus a quarter of that foot's speed
-		-- over the last frames. Steady locks are not gated: there the reach net may slide a held foot. Every installed
-		-- move clip as in the step-in test.
-		local JUMP, WINDOW = 0.2, 5
-		local rigs = stageAll()
-		local cases = moveClipCases(rigs)
-		local leash = MotionPlayer.FootLockLeash
-		local worst: { [string]: { v: number, where: string, over: number, clips: { [string]: number } } } = {}
-		local ok, err = pcall(function()
-			for _, case in cases do
-				local rig = rigs[case.id].rig
-				local contacts: { [string]: { number } } = { LeftFoot = {}, RightFoot = {} }
-				local function path(free: boolean): { [string]: { Vector3 } }
-					MotionPlayer.FootLockLeash = if free then 0 else leash
-					local out = { LeftFoot = {}, RightFoot = {} }
-					playCase(rigs, case, function(f: number, pose: any)
-						for _, foot in FEET do
-							local p = rig.tips[foot].Position
-							out[foot][f] = Vector3.new(p.X, 0, p.Z)
-							contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
-						end
-					end)
-					return out
-				end
-				local held, free = path(false), path(true)
-				local w = worst[case.agent]
-				if not w then
-					w = { v = 0, where = "-", over = 0, clips = {} }
-					worst[case.agent] = w
-				end
-				for _, foot in FEET do
-					local a, b, c = held[foot], free[foot], contacts[foot]
-					for f = LEAD + 2, case.n do
-						local near = false
-						for g = math.max(1, f - WINDOW), f do
-							if c[g] < 0.5 then near = true; break end
-						end
-						if near then
-							-- A foot already moving fast (a kick whipping out of its lock, a break shove) may lag and catch up
-							-- by a quarter of its recent speed; a foot at rest may not jump.
-							local recent = 0
-							for g = math.max(LEAD + 2, f - 2), f do recent = math.max(recent, (b[g] - b[g - 1]).Magnitude) end
-							local extra = (a[f] - a[f - 1]).Magnitude - (b[f] - b[f - 1]).Magnitude - 0.25 * recent
-							if extra > JUMP then
-								w.over += 1
-								local key = case.label .. " " .. foot
-								w.clips[key] = math.max(w.clips[key] or 0, extra)
-							end
-							if extra > w.v then w.v, w.where = extra, string.format("%s %s f%d", case.label, foot, f - LEAD) end
-						end
-					end
-				end
+			MotionPlayer.FootLockLeash = leash
+			destroyAll(rigs)
+			if not ok then error(err, 0) end
+			local agents = {}
+			for agent in worst do table.insert(agents, agent) end
+			table.sort(agents)
+			for _, agent in agents do
+				local w = worst[agent]
+				print(string.format("[MotionGround] lock release %s: worst extra foot jump %.3f studs/frame (%s); %d foot-frames over %.2f | top: %s", agent, w.v, w.where, w.over, JUMP, topList(w.clips, 8)))
+			end
+			for _, agent in agents do
+				local w = worst[agent]
+				t.expect.truthy(w.over == 0, string.format("%s: a released foot snapped %.3f studs in one frame beyond its clip motion (%s)", agent, w.v, w.where))
 			end
 		end)
-		MotionPlayer.FootLockLeash = leash
-		destroyAll(rigs)
-		if not ok then error(err, 0) end
-		local agents = {}
-		for agent in worst do table.insert(agents, agent) end
-		table.sort(agents)
-		for _, agent in agents do
-			local w = worst[agent]
-			print(string.format("[MotionGround] lock release %s: worst extra foot jump %.3f studs/frame (%s); %d foot-frames over %.2f | top: %s", agent, w.v, w.where, w.over, JUMP, topList(w.clips, 8)))
-		end
-		for _, agent in agents do
-			local w = worst[agent]
-			t.expect.truthy(w.over == 0, string.format("%s: a released foot snapped %.3f studs in one frame beyond its clip motion (%s)", agent, w.v, w.where))
-		end
-	end)
+	end
 
 	t.test("a support leg crossing its reach limit never flips its planted foot onto the toes (slow pelvis lift, all six, stance and walk)", function()
 		-- Round 4 (Sierra's teep kick at Width .85, max range: a 0.223-stud foot snap on lock release). A planted foot whose
@@ -795202,8 +796189,10 @@ return function(t)
 		t.expect.truthy(#bad == 0, "loops: " .. report(bad))
 	end)
 
-	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
-		t.test("standing transitions (" .. table.concat(group, ", ") .. "): no joint turns > 15 deg in a frame at a switch, no flip, no pop outside attack clips", function()
+	-- One fighter per test (round 5: the runner's 5 s per test; same cases and checks as the round-4 groups of three).
+	for _, id0 in QA.Roster.order do
+		local group = { id0 }
+		t.test("standing transitions (" .. id0 .. "): no joint turns > 15 deg in a frame at a switch, no flip, no pop outside attack clips", function()
 			local cases = {}
 			for _, id in group do
 				for _, c in standingCases(id) do table.insert(cases, c) end
@@ -795228,8 +796217,9 @@ return function(t)
 		end)
 	end
 
-	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
-		t.test("strikes at their designed range rest on the opponent (" .. table.concat(group, ", ") .. ")", function()
+	for _, id0 in QA.Roster.order do
+		local group = { id0 }
+		t.test("strikes at their designed range rest on the opponent (" .. id0 .. ")", function()
 			local cases = {}
 			for _, id in group do
 				for _, c in QA.moveCases(id, { "max" }) do table.insert(cases, c) end
@@ -795239,34 +796229,43 @@ return function(t)
 		end)
 	end
 
-	t.test("face-down knockdowns, their getups and the face-down KO (all six fighters): no body part turns 90 degrees in a frame", function()
-		-- FallFront/KOFront used to land in the other prone pose (head away from the opponent) and the face-down getup to
-		-- turn the body back: feet, thighs and arms whipped 150-178 degrees in one frame. Now 46-70 at worst (the prone
-		-- legs still twist after the landing: see motioncore.md 13.4).
-		local wanted = { ["knockdownFaceDown>Stand>idle"] = true, ["knockdownFaceDown>BackRoll>idle"] = true, ["knockdownFaceDown>SideRollL>idle"] = true, ["idle>KOFaceDown"] = true }
-		local cases = {}
-		for _, id in QA.Roster.order do
-			for _, c in QA.stateCases(id) do
-				if wanted[c.label] then table.insert(cases, c) end
+	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
+		t.test("face-down knockdowns, their getups and the face-down KO (" .. table.concat(group, ", ") .. "): no body part turns 90 degrees in a frame", function()
+			-- FallFront/KOFront used to land in the other prone pose (head away from the opponent) and the face-down getup to
+			-- turn the body back: feet, thighs and arms whipped 150-178 degrees in one frame. Now 46-70 at worst (the prone
+			-- legs still twist after the landing: see motioncore.md 13.4). Round 5: two groups of three (runner time limit).
+			local wanted = { ["knockdownFaceDown>Stand>idle"] = true, ["knockdownFaceDown>BackRoll>idle"] = true, ["knockdownFaceDown>SideRollL>idle"] = true, ["idle>KOFaceDown"] = true }
+			local cases = {}
+			for _, id in group do
+				for _, c in QA.stateCases(id) do
+					if wanted[c.label] then table.insert(cases, c) end
+				end
 			end
-		end
-		t.expect.truthy(#cases == 4 * #QA.Roster.order, "every fighter has the face-down cases")
-		local bad = violations(cases, { "pop.rot" }, { ["pop.rot"] = 90 })
-		t.expect.truthy(#bad == 0, "face-down whips: " .. report(bad))
-	end)
+			t.expect.truthy(#cases == 4 * #group, "every fighter has the face-down cases")
+			local bad = violations(cases, { "pop.rot" }, { ["pop.rot"] = 90 })
+			t.expect.truthy(#bad == 0, "face-down whips: " .. report(bad))
+		end)
+	end
 
-	t.test("throw tracks never teleport a body part (both roles, all six fighters)", function()
-		local cases = {}
-		for _, id in QA.Roster.order do
-			for _, c in QA.throwCases(id) do
-				if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+	-- Two tests (the throws of three fighters each, both roles) to stay well inside the runner's time limit; the second
+	-- releases the staged rigs.
+	local THROW_GROUPS = { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } }
+	for gi, group in THROW_GROUPS do
+		t.test("throw tracks never teleport a body part (both roles, the throws of " .. table.concat(group, ", ") .. ")", function()
+			local cases = {}
+			for _, id in group do
+				for _, c in QA.throwCases(id) do
+					if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+				end
 			end
-		end
-		local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
-		QA.destroy(rigs)
-		rigs = nil
-		t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
-	end)
+			local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
+			if gi == #THROW_GROUPS then
+				QA.destroy(rigs)
+				rigs = nil
+			end
+			t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
+		end)
+	end
 end
 ]]></ProtectedString>
 						<string name="ScriptGuid">{0142696D-BBE3-44B5-81D5-900746889984}</string>
@@ -795549,6 +796548,260 @@ end
 						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
 						<bool name="DefinesCapabilities">false</bool>
 						<string name="Name">FlashDetector_Test</string>
+						<BinaryString name="Tags"></BinaryString>
+					</Properties>
+				</Item>
+			<Item class="ModuleScript" referent="RBXDD25F40006574F56827343DACF85818B">
+					<Properties>
+						<Content name="LinkedSource"><null></null></Content>
+						<ProtectedString name="Source"><![CDATA[--!strict
+-- MotionQA round 5: the four motion issues left after round 4, on the REAL fighter rigs of all six fighters (harness:
+-- ServerStorage.UnitTest.MotionQA; targets and fixes: docs/design/motioncore.md 14).
+--   1. Knockdowns into getups without a spin: from the frame before a fighter reaches the floor (a grounded knockdown,
+--      a launcher fall, a juggle ending face up or face down, a KO) through Landing, every getup (Stand, BackRoll,
+--      SideRoll left/right, late rolls) and the stance after it, the pelvis never yaws or rolls more than 15 degrees in
+--      a frame and no limb, the head or the chest turns more than 30 degrees in a frame relative to the pelvis.
+--   2. Point-blank strikes do not sink: every strike and kick at point-blank (Separation), mid and max range rests on
+--      the opponent — the striking hand/foot and its forearm/shin <= 0.15 studs inside the head/chest/pelvis on the
+--      active frames and through the recovery.
+--   3. No self-clipping on the floor: in Landing, Getup, rolls and KO, and in every throw's defender track (thrown and
+--      breaking the throw), the gloves / hands stay out of the own head (<= 0.03) and torso (<= 0.05) and the forearms'
+--      centrelines out of the body (<= 0.05). Three defender cases remain over the limit (Nia's fingertips at her cheek,
+--      thrown by or breaking Rhys's Throw; Rhys's forearm on Goran's RamSlam slam frame), each capped in
+--      DEFENDER_EXCEPTIONS.
+--   4. Kael's face reads: from the fight camera of both player slots (guard, idle, walk, backwalk, blockstun) at least
+--      70% of his face landmarks (camera-side eye, nose, mouth) are not hidden by his gloves, while the gloves stay a
+--      boxing guard (chin-to-cheek height, elbows in); Sierra (gloves) and every other fighter (hands) the same.
+-- Each test stays well inside the runner's 5 s (knockdowns per fighter, source and face; strikes per fighter and range;
+-- thrown defenders per fighter and attacker half; throw breaks and faces per fighter).
+local QA = require(script.Parent.Parent:WaitForChild("MotionQA"))
+
+local rigs: { [string]: QA.Staged }? = nil
+local function staged(): { [string]: QA.Staged }
+	if not rigs then rigs = QA.stage() end
+	return rigs :: { [string]: QA.Staged }
+end
+
+local LYING = { Landing = true, Getup = true, KO = true, Knockdown = true }
+local PLAY = {}
+
+local function fmt(d: any): string
+	return string.format("%s %s f%d %s %s = %.3f (limit %.3f) key=%s state=%s %s", d.fighter, d.case, d.frame, d.metric, d.part, d.value, d.limit, tostring(d.key), tostring(d.state), d.note or "")
+end
+local function report(list: { string }): string
+	if #list == 0 then return "none" end
+	local shown = {}
+	for i = 1, math.min(#list, 12) do shown[i] = list[i] end
+	return #list .. " defect(s):\n  " .. table.concat(shown, "\n  ")
+end
+-- Worst raw defect per (case, metric, part) among those `keep` accepts.
+local function worst(defects: { any }, keep: (any) -> boolean): { string }
+	local best: { [string]: any } = {}
+	for _, d in defects do
+		if keep(d) then
+			local k = d.case .. "|" .. d.metric .. "|" .. d.part
+			if not best[k] or d.value > best[k].value then best[k] = d end
+		end
+	end
+	local list = {}
+	for _, d in best do table.insert(list, d) end
+	table.sort(list, function(a, b) return a.value / a.limit > b.value / b.limit end)
+	local out = {}
+	for _, d in list do table.insert(out, fmt(d)) end
+	return out
+end
+
+-- Knockdown runs are shared by issue 1 and issue 3 (played once per fighter and half: face-up and face-down sources).
+-- Knockdown sources (case labels kd:<source><Face>... and kd:ko:<source><Face>): one slice per fighter, source and face.
+local KD_SOURCES = { "ground", "launch", "juggle" }
+local KD_FACES = { "FaceUp", "FaceDown" }
+local kdDefects: { [string]: { any } } = {}
+local function knockdowns(id: string, source: string?, face: string?): { any }
+	if not source or not face then
+		local all = {}
+		for _, s in KD_SOURCES do
+			for _, f in KD_FACES do
+				for _, x in knockdowns(id, s, f) do table.insert(all, x) end
+			end
+		end
+		return all
+	end
+	local key = id .. "|" .. (source :: string) .. "|" .. (face :: string)
+	local cached = kdDefects[key]
+	if cached then return cached end
+	local all = {}
+	local tag = (source :: string) .. (face :: string)
+	for _, c in QA.knockdownCases(id) do
+		if string.find(c.label, tag, 1, true) then
+			local d = QA.play(staged(), c, PLAY)
+			for _, x in d do table.insert(all, x) end
+		end
+	end
+	kdDefects[key] = all
+	return all
+end
+
+local function selfClip(d: any): boolean
+	if not LYING[d.state] then return false end
+	if d.metric == "self.handHead" or d.metric == "self.handTorso" then return true end
+	return d.metric == "self.armTorso" and string.find(d.part, "LowerArm", 1, true) ~= nil
+end
+
+-- Throw defender frames still over the limit on this branch (fighter|case|metric|part -> cap). Each is one to three
+-- frames of a fast clip motion the runtime clearance cannot fully route around without popping the arm; a new defect,
+-- or one of these getting worse than its cap, fails (motioncore.md 14.6).
+local DEFENDER_EXCEPTIONS: { [string]: number } = {
+	-- The fingertips of Nia's right hand graze her cheek on Rhys's Throw entry (0.033 vs 0.03), thrown or breaking it.
+	["Nia|throw:Rhys.Throw|self.handHead|RightHand"] = 0.04,
+	["Nia|throw:Rhys.Throw:broken|self.handHead|RightHand"] = 0.04,
+	-- Goran's RamSlam swings Rhys's left forearm through his chest on the slam frame (1 frame, 0.20).
+	["Rhys|throw:Goran.RamSlam|self.armTorso|LeftLowerArm"] = 0.23,
+}
+local function defenderClip(d: any): boolean
+	local inScope = d.metric == "self.handHead" or d.metric == "self.handTorso"
+		or (d.metric == "self.armTorso" and string.find(d.part, "LowerArm", 1, true) ~= nil)
+	if not inScope then return false end
+	local cap = DEFENDER_EXCEPTIONS[d.fighter .. "|" .. d.case .. "|" .. d.metric .. "|" .. d.part]
+	return cap == nil or d.value > cap
+end
+local function defenderRuns(defender: string, broken: boolean, attackers: { string }?): { any }
+	local all = {}
+	for _, attacker in attackers or QA.Roster.order do
+		for _, c in QA.throwCases(attacker, defender) do
+			if (string.find(c.label, ":broken", 1, true) ~= nil) == broken then
+				c.subjects = { 2 }
+				local d = QA.play(staged(), c, PLAY)
+				for _, x in d do table.insert(all, x) end
+			end
+		end
+	end
+	return all
+end
+
+return function(t)
+	-- 1 + 3: knockdowns, getups, rolls, KO.
+	local SOURCE_NAMES = { ground = "grounded knockdown", launch = "launcher fall", juggle = "juggle" }
+	for _, id in QA.Roster.order do
+		for _, source in KD_SOURCES do
+			for _, face in KD_FACES do
+				local what = (if face == "FaceUp" then "face-up " else "face-down ") .. SOURCE_NAMES[source]
+				t.test("1. " .. id .. ": " .. what .. " into every getup (and the KO): no spin over 15 deg/frame, no limb whip over 30 deg/frame", function()
+					local bad = worst(knockdowns(id, source, face), function(d) return d.metric == "getup.spin" or d.metric == "getup.whip" end)
+					t.expect.truthy(#bad == 0, "knockdown continuity: " .. report(bad))
+				end)
+			end
+		end
+		t.test("3. " .. id .. ": hands and forearms clear of the own head and torso in Landing, Getup, rolls and KO", function()
+			local bad = worst(knockdowns(id), selfClip)
+			t.expect.truthy(#bad == 0, "self clipping on the floor: " .. report(bad))
+		end)
+	end
+	-- 3: throw defender tracks (every throw of every fighter, each fighter as the defender), thrown and breaking the throw.
+	-- The thrown tracks run in two tests per defender (the attackers in two halves) to stay well inside the runner's limit.
+	local ATTACKER_HALVES: { { string } } = { {}, {} }
+	for i, id in QA.Roster.order do
+		table.insert(ATTACKER_HALVES[if i <= math.ceil(#QA.Roster.order / 2) then 1 else 2], id)
+	end
+	for _, defender in QA.Roster.order do
+		for _, attackers in ATTACKER_HALVES do
+			t.test("3. throw defender tracks (" .. defender .. " thrown by " .. table.concat(attackers, ", ") .. "): hands and forearms clear of the own head and torso", function()
+				local bad = worst(defenderRuns(defender, false, attackers), defenderClip)
+				t.expect.truthy(#bad == 0, "throw defender self clipping: " .. report(bad))
+			end)
+		end
+		t.test("3. throw breaks (" .. defender .. " breaking everyone's throws): hands and forearms clear of the own head and torso", function()
+			local bad = worst(defenderRuns(defender, true), defenderClip)
+			t.expect.truthy(#bad == 0, "throw break self clipping: " .. report(bad))
+		end)
+	end
+	-- 2: strikes at point-blank, mid and max range.
+	for _, id in QA.Roster.order do
+		for _, ranges in { { "close" }, { "mid" }, { "max" } } do
+			local what = if ranges[1] == "close" then "point-blank" elseif ranges[1] == "mid" then "mid range" else "max range"
+			t.test("2. " .. id .. ": every strike and kick at " .. what .. " rests on the opponent (<= 0.15 studs, active and recovery)", function()
+				local all = {}
+				for _, range in ranges do
+					for _, c in QA.moveCases(id, { range }) do
+						local m = c.meta
+						local d = QA.play(staged(), c, PLAY)
+						for _, x in d do
+							if (x.metric == "opp.strike" or x.metric == "opp.through") and x.mf and x.mf > m.startup then table.insert(all, x) end
+						end
+					end
+				end
+				local bad = worst(all, function() return true end)
+				t.expect.truthy(#bad == 0, "strike depth: " .. report(bad))
+			end)
+		end
+	end
+	-- 4: faces behind the guard.
+	local function faceRun(id: string): (number, string, { [string]: any })
+		local worstV, where = 1, ""
+		-- The idle guard of each glove: lowest glove top above the chin, lowest glove centre under the eyes, widest elbow.
+		local guard = { topOverChinMin = math.huge, underEyeMin = math.huge, elbowOutMax = -math.huge }
+		local labels = { idle = true, walk = true, backwalk = true, ["idle>blockstun>idle"] = true }
+		for _, c in QA.stateCases(id) do
+			if labels[c.label] then
+				for slot = 1, 2 do
+					local cc = if slot == 1 then c else QA.slotTwo(c)
+					local s = cc.subjects[1]
+					QA.play(staged(), cc, { onFrame = function(f: number, st: { QA.Staged }, cfs: { any }, views: { any })
+						-- After the case's lead-in (the rig settles from its reset pose).
+						if f < 20 then return end
+						local sub, cf = st[s], cfs[s]
+						local v0 = views[s]
+						-- The fight camera at a close and a mid spacing (the cases' partners stand far away in the walks).
+						for _, sep in { 3.5, 7 } do
+							local cam = QA.fightCamera(v0.pos, v0.pos + v0.facing.Unit * sep)
+							local v = QA.faceVisibility(sub, cf, cam)
+							if v < worstV then worstV, where = v, string.format("%s slot %d f%d (spacing %.1f)", c.label, slot, f, sep) end
+						end
+						if c.label == "idle" then
+							local g = QA.guardShape(sub, cf)
+							for _, hand in { "LeftHand", "RightHand" } do
+								local h = g[hand]
+								guard.topOverChinMin = math.min(guard.topOverChinMin, h.topOverChin)
+								guard.underEyeMin = math.min(guard.underEyeMin, h.underEye)
+								guard.elbowOutMax = math.max(guard.elbowOutMax, h.elbowOut)
+							end
+						end
+					end })
+				end
+			end
+		end
+		return worstV, where, guard
+	end
+	t.test("4. Kael's face reads from the fight camera of both player slots (>= 70% of the eye, nose and mouth landmarks clear of the gloves) in a boxing guard", function()
+		local v, where, g = faceRun("Kael")
+		t.expect.truthy(v >= 0.70, string.format("Kael face visible %.0f%% at %s", v * 100, where))
+		-- Still a boxing guard: both gloves reach the chin (glove top at most 0.1 below it), neither centre rises above the
+		-- eyes, elbows no wider than 0.3 studs outside the shoulder line (round 4: 0.27).
+		t.expect.truthy(g.topOverChinMin >= -0.10 and g.underEyeMin >= 0, string.format("Kael gloves out of the chin-cheek band: top %.2f over the chin, centre %.2f under the eye", g.topOverChinMin, g.underEyeMin))
+		t.expect.truthy(g.elbowOutMax <= 0.30, string.format("Kael elbows flared %.2f studs outside the shoulders", g.elbowOutMax))
+	end)
+	for _, id0 in { "Sierra", "Goran", "Lumi", "Rhys", "Nia" } do
+		local group = { id0 }
+		t.test("4. " .. id0 .. (if id0 == "Sierra" then " (gloves)" else " (hands)") .. ": face visible from the fight camera of both player slots", function()
+			local lines = {}
+			for _, id in group do
+				local v, where = faceRun(id)
+				if v < 0.70 then table.insert(lines, string.format("%s %.0f%% at %s", id, v * 100, where)) end
+			end
+			if group[#group] == "Nia" then
+				QA.destroy(rigs)
+				rigs = nil
+				table.clear(kdDefects)
+			end
+			t.expect.truthy(#lines == 0, "faces hidden: " .. table.concat(lines, "; "))
+		end)
+	end
+end
+]]></ProtectedString>
+						<string name="ScriptGuid">{B91A147C-F7E3-4A28-8000-223144D5D8D6}</string>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<string name="Name">MotionQARound5_Test</string>
 						<BinaryString name="Tags"></BinaryString>
 					</Properties>
 				</Item>
@@ -796158,6 +797411,47 @@ local function analyzeSequence(recs: { Rec }, ctx: any, T: any, out: { Defect },
 end
 QA.analyzeSequence = analyzeSequence
 
+-- Knockdown continuity (round 5). From the frame before a fighter first reaches the floor (Landing, KO, Getup) to the
+-- end of the case (the getup and the stance after it): the whole body (pelvis) never yaws (about the vertical) or
+-- rolls (about its own spine) more than spinDeg in one frame — a pitch (a sit-up, a back roll) is free —, and no limb,
+-- the head or the chest turns more than whipDeg in one frame relative to the pelvis.
+QA.T.spinDeg = 15
+QA.T.whipDeg = 30
+local LYING_STATES = { Landing = true, Getup = true, KO = true, Knockdown = true }
+local WHIP_PARTS = { "Head", "UpperTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+QA.WHIP_PARTS = WHIP_PARTS
+-- Pelvis yaw and roll of one frame step (degrees): the world angular step's components about the vertical and about
+-- the pelvis's previous up axis.
+local function spinOf(a: CFrame, b: CFrame): (number, number)
+	local axis, ang = (b * a:Inverse()):ToAxisAngle()
+	local w = axis * math.deg(ang)
+	return math.abs(w.Y), math.abs(w:Dot(a.UpVector))
+end
+QA.spinOf = spinOf
+local function lyingChecks(recs: { Rec }, ctx: any, T: any, out: { Defect })
+	local first
+	for i, r in recs do
+		if LYING_STATES[r.state] then first = i; break end
+	end
+	if not first then return end
+	local function defect(rec: Rec, metric: string, value: number, limit: number, part: string, note: string?)
+		table.insert(out, { fighter = ctx.fighter, case = ctx.case, kind = ctx.kind, frame = rec.f, metric = metric, value = value, limit = limit, part = part, key = rec.key, state = rec.state, move = rec.move, mf = rec.mf, note = note })
+	end
+	for i = math.max(2, first), #recs do
+		local a, b = recs[i - 1], recs[i]
+		local yaw, roll = spinOf(a.rot.LowerTorso, b.rot.LowerTorso)
+		local spin = math.max(yaw, roll)
+		local spinT, whipT = T.spinDeg or 15, T.whipDeg or 30
+		if spin > spinT then defect(b, "getup.spin", spin, spinT, if yaw >= roll then "yaw" else "roll", tostring(a.key) .. " -> " .. tostring(b.key)) end
+		local pa, pb = a.rot.LowerTorso:Inverse(), b.rot.LowerTorso:Inverse()
+		for _, p in WHIP_PARTS do
+			local d = angleDeg(pa * a.rot[p], pb * b.rot[p])
+			if d > whipT then defect(b, "getup.whip", d, whipT, p, tostring(a.key) .. " -> " .. tostring(b.key)) end
+		end
+	end
+end
+QA.lyingChecks = lyingChecks
+
 -- Instantaneous checks of one subject (self-intersection, joint limits) and of the pair (opponent depth, overlap).
 local function frameChecks(sub: Staged, cf: { [string]: CFrame }, opp: Staged?, ocf: { [string]: CFrame }?, rec: Rec, ctx: any, T: any, out: { Defect }, opts: any)
 	local function defect(metric: string, value: number, limit: number, part: string, note: string?)
@@ -796351,9 +797645,13 @@ function QA.play(rigs: { [string]: Staged }, case: Case, opts: any?): ({ Defect 
 				throw = case.throw or views[1].state == "Throw" or views[2].state == "Throw",
 			})
 		end
+		if o.onFrame then o.onFrame(f, staged, cfs, views, info) end
 		if o.yieldEvery and f % o.yieldEvery == 0 then task.wait() end
 	end
-	for _, s in case.subjects do analyzeSequence(recs[s], ctxs[s], T, out, case.loop) end
+	for _, s in case.subjects do
+		analyzeSequence(recs[s], ctxs[s], T, out, case.loop)
+		lyingChecks(recs[s], ctxs[s], T, out)
+	end
 	local summary = { ms = (os.clock() - t0) * 1000, frames = case.n, handHead = { ctxs[1].handHead, ctxs[2].handHead }, strike = nil :: any, recs = if o.keepRecs then recs else nil }
 	for _, s in case.subjects do
 		if ctxs[s].strikeWorst then summary.strike = { depth = ctxs[s].strikeWorst, frame = ctxs[s].strikeWorstFrame, part = ctxs[s].strikeWorstPart, contact = ctxs[s].contactWorst } end
@@ -796402,8 +797700,95 @@ local function sequence(id: string, partner: string, dist: number, segments: { a
 end
 QA.sequence = sequence
 
+-- The same case with the subject in slot 2 (CombatSim's P2): the arena mirrored so the subject stands on the partner's
+-- mark facing the other way and the partner on the subject's.
+function QA.slotTwo(c: Case): Case
+	local inner = c.at
+	local function mirror(v: any, x0: number): any
+		local w = table.clone(v)
+		local p = if typeof(v.pos) == "Vector3" then v.pos else Vector3.zero
+		w.pos = Vector3.new(x0 - p.X, p.Y, -p.Z)
+		local fc = if typeof(v.facing) == "Vector3" then v.facing else Vector3.xAxis
+		w.facing = Vector3.new(-fc.X, fc.Y, -fc.Z)
+		return w
+	end
+	local x0 = 0
+	local first = inner(1)
+	if first and first.views and first.views[2] and typeof(first.views[2].pos) == "Vector3" then x0 = first.views[2].pos.X end
+	local subjects = {}
+	for _, s in c.subjects do table.insert(subjects, 3 - s) end
+	return {
+		label = c.label .. "#slot2", kind = c.kind, ids = { c.ids[2], c.ids[1] }, n = c.n, subjects = subjects, loop = c.loop, meta = c.meta,
+		at = function(f: number)
+			local info = inner(f)
+			local out = table.clone(info)
+			out.views = { mirror(info.views[2], x0), mirror(info.views[1], x0) }
+			return out
+		end,
+	}
+end
+
 local function idleSeg(n: number, extra: { [string]: any }?): any
 	return { n = n, view = function() return baseView("Idle", extra or { guard = "Stand" }) end }
+end
+QA.idleSeg = idleSeg
+
+-- Knockdown segments (also used by QA.knockdownCases). airSeg: a launched body (16 studs/s up, gravity 44) — juggle
+-- = two more juggle hits (frames 30 and 50; the second ends the juggle: the knockdown side is set and the body falls),
+-- else the knockdown side is set from the first frame (a launcher / juggle ender that knocks the body down at once).
+function QA.airSeg(knockdown: string, juggle: boolean, ko: boolean?): any
+	local g = (Config :: any).Gravity or 44
+	local y, vy, frames, hits = 0.05, (Config :: any).LaunchVelocity or 16, 0, 0
+	local hit = newHit("Hit", "Mid", "Launch")
+	local locked = false
+	local list = {}
+	while true do
+		frames += 1
+		vy -= g / 60
+		y += vy / 60
+		if juggle and frames == 30 then
+			hits += 1; hit = newHit("Hit", "Mid", "Medium"); vy = math.max(vy, 7.5)
+		end
+		if juggle and frames == 50 then
+			hits += 1; hit = newHit("Hit", "High", "Heavy"); locked = true; vy = math.min(vy, 2)
+		end
+		if y <= 0 then break end
+		table.insert(list, { y = y, vy = vy, frames = frames, hits = hits, hit = hit, locked = locked })
+		if frames > 120 then break end
+	end
+	return { n = #list, list = list, view = function(k: number)
+		local a = list[k]
+		local down = a.locked or not juggle
+		-- A KO in the air keeps falling (state KO above the floor) once the knockdown side is known.
+		return baseView(if ko and down then "KO" else "Airborne", { pos = Vector3.new(0, a.y, 0), velocityY = a.vy, airFrames = a.frames, airHits = a.hits, lastHit = a.hit, knockdown = if down then knockdown else nil })
+	end }
+end
+-- Landing: `kind` (a roll) is chosen on Landing frame `chooseAt` (default 12; CombatSim reads the choice from
+-- GetupChoiceFrame to the last Landing frame, so a late roll can follow the start of a standing getup).
+function QA.landingSeg(knockdown: string, kind: string?, chooseAt: number?, rollDir: number?): any
+	local L = (Config :: any).LandingFrames or 34
+	local at = chooseAt or 12
+	return { n = L, view = function(k: number) return baseView("Landing", { knockdown = knockdown, stun = L - k, getupKind = if k >= at then kind else nil, rollDir = rollDir or 1 }) end }
+end
+-- Getup: rolls travel RollDistance over their first RollFrames (ease out); a side roll keeps facing the partner at
+-- (partnerX, 0, 0) like CombatSim (face(f, o) every roll frame).
+function QA.getupSeg(knockdown: string, kind: string, rollDir: number?, partnerX: number?): any
+	local G = ((Config :: any).GetupFrames or 26) + (if kind ~= "Stand" then ((Config :: any).RollFrames or 10) else 0)
+	local R = (Config :: any).RollDistance or 2.2
+	local endPos, endFacing = Vector3.zero, Vector3.xAxis
+	return { n = G, view = function(k: number)
+		local elapsed = k
+		local travel = R * easeOut(math.min(elapsed, 10) / 10)
+		local p = Vector3.zero
+		if kind == "BackRoll" then p = Vector3.new(-travel, 0, 0) elseif kind == "SideRoll" then p = Vector3.new(0, 0, -(rollDir or 1) * travel) end
+		local facing = Vector3.xAxis
+		if kind == "SideRoll" and partnerX then
+			local to = Vector3.new(partnerX - p.X, 0, -p.Z)
+			if to.Magnitude > 0.01 then facing = to.Unit end
+		end
+		endPos, endFacing = p, facing
+		return baseView("Getup", { knockdown = knockdown, stun = G - k + 1, getupKind = kind, rollDir = rollDir or 1, pos = p, facing = facing })
+	end, endPos = function() return endPos end, endFacing = function() return endFacing end }
 end
 
 function QA.stateCases(id: string): { Case }
@@ -796472,48 +797857,7 @@ function QA.stateCases(id: string): { Case }
 	end
 	add(sequence(id, partner, dist, { idleSeg(20), stunSeg("Stagger", newHit("Parry", "Mid", "Medium"), 26, 6), idleSeg(30) }, "idle>stagger>idle", "transition"))
 	-- Launch -> juggle -> fall -> Landing -> getups.
-	local g = (Config :: any).Gravity or 44
-	local function airSeg(knockdown: string, juggle: boolean): any
-		local y, vy, frames, hits = 0.05, (Config :: any).LaunchVelocity or 16, 0, 0
-		local hit = newHit("Hit", "Mid", "Launch")
-		local locked = false
-		local list = {}
-		while true do
-			frames += 1
-			vy -= g / 60
-			y += vy / 60
-			if juggle and frames == 30 then
-				hits += 1; hit = newHit("Hit", "Mid", "Medium"); vy = math.max(vy, 7.5)
-			end
-			if juggle and frames == 50 then
-				hits += 1; hit = newHit("Hit", "High", "Heavy"); locked = true; vy = math.min(vy, 2)
-			end
-			if y <= 0 then break end
-			table.insert(list, { y = y, vy = vy, frames = frames, hits = hits, hit = hit, locked = locked })
-			if frames > 120 then break end
-		end
-		return { n = #list, list = list, view = function(k: number)
-			local a = list[k]
-			return baseView("Airborne", { pos = Vector3.new(0, a.y, 0), velocityY = a.vy, airFrames = a.frames, airHits = a.hits, lastHit = a.hit, knockdown = if a.locked or not juggle then knockdown else nil })
-		end }
-	end
-	local function landingSeg(knockdown: string, kind: string?): any
-		local L = (Config :: any).LandingFrames or 34
-		return { n = L, view = function(k: number) return baseView("Landing", { knockdown = knockdown, stun = L - k, getupKind = if k >= 12 then kind else nil, rollDir = 1 }) end }
-	end
-	local function getupSeg(knockdown: string, kind: string, rollDir: number?): any
-		local G = ((Config :: any).GetupFrames or 26) + (if kind ~= "Stand" then ((Config :: any).RollFrames or 10) else 0)
-		local R = (Config :: any).RollDistance or 2.2
-		local endPos = Vector3.zero
-		return { n = G, view = function(k: number)
-			local elapsed = k
-			local travel = R * easeOut(math.min(elapsed, 10) / 10)
-			local p = Vector3.zero
-			if kind == "BackRoll" then p = Vector3.new(-travel, 0, 0) elseif kind == "SideRoll" then p = Vector3.new(0, 0, -(rollDir or 1) * travel) end
-			endPos = p
-			return baseView("Getup", { knockdown = knockdown, stun = G - k + 1, getupKind = kind, rollDir = rollDir or 1, pos = p })
-		end, endPos = function() return endPos end }
-	end
+	local airSeg, landingSeg, getupSeg = QA.airSeg, QA.landingSeg, QA.getupSeg
 	for _, kd in { "FaceUp", "FaceDown" } do
 		for _, kind in { "Stand", "BackRoll", "SideRoll" } do
 			for _, rd in (if kind == "SideRoll" then { 1, -1 } else { 1 }) do
@@ -796553,9 +797897,55 @@ function QA.stateCases(id: string): { Case }
 	return cases
 end
 
+-- Knockdown continuity cases (round 5): every way a fighter reaches the floor x every getup. Sources: a grounded
+-- knockdown face up / face down (a sweep or KND hit: Landing straight from the hit), a launcher fall face up / face
+-- down (the knockdown side is known from the first air frame), a juggle ending face up / face down (two juggle hits,
+-- the second knocks the body down); getups Stand, BackRoll, SideRoll left / right chosen on Landing frame 12, and late
+-- rolls (chosen on Landing frame 31, after a standing getup started); KO grounded and in the air, face up and down.
+-- opts: { sources = {...}, getups = {...}, ko = bool (default true), partner = id }.
+QA.KD_SOURCES = { "groundFaceUp", "groundFaceDown", "launchFaceUp", "launchFaceDown", "juggleFaceUp", "juggleFaceDown" }
+QA.KD_GETUPS = { "Stand", "BackRoll", "SideRollL", "SideRollR", "BackRoll@31", "SideRollL@31" }
+function QA.knockdownCases(id: string, opts: any?): { Case }
+	local o = opts or {}
+	local partner = o.partner or partnerOf(id)
+	local dist = 4.0
+	local cases: { Case } = {}
+	local function firstSeg(src: string, kd: string, ko: boolean?): any
+		if string.sub(src, 1, 6) == "ground" then
+			local hit = newHit("Hit", "Mid", "Heavy")
+			return { n = 1, hitstop = function() return 8 end, view = function() return baseView(if ko then "KO" else "Landing", { knockdown = kd, stun = 34, lastHit = hit }) end }
+		end
+		return QA.airSeg(kd, string.sub(src, 1, 6) == "juggle", ko)
+	end
+	for _, src in o.sources or QA.KD_SOURCES do
+		local kd = if string.find(src, "FaceDown", 1, true) then "FaceDown" else "FaceUp"
+		for _, g in o.getups or QA.KD_GETUPS do
+			local name, at = string.match(g, "^(%a+)@?(%d*)$")
+			name = name or g
+			local kind = if string.sub(name, 1, 8) == "SideRoll" then "SideRoll" else name
+			local rd = if name == "SideRollR" then -1 else 1
+			local gseg = QA.getupSeg(kd, kind, rd, dist)
+			local segments = { idleSeg(20), firstSeg(src, kd), QA.landingSeg(kd, if kind == "Stand" then nil else kind, tonumber(at) or 12, rd), gseg,
+				{ n = 40, view = function() return baseView("Idle", { guard = "Stand", pos = gseg.endPos(), facing = gseg.endFacing() }) end } }
+			table.insert(cases, sequence(id, partner, dist, segments, string.format("kd:%s>%s", src, g), "knockdown"))
+		end
+	end
+	if o.ko ~= false then
+		for _, src in { "groundFaceUp", "groundFaceDown", "launchFaceUp", "juggleFaceDown" } do
+			local kd = if string.find(src, "FaceDown", 1, true) then "FaceDown" else "FaceUp"
+			local first = firstSeg(src, kd, true)
+			local hit = newHit("Hit", "High", "Heavy")
+			local hold = { n = 90, hitstop = function(k: number) return if first.n == 1 and k <= 8 then 9 - k else 0 end, view = function() return baseView("KO", { knockdown = kd, lastHit = hit }) end }
+			table.insert(cases, sequence(id, partner, dist, { idleSeg(20), first, hold }, "kd:ko:" .. src, "knockdown"))
+		end
+	end
+	return cases
+end
+
 -- Move cases: idle -> move -> idle against an idle partner. range "max": the partner stands where the move connects
--- after the sim's full advance (root distance = range); "close": at Separation (keepApart cancels the advance).
-function QA.moveCase(id: string, key: string, range: string, partner: string?): Case?
+-- after the sim's full advance (root distance = range); "close": at Separation (keepApart cancels the advance); "mid":
+-- halfway between the two (round 5); a number: that root distance.
+function QA.moveCase(id: string, key: string, range: string | number, partner: string?): Case?
 	local m = Roster.getMove(id, key)
 	if not m or m.height == "Throw" then return nil end
 	local clip = ClipLibrary.forMove(id, key)
@@ -796563,7 +797953,9 @@ function QA.moveCase(id: string, key: string, range: string, partner: string?): 
 	local crouching = m.crouching == true
 	local advance = m.advance or 0
 	local reach = m.range or 4
-	local dist = if range == "close" then SEP + 0.05 else reach + advance
+	local maxDist = reach + advance
+	local closeDist = SEP + 0.05
+	local dist = if type(range) == "number" then range elseif range == "close" then closeDist elseif range == "mid" then (closeDist + math.max(maxDist, closeDist)) * 0.5 else maxDist
 	local step = advance / math.max(m.startup, 1)
 	local limbMap = { LeadArm = "LeftHand", RearArm = "RightHand", LeadLeg = "LeftFoot", RearLeg = "RightFoot" }
 	local limb = (clip and clip.tags and type(clip.tags.limb) == "string" and clip.tags.limb) or limbMap[m.limb or ""] or "RightHand"
@@ -796581,9 +797973,9 @@ function QA.moveCase(id: string, key: string, range: string, partner: string?): 
 			return baseView(state, { move = key, moveFrame = k, stringIndex = 1, crouched = crouching, pos = Vector3.new(x, 0, 0) })
 		end },
 		{ n = TAIL, view = function() return baseView("Idle", { guard = "Stand", pos = Vector3.new(endX, 0, 0) }) end },
-	}, string.format("%s:%s", key, range), "move")
+	}, string.format("%s:%s", key, if type(range) == "number" then string.format("%.2f", range) else range), "move")
 	c.strike = { slot = 1, limb = limb, contact = contact }
-	c.meta = { move = key, startup = m.startup, active = m.active, recovery = m.recovery, lead = LEAD, clip = clip and clip.name }
+	c.meta = { move = key, startup = m.startup, active = m.active, recovery = m.recovery, lead = LEAD, clip = clip and clip.name, dist = dist }
 	return c
 end
 
@@ -796901,6 +798293,104 @@ function QA.moveCases(id: string, ranges: { string }?): { Case }
 		end
 	end
 	return cases
+end
+
+-- Face visibility (round 5) ------------------------------------------------------------------------------------------
+-- From the fight camera (CameraDirector's shot of the two fighters), the share of a fighter's face landmarks — the
+-- camera-side eye, the nose and the mouth — that no glove (or hand) hides. Landmarks are head-space offsets from the
+-- head's FaceFrontAttachment in units of the head's half size (x: + = toward the camera side, y up, z: + = back into the
+-- head), checked on the round-4 heads (motioncore.md 14).
+local CameraDirector: any = nil
+do
+	local ok, m = pcall(function() return require(Lab.Client.CameraDirector) end)
+	if ok then CameraDirector = m end
+end
+QA.FACE = BodyShape.FACE
+-- Chin (for the guard height check): below the mouth, at the front of the jaw.
+QA.CHIN = { 0.0, -0.62, 0.12 }
+local function faceFront(sub: Staged): Vector3
+	local head = sub.rig.parts.Head :: BasePart
+	local att = head:FindFirstChild("FaceFrontAttachment")
+	if att and att:IsA("Attachment") then return att.Position end
+	return Vector3.new(0, 0, -head.Size.Z * 0.45)
+end
+local function landmarks(sub: Staged, side: number): { Vector3 }
+	return BodyShape.faceLandmarks(sub.rig.parts.Head :: BasePart, side)
+end
+-- World landmark points of a posed head; side = +1 when the camera is on the head's right (its local +X), -1 left.
+function QA.facePoints(sub: Staged, cf: { [string]: CFrame }, side: number): { any }
+	local list = landmarks(sub, side)
+	local out = {}
+	for i, l in QA.FACE do
+		table.insert(out, { feature = l[1], p = cf.Head:PointToWorldSpace(list[i]) })
+	end
+	return out
+end
+local function headPoint(sub: Staged, cf: { [string]: CFrame }, l: { number }): Vector3
+	local head = sub.rig.parts.Head :: BasePart
+	local h = head.Size * 0.5
+	local f = faceFront(sub)
+	return cf.Head:PointToWorldSpace(Vector3.new(f.X + l[1] * h.X, f.Y + l[2] * h.Y, f.Z + l[3] * h.Z))
+end
+-- The fight camera for `a` (the viewing player's fighter, on the left of the screen) and `b`, arena positions (floor
+-- y = 0): CameraDirector's planned position and focus in world space (no shake, push or hitstop lean).
+function QA.fightCamera(a: Vector3, b: Vector3): (Vector3, Vector3)
+	local axis = Vector3.new((b - a).X, 0, (b - a).Z)
+	local forward = if axis.Magnitude > 0.01 then axis.Unit else Vector3.xAxis
+	local side = Vector3.new(forward.Z, 0, -forward.X).Unit
+	if CameraDirector and CameraDirector._plan then
+		local plan = CameraDirector._plan(a, b, "Fight", 0, 1 / 60, side, 0, false, 0)
+		return QA.ORIGIN + plan.position, QA.ORIGIN + plan.focus
+	end
+	local mid = (a + b) * 0.5
+	local focus = Vector3.new(mid.X, 2.75, mid.Z)
+	return QA.ORIGIN + focus - side * 15.7 + Vector3.new(0, 1.72, 0), QA.ORIGIN + focus
+end
+-- Share of the visible face landmarks no glove/hand capsule hides from `cam` (and, with opts.forearms, no forearm).
+-- Returns the share, the landmarks, and per feature { total, blocked }.
+function QA.faceVisibility(sub: Staged, cf: { [string]: CFrame }, cam: Vector3, opts: any?): (number, { any }, { [string]: { number } })
+	local o = opts or {}
+	local side = if cf.Head:PointToObjectSpace(cam).X >= 0 then 1 else -1
+	local pts = QA.facePoints(sub, cf, side)
+	local blockers = {}
+	for _, hand in { "LeftHand", "RightHand" } do
+		local a, b, r = handSegment(sub.geo, cf, hand)
+		table.insert(blockers, { a = a, b = b, r = r, name = hand })
+	end
+	if o.forearms then
+		local caps = limbCapsules(sub.rig, sub.geo, cf)
+		for _, n in { "LeftLowerArm", "RightLowerArm" } do table.insert(blockers, { a = caps[n].a, b = caps[n].b, r = caps[n].r, name = n }) end
+	end
+	local free, per = 0, {}
+	for _, l in pts do
+		local blocked = nil
+		for _, bl in blockers do
+			if segSegDistance(cam, l.p, bl.a, bl.b) < bl.r then blocked = bl.name; break end
+		end
+		l.blocked = blocked
+		per[l.feature] = per[l.feature] or { 0, 0 }
+		per[l.feature][1] += 1
+		if blocked then per[l.feature][2] += 1 else free += 1 end
+	end
+	return free / #pts, pts, per
+end
+-- Guard shape of the two hands: glove centre height above the chin and below the eye (studs), glove top above the
+-- mouth, and how far the elbow sits outside the shoulder line (studs, in the chest's frame; > 0 = flared).
+function QA.guardShape(sub: Staged, cf: { [string]: CFrame }): { [string]: any }
+	local eye = headPoint(sub, cf, { 0.40, 0.18, 0.10 }).Y
+	local mouth = headPoint(sub, cf, { 0.0, -0.36, -0.02 }).Y
+	local chin = headPoint(sub, cf, QA.CHIN).Y
+	local out = {}
+	for _, side in { "Left", "Right" } do
+		local a, b, r = handSegment(sub.geo, cf, side .. "Hand")
+		local c = (a + b) * 0.5
+		local chest = cf.UpperTorso
+		local elbow = chest:PointToObjectSpace(jointPoint(sub.rig, cf, side .. "Elbow"))
+		local shoulder = chest:PointToObjectSpace(jointPoint(sub.rig, cf, side .. "Shoulder"))
+		local top = math.max(a.Y, b.Y) + r
+		out[side .. "Hand"] = { overChin = c.Y - chin, underEye = eye - c.Y, topOverMouth = top - mouth, topOverChin = top - chin, elbowOut = math.abs(elbow.X) - math.abs(shoulder.X), radius = r }
+	end
+	return out
 end
 
 -- Aggregation ----------------------------------------------------------------------------------------------------------

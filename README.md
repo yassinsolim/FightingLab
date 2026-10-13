@@ -132,7 +132,20 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 423 run, 423 passed, 0 failed`
+  Final result: `[SUMMARY] 525 run, 525 passed, 0 failed`
+
+## Update: cleaner knockdowns, close hits and a visible face (2026-10-12)
+
+- Getting up no longer spins: a fighter who lands face down rolls onto their back first (new `ProneTurnOver` clip)
+  and then stands up. The worst whole-body turn per frame dropped from 53 to about 12 degrees, and the arm and leg
+  whips during getups are gone (QA `getup.spin` / `getup.whip` defects 42 / 839 -> 0 / 0).
+- Strikes stop on the opponent's body at any distance: the runtime scales each clip's forward lunge to the real
+  distance, so point-blank hits that used to sink up to 0.77 studs into the body now land within 0.05-0.14.
+- Fighters on the floor (landings, getups, rolls, KO) and fighters being thrown no longer push their gloves or
+  forearms through their own bodies, and the side roll was rebuilt.
+- Kael's face stays visible behind his guard in the fight camera (worst-case visibility 0.00 -> 0.85, every other
+  fighter 1.00); his gloves sit at chin height with the elbows tucked.
+- `MotionQARound5_Test` checks all four on all six real rigs, and no QA defect category got worse for any fighter.
 
 ## Update: easier lobby and a compact map (2026-10-12)
 
@@ -233,8 +246,9 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   in Studio, more on a real server). Practice in the dojo runs locally and is instant.
 - No licensed two-person motion capture exists, so throws are hand-keyed; the fastest spins and flips are compressed
   to fit their frame data and move quicker than a real athlete would.
-- Strikes are tuned to an average opponent, so on the tallest or shortest fighter a hit can land a little deep or
-  short of the body surface.
+- A few close-range moves still pass slightly into the body during startup (Goran's Hammer and JabHammer), Goran's
+  Uppercut sinks a little into a launched opponent, and in two throws a hand briefly grazes the thrown fighter (Rhys
+  on Goran's RamSlam, Nia on Rhys's Throw). The rebuilt side roll bends the kneeling foot past its natural range.
 - R15 rigs have no finger bones: open-hand fighters keep the catalog hand shape and Kael / Sierra wear gloves.
 - Studio-only review hooks exist (the FightingLabDuelDebug bindable and a stub world that is only built when the real
   world is missing); they are ignored outside Studio.

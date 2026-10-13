@@ -139,3 +139,27 @@ Every fighter on the fight camera after the proportion fix, in guard, at full ja
 Nia's face-down knockdown into the getup: before (top) the body twisted mid-fall and jumped into the getup; after (bottom) it is one continuous fall into the push-up.
 
 ![Smoother face-down knockdown](23-facedown-getup-before-after.jpg)
+
+## Kael's face behind his guard
+
+Kael on the fight camera in guard, walking, backing off and in block stun, before (left) and after (right): his gloves now sit at chin height with the elbows tucked, so his face stays visible.
+
+![Kael's face behind his guard](24-kael-face-in-guard-before-after.jpg)
+
+## Close-range strikes stop on the body
+
+The deepest point-blank strike for each fighter, before (top) and after (bottom): the fist or foot now stops on the opponent's body instead of sinking into it.
+
+![Close-range strikes stop on the body](25-close-range-strikes-before-after.jpg)
+
+## Face-down getup: turn over, then stand
+
+All six fighters getting up after a face-down knockdown (left to right in time): they roll onto their back first and then stand, with no spin.
+
+![Face-down getup: turn over, then stand](26-facedown-turnover-getup.jpg)
+
+## Practice: low kick knockdown
+
+A real practice fight: Kael's low roundhouse sweeps Sierra, who falls forward, pushes up and is back in guard about a second later.
+
+![Practice: low kick knockdown](27-practice-low-kick-knockdown.jpg)
