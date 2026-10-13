@@ -267,8 +267,8 @@ type Aura = { base: Part, flames: ParticleEmitter, sparks: ParticleEmitter, ring
 local auras: { [number]: Aura } = {}
 local lastIds: { [number]: string? } = {}
 local cineGround: { key: string, last: number }? = nil
-M.AuraRates = { flames = 20, sparks = 7, rings = 1.4 }
-M.AuraLight = { brightness = 0.9, range = 7 }
+M.AuraRates = { flames = 26, sparks = 9, rings = 1.4 }
+M.AuraLight = { brightness = 1.4, range = 8 }
 
 local function seq(points: { { number } }): NumberSequence
 	local keys = {}
@@ -304,14 +304,14 @@ local function newAura(i: number): Aura
 		e.Parent = base
 		return e
 	end
-	-- Low flames rising from the floor around the feet: ~2.5 studs at most (waist height).
+	-- Low flames rising from the floor around the feet: ~3 studs at most (waist height; readable at the fight camera).
 	local flames = emitter("SurgeFlames", FLAME_TEXTURE)
 	flames.Lifetime = NumberRange.new(0.42, 0.7)
 	flames.Speed = NumberRange.new(2.6, 4.2)
 	flames.SpreadAngle = Vector2.new(8, 8)
 	flames.Drag = 1.5
-	flames.Size = seq({ { 0, 0.55 }, { 0.6, 0.38 }, { 1, 0.05 } })
-	flames.Transparency = seq({ { 0, 0.5 }, { 0.25, 0.42 }, { 1, 1 } })
+	flames.Size = seq({ { 0, 0.85 }, { 0.6, 0.55 }, { 1, 0.08 } })
+	flames.Transparency = seq({ { 0, 0.34 }, { 0.25, 0.28 }, { 1, 1 } })
 	flames.RotSpeed = NumberRange.new(-40, 40)
 	flames.Rotation = NumberRange.new(0, 360)
 	local sparks = emitter("SurgeSparks", SPARK_TEXTURE)
@@ -319,15 +319,15 @@ local function newAura(i: number): Aura
 	sparks.Speed = NumberRange.new(4.5, 7)
 	sparks.Drag = 3
 	sparks.SpreadAngle = Vector2.new(18, 18)
-	sparks.Size = seq({ { 0, 0.16 }, { 1, 0.02 } })
+	sparks.Size = seq({ { 0, 0.22 }, { 1, 0.03 } })
 	-- Flat rings on the floor (a particle's plane is perpendicular to its velocity: straight up = flat).
 	local rings = emitter("SurgeRings", SHOCKWAVE_TEXTURE)
 	rings.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
 	rings.Speed = NumberRange.new(0.01)
 	rings.Lifetime = NumberRange.new(0.85)
 	rings.LockedToPart = true
-	rings.Size = seq({ { 0, 1.6 }, { 1, 4.4 } })
-	rings.Transparency = seq({ { 0, 0.55 }, { 0.3, 0.6 }, { 1, 1 } })
+	rings.Size = seq({ { 0, 1.8 }, { 1, 4.8 } })
+	rings.Transparency = seq({ { 0, 0.38 }, { 0.3, 0.46 }, { 1, 1 } })
 	local burstRing = emitter("SurgeBurstRing", SHOCKWAVE_TEXTURE)
 	burstRing.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
 	burstRing.Speed = NumberRange.new(0.01)
