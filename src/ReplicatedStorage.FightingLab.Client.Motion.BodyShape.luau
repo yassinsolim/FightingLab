@@ -87,15 +87,30 @@ local function sdEllipsoid(p: Vector3, r: Vector3): number
 end
 BodyShape.sdEllipsoid = sdEllipsoid
 
+-- Is this part/accessory a boxing glove? An explicit attribute wins (characters agent, round 6): the boolean
+-- FightingLabGlove, else a FightingLabRole of "Glove"/"BoxingGlove" (any other role: not a glove); without either, the
+-- older name heuristic ("*glove*").
+local function isGlove(inst: Instance): boolean
+	local flag = inst:GetAttribute("FightingLabGlove")
+	if typeof(flag) == "boolean" then return flag end
+	local role = inst:GetAttribute("FightingLabRole")
+	if typeof(role) == "string" then
+		local r = string.lower(role)
+		return r == "glove" or r == "boxingglove"
+	end
+	return string.find(string.lower(inst.Name), "glove", 1, true) ~= nil
+end
+BodyShape.isGlove = isGlove
+
 -- The visible hand volume, a capsule in the hand's frame (centre `offset`, direction `axis` — the hand's long axis when
--- nil —, half length `len`, radius `r`): a rigid glove part worn on the hand (a BasePart named "*Glove*" under the hand,
+-- nil —, half length `len`, radius `r`): a rigid glove part worn on the hand (a BasePart under the hand that isGlove,
 -- measured along its own longest axis — rigid gloves sit toward the wrist, tilted), a FightingLabGloveRadius
 -- attribute, a fist part (LeftFist/RightFist), a layered glove accessory; else the open hand as a thin capsule.
 function BodyShape.handVolume(model: Instance?, hand: BasePart): Hand
 	local attr = hand:GetAttribute("FightingLabGloveRadius")
 	if typeof(attr) == "number" and attr > 0 then return { r = attr, len = attr * 0.35, offset = Vector3.zero, gloved = true, source = "attribute" } end
 	for _, d in hand:GetDescendants() do
-		if d:IsA("BasePart") and string.find(string.lower(d.Name), "glove", 1, true) then
+		if d:IsA("BasePart") and isGlove(d) then
 			-- Capsule along the glove's own longest axis (a rigid glove is worn tilted on the hand); a glove is a rounded
 			-- mitt, so its radius is about the mean of its two smaller half-widths.
 			local rel = hand.CFrame:ToObjectSpace(d.CFrame)
@@ -113,7 +128,7 @@ function BodyShape.handVolume(model: Instance?, hand: BasePart): Hand
 	end
 	if model then
 		for _, a in model:GetChildren() do
-			if a:IsA("Accessory") and string.find(string.lower(a.Name), "glove", 1, true) then
+			if a:IsA("Accessory") and isGlove(a) then
 				local h = a:FindFirstChild("Handle")
 				if h and h:IsA("BasePart") then
 					-- One layered accessory holds both gloves (authored in the T-pose: X spans both arms); a glove's own
