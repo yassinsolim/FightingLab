@@ -600,6 +600,47 @@ local function analyzeSequence(recs: { Rec }, ctx: any, T: any, out: { Defect },
 end
 QA.analyzeSequence = analyzeSequence
 
+-- Knockdown continuity (round 5). From the frame before a fighter first reaches the floor (Landing, KO, Getup) to the
+-- end of the case (the getup and the stance after it): the whole body (pelvis) never yaws (about the vertical) or
+-- rolls (about its own spine) more than spinDeg in one frame — a pitch (a sit-up, a back roll) is free —, and no limb,
+-- the head or the chest turns more than whipDeg in one frame relative to the pelvis.
+QA.T.spinDeg = 15
+QA.T.whipDeg = 30
+local LYING_STATES = { Landing = true, Getup = true, KO = true, Knockdown = true }
+local WHIP_PARTS = { "Head", "UpperTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+QA.WHIP_PARTS = WHIP_PARTS
+-- Pelvis yaw and roll of one frame step (degrees): the world angular step's components about the vertical and about
+-- the pelvis's previous up axis.
+local function spinOf(a: CFrame, b: CFrame): (number, number)
+	local axis, ang = (b * a:Inverse()):ToAxisAngle()
+	local w = axis * math.deg(ang)
+	return math.abs(w.Y), math.abs(w:Dot(a.UpVector))
+end
+QA.spinOf = spinOf
+local function lyingChecks(recs: { Rec }, ctx: any, T: any, out: { Defect })
+	local first
+	for i, r in recs do
+		if LYING_STATES[r.state] then first = i; break end
+	end
+	if not first then return end
+	local function defect(rec: Rec, metric: string, value: number, limit: number, part: string, note: string?)
+		table.insert(out, { fighter = ctx.fighter, case = ctx.case, kind = ctx.kind, frame = rec.f, metric = metric, value = value, limit = limit, part = part, key = rec.key, state = rec.state, move = rec.move, mf = rec.mf, note = note })
+	end
+	for i = math.max(2, first), #recs do
+		local a, b = recs[i - 1], recs[i]
+		local yaw, roll = spinOf(a.rot.LowerTorso, b.rot.LowerTorso)
+		local spin = math.max(yaw, roll)
+		local spinT, whipT = T.spinDeg or 15, T.whipDeg or 30
+		if spin > spinT then defect(b, "getup.spin", spin, spinT, if yaw >= roll then "yaw" else "roll", tostring(a.key) .. " -> " .. tostring(b.key)) end
+		local pa, pb = a.rot.LowerTorso:Inverse(), b.rot.LowerTorso:Inverse()
+		for _, p in WHIP_PARTS do
+			local d = angleDeg(pa * a.rot[p], pb * b.rot[p])
+			if d > whipT then defect(b, "getup.whip", d, whipT, p, tostring(a.key) .. " -> " .. tostring(b.key)) end
+		end
+	end
+end
+QA.lyingChecks = lyingChecks
+
 -- Instantaneous checks of one subject (self-intersection, joint limits) and of the pair (opponent depth, overlap).
 local function frameChecks(sub: Staged, cf: { [string]: CFrame }, opp: Staged?, ocf: { [string]: CFrame }?, rec: Rec, ctx: any, T: any, out: { Defect }, opts: any)
 	local function defect(metric: string, value: number, limit: number, part: string, note: string?)
@@ -793,9 +834,13 @@ function QA.play(rigs: { [string]: Staged }, case: Case, opts: any?): ({ Defect 
 				throw = case.throw or views[1].state == "Throw" or views[2].state == "Throw",
 			})
 		end
+		if o.onFrame then o.onFrame(f, staged, cfs, views, info) end
 		if o.yieldEvery and f % o.yieldEvery == 0 then task.wait() end
 	end
-	for _, s in case.subjects do analyzeSequence(recs[s], ctxs[s], T, out, case.loop) end
+	for _, s in case.subjects do
+		analyzeSequence(recs[s], ctxs[s], T, out, case.loop)
+		lyingChecks(recs[s], ctxs[s], T, out)
+	end
 	local summary = { ms = (os.clock() - t0) * 1000, frames = case.n, handHead = { ctxs[1].handHead, ctxs[2].handHead }, strike = nil :: any, recs = if o.keepRecs then recs else nil }
 	for _, s in case.subjects do
 		if ctxs[s].strikeWorst then summary.strike = { depth = ctxs[s].strikeWorst, frame = ctxs[s].strikeWorstFrame, part = ctxs[s].strikeWorstPart, contact = ctxs[s].contactWorst } end
@@ -844,8 +889,95 @@ local function sequence(id: string, partner: string, dist: number, segments: { a
 end
 QA.sequence = sequence
 
+-- The same case with the subject in slot 2 (CombatSim's P2): the arena mirrored so the subject stands on the partner's
+-- mark facing the other way and the partner on the subject's.
+function QA.slotTwo(c: Case): Case
+	local inner = c.at
+	local function mirror(v: any, x0: number): any
+		local w = table.clone(v)
+		local p = if typeof(v.pos) == "Vector3" then v.pos else Vector3.zero
+		w.pos = Vector3.new(x0 - p.X, p.Y, -p.Z)
+		local fc = if typeof(v.facing) == "Vector3" then v.facing else Vector3.xAxis
+		w.facing = Vector3.new(-fc.X, fc.Y, -fc.Z)
+		return w
+	end
+	local x0 = 0
+	local first = inner(1)
+	if first and first.views and first.views[2] and typeof(first.views[2].pos) == "Vector3" then x0 = first.views[2].pos.X end
+	local subjects = {}
+	for _, s in c.subjects do table.insert(subjects, 3 - s) end
+	return {
+		label = c.label .. "#slot2", kind = c.kind, ids = { c.ids[2], c.ids[1] }, n = c.n, subjects = subjects, loop = c.loop, meta = c.meta,
+		at = function(f: number)
+			local info = inner(f)
+			local out = table.clone(info)
+			out.views = { mirror(info.views[2], x0), mirror(info.views[1], x0) }
+			return out
+		end,
+	}
+end
+
 local function idleSeg(n: number, extra: { [string]: any }?): any
 	return { n = n, view = function() return baseView("Idle", extra or { guard = "Stand" }) end }
+end
+QA.idleSeg = idleSeg
+
+-- Knockdown segments (also used by QA.knockdownCases). airSeg: a launched body (16 studs/s up, gravity 44) — juggle
+-- = two more juggle hits (frames 30 and 50; the second ends the juggle: the knockdown side is set and the body falls),
+-- else the knockdown side is set from the first frame (a launcher / juggle ender that knocks the body down at once).
+function QA.airSeg(knockdown: string, juggle: boolean, ko: boolean?): any
+	local g = (Config :: any).Gravity or 44
+	local y, vy, frames, hits = 0.05, (Config :: any).LaunchVelocity or 16, 0, 0
+	local hit = newHit("Hit", "Mid", "Launch")
+	local locked = false
+	local list = {}
+	while true do
+		frames += 1
+		vy -= g / 60
+		y += vy / 60
+		if juggle and frames == 30 then
+			hits += 1; hit = newHit("Hit", "Mid", "Medium"); vy = math.max(vy, 7.5)
+		end
+		if juggle and frames == 50 then
+			hits += 1; hit = newHit("Hit", "High", "Heavy"); locked = true; vy = math.min(vy, 2)
+		end
+		if y <= 0 then break end
+		table.insert(list, { y = y, vy = vy, frames = frames, hits = hits, hit = hit, locked = locked })
+		if frames > 120 then break end
+	end
+	return { n = #list, list = list, view = function(k: number)
+		local a = list[k]
+		local down = a.locked or not juggle
+		-- A KO in the air keeps falling (state KO above the floor) once the knockdown side is known.
+		return baseView(if ko and down then "KO" else "Airborne", { pos = Vector3.new(0, a.y, 0), velocityY = a.vy, airFrames = a.frames, airHits = a.hits, lastHit = a.hit, knockdown = if down then knockdown else nil })
+	end }
+end
+-- Landing: `kind` (a roll) is chosen on Landing frame `chooseAt` (default 12; CombatSim reads the choice from
+-- GetupChoiceFrame to the last Landing frame, so a late roll can follow the start of a standing getup).
+function QA.landingSeg(knockdown: string, kind: string?, chooseAt: number?, rollDir: number?): any
+	local L = (Config :: any).LandingFrames or 34
+	local at = chooseAt or 12
+	return { n = L, view = function(k: number) return baseView("Landing", { knockdown = knockdown, stun = L - k, getupKind = if k >= at then kind else nil, rollDir = rollDir or 1 }) end }
+end
+-- Getup: rolls travel RollDistance over their first RollFrames (ease out); a side roll keeps facing the partner at
+-- (partnerX, 0, 0) like CombatSim (face(f, o) every roll frame).
+function QA.getupSeg(knockdown: string, kind: string, rollDir: number?, partnerX: number?): any
+	local G = ((Config :: any).GetupFrames or 26) + (if kind ~= "Stand" then ((Config :: any).RollFrames or 10) else 0)
+	local R = (Config :: any).RollDistance or 2.2
+	local endPos, endFacing = Vector3.zero, Vector3.xAxis
+	return { n = G, view = function(k: number)
+		local elapsed = k
+		local travel = R * easeOut(math.min(elapsed, 10) / 10)
+		local p = Vector3.zero
+		if kind == "BackRoll" then p = Vector3.new(-travel, 0, 0) elseif kind == "SideRoll" then p = Vector3.new(0, 0, -(rollDir or 1) * travel) end
+		local facing = Vector3.xAxis
+		if kind == "SideRoll" and partnerX then
+			local to = Vector3.new(partnerX - p.X, 0, -p.Z)
+			if to.Magnitude > 0.01 then facing = to.Unit end
+		end
+		endPos, endFacing = p, facing
+		return baseView("Getup", { knockdown = knockdown, stun = G - k + 1, getupKind = kind, rollDir = rollDir or 1, pos = p, facing = facing })
+	end, endPos = function() return endPos end, endFacing = function() return endFacing end }
 end
 
 function QA.stateCases(id: string): { Case }
@@ -914,48 +1046,7 @@ function QA.stateCases(id: string): { Case }
 	end
 	add(sequence(id, partner, dist, { idleSeg(20), stunSeg("Stagger", newHit("Parry", "Mid", "Medium"), 26, 6), idleSeg(30) }, "idle>stagger>idle", "transition"))
 	-- Launch -> juggle -> fall -> Landing -> getups.
-	local g = (Config :: any).Gravity or 44
-	local function airSeg(knockdown: string, juggle: boolean): any
-		local y, vy, frames, hits = 0.05, (Config :: any).LaunchVelocity or 16, 0, 0
-		local hit = newHit("Hit", "Mid", "Launch")
-		local locked = false
-		local list = {}
-		while true do
-			frames += 1
-			vy -= g / 60
-			y += vy / 60
-			if juggle and frames == 30 then
-				hits += 1; hit = newHit("Hit", "Mid", "Medium"); vy = math.max(vy, 7.5)
-			end
-			if juggle and frames == 50 then
-				hits += 1; hit = newHit("Hit", "High", "Heavy"); locked = true; vy = math.min(vy, 2)
-			end
-			if y <= 0 then break end
-			table.insert(list, { y = y, vy = vy, frames = frames, hits = hits, hit = hit, locked = locked })
-			if frames > 120 then break end
-		end
-		return { n = #list, list = list, view = function(k: number)
-			local a = list[k]
-			return baseView("Airborne", { pos = Vector3.new(0, a.y, 0), velocityY = a.vy, airFrames = a.frames, airHits = a.hits, lastHit = a.hit, knockdown = if a.locked or not juggle then knockdown else nil })
-		end }
-	end
-	local function landingSeg(knockdown: string, kind: string?): any
-		local L = (Config :: any).LandingFrames or 34
-		return { n = L, view = function(k: number) return baseView("Landing", { knockdown = knockdown, stun = L - k, getupKind = if k >= 12 then kind else nil, rollDir = 1 }) end }
-	end
-	local function getupSeg(knockdown: string, kind: string, rollDir: number?): any
-		local G = ((Config :: any).GetupFrames or 26) + (if kind ~= "Stand" then ((Config :: any).RollFrames or 10) else 0)
-		local R = (Config :: any).RollDistance or 2.2
-		local endPos = Vector3.zero
-		return { n = G, view = function(k: number)
-			local elapsed = k
-			local travel = R * easeOut(math.min(elapsed, 10) / 10)
-			local p = Vector3.zero
-			if kind == "BackRoll" then p = Vector3.new(-travel, 0, 0) elseif kind == "SideRoll" then p = Vector3.new(0, 0, -(rollDir or 1) * travel) end
-			endPos = p
-			return baseView("Getup", { knockdown = knockdown, stun = G - k + 1, getupKind = kind, rollDir = rollDir or 1, pos = p })
-		end, endPos = function() return endPos end }
-	end
+	local airSeg, landingSeg, getupSeg = QA.airSeg, QA.landingSeg, QA.getupSeg
 	for _, kd in { "FaceUp", "FaceDown" } do
 		for _, kind in { "Stand", "BackRoll", "SideRoll" } do
 			for _, rd in (if kind == "SideRoll" then { 1, -1 } else { 1 }) do
@@ -995,9 +1086,55 @@ function QA.stateCases(id: string): { Case }
 	return cases
 end
 
+-- Knockdown continuity cases (round 5): every way a fighter reaches the floor x every getup. Sources: a grounded
+-- knockdown face up / face down (a sweep or KND hit: Landing straight from the hit), a launcher fall face up / face
+-- down (the knockdown side is known from the first air frame), a juggle ending face up / face down (two juggle hits,
+-- the second knocks the body down); getups Stand, BackRoll, SideRoll left / right chosen on Landing frame 12, and late
+-- rolls (chosen on Landing frame 31, after a standing getup started); KO grounded and in the air, face up and down.
+-- opts: { sources = {...}, getups = {...}, ko = bool (default true), partner = id }.
+QA.KD_SOURCES = { "groundFaceUp", "groundFaceDown", "launchFaceUp", "launchFaceDown", "juggleFaceUp", "juggleFaceDown" }
+QA.KD_GETUPS = { "Stand", "BackRoll", "SideRollL", "SideRollR", "BackRoll@31", "SideRollL@31" }
+function QA.knockdownCases(id: string, opts: any?): { Case }
+	local o = opts or {}
+	local partner = o.partner or partnerOf(id)
+	local dist = 4.0
+	local cases: { Case } = {}
+	local function firstSeg(src: string, kd: string, ko: boolean?): any
+		if string.sub(src, 1, 6) == "ground" then
+			local hit = newHit("Hit", "Mid", "Heavy")
+			return { n = 1, hitstop = function() return 8 end, view = function() return baseView(if ko then "KO" else "Landing", { knockdown = kd, stun = 34, lastHit = hit }) end }
+		end
+		return QA.airSeg(kd, string.sub(src, 1, 6) == "juggle", ko)
+	end
+	for _, src in o.sources or QA.KD_SOURCES do
+		local kd = if string.find(src, "FaceDown", 1, true) then "FaceDown" else "FaceUp"
+		for _, g in o.getups or QA.KD_GETUPS do
+			local name, at = string.match(g, "^(%a+)@?(%d*)$")
+			name = name or g
+			local kind = if string.sub(name, 1, 8) == "SideRoll" then "SideRoll" else name
+			local rd = if name == "SideRollR" then -1 else 1
+			local gseg = QA.getupSeg(kd, kind, rd, dist)
+			local segments = { idleSeg(20), firstSeg(src, kd), QA.landingSeg(kd, if kind == "Stand" then nil else kind, tonumber(at) or 12, rd), gseg,
+				{ n = 40, view = function() return baseView("Idle", { guard = "Stand", pos = gseg.endPos(), facing = gseg.endFacing() }) end } }
+			table.insert(cases, sequence(id, partner, dist, segments, string.format("kd:%s>%s", src, g), "knockdown"))
+		end
+	end
+	if o.ko ~= false then
+		for _, src in { "groundFaceUp", "groundFaceDown", "launchFaceUp", "juggleFaceDown" } do
+			local kd = if string.find(src, "FaceDown", 1, true) then "FaceDown" else "FaceUp"
+			local first = firstSeg(src, kd, true)
+			local hit = newHit("Hit", "High", "Heavy")
+			local hold = { n = 90, hitstop = function(k: number) return if first.n == 1 and k <= 8 then 9 - k else 0 end, view = function() return baseView("KO", { knockdown = kd, lastHit = hit }) end }
+			table.insert(cases, sequence(id, partner, dist, { idleSeg(20), first, hold }, "kd:ko:" .. src, "knockdown"))
+		end
+	end
+	return cases
+end
+
 -- Move cases: idle -> move -> idle against an idle partner. range "max": the partner stands where the move connects
--- after the sim's full advance (root distance = range); "close": at Separation (keepApart cancels the advance).
-function QA.moveCase(id: string, key: string, range: string, partner: string?): Case?
+-- after the sim's full advance (root distance = range); "close": at Separation (keepApart cancels the advance); "mid":
+-- halfway between the two (round 5); a number: that root distance.
+function QA.moveCase(id: string, key: string, range: string | number, partner: string?): Case?
 	local m = Roster.getMove(id, key)
 	if not m or m.height == "Throw" then return nil end
 	local clip = ClipLibrary.forMove(id, key)
@@ -1005,7 +1142,9 @@ function QA.moveCase(id: string, key: string, range: string, partner: string?): 
 	local crouching = m.crouching == true
 	local advance = m.advance or 0
 	local reach = m.range or 4
-	local dist = if range == "close" then SEP + 0.05 else reach + advance
+	local maxDist = reach + advance
+	local closeDist = SEP + 0.05
+	local dist = if type(range) == "number" then range elseif range == "close" then closeDist elseif range == "mid" then (closeDist + math.max(maxDist, closeDist)) * 0.5 else maxDist
 	local step = advance / math.max(m.startup, 1)
 	local limbMap = { LeadArm = "LeftHand", RearArm = "RightHand", LeadLeg = "LeftFoot", RearLeg = "RightFoot" }
 	local limb = (clip and clip.tags and type(clip.tags.limb) == "string" and clip.tags.limb) or limbMap[m.limb or ""] or "RightHand"
@@ -1023,9 +1162,9 @@ function QA.moveCase(id: string, key: string, range: string, partner: string?): 
 			return baseView(state, { move = key, moveFrame = k, stringIndex = 1, crouched = crouching, pos = Vector3.new(x, 0, 0) })
 		end },
 		{ n = TAIL, view = function() return baseView("Idle", { guard = "Stand", pos = Vector3.new(endX, 0, 0) }) end },
-	}, string.format("%s:%s", key, range), "move")
+	}, string.format("%s:%s", key, if type(range) == "number" then string.format("%.2f", range) else range), "move")
 	c.strike = { slot = 1, limb = limb, contact = contact }
-	c.meta = { move = key, startup = m.startup, active = m.active, recovery = m.recovery, lead = LEAD, clip = clip and clip.name }
+	c.meta = { move = key, startup = m.startup, active = m.active, recovery = m.recovery, lead = LEAD, clip = clip and clip.name, dist = dist }
 	return c
 end
 
@@ -1343,6 +1482,104 @@ function QA.moveCases(id: string, ranges: { string }?): { Case }
 		end
 	end
 	return cases
+end
+
+-- Face visibility (round 5) ------------------------------------------------------------------------------------------
+-- From the fight camera (CameraDirector's shot of the two fighters), the share of a fighter's face landmarks — the
+-- camera-side eye, the nose and the mouth — that no glove (or hand) hides. Landmarks are head-space offsets from the
+-- head's FaceFrontAttachment in units of the head's half size (x: + = toward the camera side, y up, z: + = back into the
+-- head), checked on the round-4 heads (motioncore.md 14).
+local CameraDirector: any = nil
+do
+	local ok, m = pcall(function() return require(Lab.Client.CameraDirector) end)
+	if ok then CameraDirector = m end
+end
+QA.FACE = BodyShape.FACE
+-- Chin (for the guard height check): below the mouth, at the front of the jaw.
+QA.CHIN = { 0.0, -0.62, 0.12 }
+local function faceFront(sub: Staged): Vector3
+	local head = sub.rig.parts.Head :: BasePart
+	local att = head:FindFirstChild("FaceFrontAttachment")
+	if att and att:IsA("Attachment") then return att.Position end
+	return Vector3.new(0, 0, -head.Size.Z * 0.45)
+end
+local function landmarks(sub: Staged, side: number): { Vector3 }
+	return BodyShape.faceLandmarks(sub.rig.parts.Head :: BasePart, side)
+end
+-- World landmark points of a posed head; side = +1 when the camera is on the head's right (its local +X), -1 left.
+function QA.facePoints(sub: Staged, cf: { [string]: CFrame }, side: number): { any }
+	local list = landmarks(sub, side)
+	local out = {}
+	for i, l in QA.FACE do
+		table.insert(out, { feature = l[1], p = cf.Head:PointToWorldSpace(list[i]) })
+	end
+	return out
+end
+local function headPoint(sub: Staged, cf: { [string]: CFrame }, l: { number }): Vector3
+	local head = sub.rig.parts.Head :: BasePart
+	local h = head.Size * 0.5
+	local f = faceFront(sub)
+	return cf.Head:PointToWorldSpace(Vector3.new(f.X + l[1] * h.X, f.Y + l[2] * h.Y, f.Z + l[3] * h.Z))
+end
+-- The fight camera for `a` (the viewing player's fighter, on the left of the screen) and `b`, arena positions (floor
+-- y = 0): CameraDirector's planned position and focus in world space (no shake, push or hitstop lean).
+function QA.fightCamera(a: Vector3, b: Vector3): (Vector3, Vector3)
+	local axis = Vector3.new((b - a).X, 0, (b - a).Z)
+	local forward = if axis.Magnitude > 0.01 then axis.Unit else Vector3.xAxis
+	local side = Vector3.new(forward.Z, 0, -forward.X).Unit
+	if CameraDirector and CameraDirector._plan then
+		local plan = CameraDirector._plan(a, b, "Fight", 0, 1 / 60, side, 0, false, 0)
+		return QA.ORIGIN + plan.position, QA.ORIGIN + plan.focus
+	end
+	local mid = (a + b) * 0.5
+	local focus = Vector3.new(mid.X, 2.75, mid.Z)
+	return QA.ORIGIN + focus - side * 15.7 + Vector3.new(0, 1.72, 0), QA.ORIGIN + focus
+end
+-- Share of the visible face landmarks no glove/hand capsule hides from `cam` (and, with opts.forearms, no forearm).
+-- Returns the share, the landmarks, and per feature { total, blocked }.
+function QA.faceVisibility(sub: Staged, cf: { [string]: CFrame }, cam: Vector3, opts: any?): (number, { any }, { [string]: { number } })
+	local o = opts or {}
+	local side = if cf.Head:PointToObjectSpace(cam).X >= 0 then 1 else -1
+	local pts = QA.facePoints(sub, cf, side)
+	local blockers = {}
+	for _, hand in { "LeftHand", "RightHand" } do
+		local a, b, r = handSegment(sub.geo, cf, hand)
+		table.insert(blockers, { a = a, b = b, r = r, name = hand })
+	end
+	if o.forearms then
+		local caps = limbCapsules(sub.rig, sub.geo, cf)
+		for _, n in { "LeftLowerArm", "RightLowerArm" } do table.insert(blockers, { a = caps[n].a, b = caps[n].b, r = caps[n].r, name = n }) end
+	end
+	local free, per = 0, {}
+	for _, l in pts do
+		local blocked = nil
+		for _, bl in blockers do
+			if segSegDistance(cam, l.p, bl.a, bl.b) < bl.r then blocked = bl.name; break end
+		end
+		l.blocked = blocked
+		per[l.feature] = per[l.feature] or { 0, 0 }
+		per[l.feature][1] += 1
+		if blocked then per[l.feature][2] += 1 else free += 1 end
+	end
+	return free / #pts, pts, per
+end
+-- Guard shape of the two hands: glove centre height above the chin and below the eye (studs), glove top above the
+-- mouth, and how far the elbow sits outside the shoulder line (studs, in the chest's frame; > 0 = flared).
+function QA.guardShape(sub: Staged, cf: { [string]: CFrame }): { [string]: any }
+	local eye = headPoint(sub, cf, { 0.40, 0.18, 0.10 }).Y
+	local mouth = headPoint(sub, cf, { 0.0, -0.36, -0.02 }).Y
+	local chin = headPoint(sub, cf, QA.CHIN).Y
+	local out = {}
+	for _, side in { "Left", "Right" } do
+		local a, b, r = handSegment(sub.geo, cf, side .. "Hand")
+		local c = (a + b) * 0.5
+		local chest = cf.UpperTorso
+		local elbow = chest:PointToObjectSpace(jointPoint(sub.rig, cf, side .. "Elbow"))
+		local shoulder = chest:PointToObjectSpace(jointPoint(sub.rig, cf, side .. "Shoulder"))
+		local top = math.max(a.Y, b.Y) + r
+		out[side .. "Hand"] = { overChin = c.Y - chin, underEye = eye - c.Y, topOverMouth = top - mouth, topOverChin = top - chin, elbowOut = math.abs(elbow.X) - math.abs(shoulder.X), radius = r }
+	end
+	return out
 end
 
 -- Aggregation ----------------------------------------------------------------------------------------------------------

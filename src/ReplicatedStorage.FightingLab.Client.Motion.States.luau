@@ -204,7 +204,8 @@ export type MotionRequest = {
 	settle: (boolean | string)?,
 	adjust: ((any, any) -> ())?,
 }
-export type RequestContext = { clock: number, keyStarted: number, key: string?, settling: boolean, config: any, legLength: number? }
+-- shownLie: how the previous shown pose lies (MotionPlayer: "SupineAway", "SupineToward", "ProneAway", "ProneToward"; nil standing).
+export type RequestContext = { clock: number, keyStarted: number, key: string?, settling: boolean, config: any, legLength: number?, shownLie: string? }
 
 local STYLE_NAMES = { boxer = "Boxer", kickboxer = "Kickboxer", grappler = "Grappler", flow = "Flow", karate = "Karate", kungfu = "KungFu" }
 States.STYLE_NAMES = STYLE_NAMES
@@ -216,7 +217,7 @@ States.CLIPS = {
 	Blockstun = "Blockstun", CrouchBlockstun = "CrouchBlockstun",
 	Airborne = "Juggle", KnockdownFaceUp = "FallBack", KnockdownFaceDown = "FallFront", KnockdownFaceDownAir = "FallFrontAir", GetupFaceUp = "GetupBack", GetupFaceDown = "GetupFront",
 	BackRoll = "BackRoll", SideRoll = "SideRoll", KOFaceUp = "KOBack", KOFaceDown = "KOFront", Intro = "Intro", Victory = "Victory", Defeat = "Defeat",
-	Stagger = "Stagger", ThrowBreak = "ThrowBreak",
+	Stagger = "Stagger", ThrowBreak = "ThrowBreak", ProneTurnOver = "ProneTurnOver",
 }
 
 -- Knockdown timing (sim: Landing 34 f on the floor, then Getup 26 f, rolls +10): a grounded knockdown reaches the floor
@@ -224,6 +225,10 @@ States.CLIPS = {
 -- GETUP_LEAD frames before the Getup state (the sit-up), so the rise plays over 36 frames.
 States.FALL_FRAMES = 18
 States.GETUP_LEAD = 10
+-- A juggle's face-down landing (head away) rolls over onto the back over Landing frames TURN_START .. +TURN_FRAMES, done
+-- before a standing getup's lead begins (LandingFrames - GETUP_LEAD).
+States.TURN_START = 6
+States.TURN_FRAMES = 18
 -- Seconds after a grounded KO starts until the body hits the floor (KO fall clips: contact ~0.85 s).
 States.KO_IMPACT_SECONDS = 0.85
 
@@ -537,10 +542,16 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	end
 	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.
 	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or string.find(ctx.key, ":Air", 1, true) ~= nil)
+	-- The pose actually shown decides for a body that is already lying when the knockdown starts (a throw's defender
+	-- track, whatever the sim's knockdown side): face down with the head away it continues like a juggle's face-down
+	-- landing below.
+	if fromAirKey and ctx.shownLie == "ProneAway" and (state == "Landing" or state == "Knockdown") then knockdown = "FaceDown" end
 	-- Two prone poses: a grounded fall or KO lands face down with the head toward the opponent (FallFront/KOFront end on
-	-- GetupFront's first frame), and every getup from it starts with GetupFront (a 180-degree turn into the other prone
-	-- pose whipped the legs and arms up to 178 degrees a frame). A body falling out of a juggle lands face down with the
-	-- head away (FallFrontAir), the pose the side roll passes at its half turn; `:Air` in the getup key keeps the choice.
+	-- GetupFront's first frame), and every getup from it starts with GetupFront. A body falling out of a juggle lands face
+	-- down with the head away (FallFrontAir): it rolls over onto its back while it lies (ProneTurnOver, TURN_START to
+	-- TURN_START + TURN_FRAMES Landing frames, at most 12 degrees a frame) and every getup then rises from the back like a
+	-- face-up one (round 5: the standing getup used to turn the prone body 180 degrees into GetupFront's pose). `:Air` in
+	-- the keys keeps the choice.
 	local airProne = knockdown == "FaceDown" and fromAirKey
 	if state == "Landing" or state == "Knockdown" then
 		local total = if type(config.LandingFrames) == "number" then config.LandingFrames else 34
@@ -551,11 +562,23 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		-- The last frames on the floor already start a standing getup (the fighter is invulnerable and cannot act), so
 		-- the short Getup state shows a believable rise instead of a jump to the feet.
 		local kind = view.getupKind
+		-- Face down with the head away: rolled over onto the back from TURN_START + TURN_FRAMES on.
+		local turned = airProne and elapsed >= States.TURN_START + States.TURN_FRAMES
+		local lying = if airProne then "FaceUp" else knockdown
 		if (kind == nil or kind == "Stand") and elapsed >= total - lead then
-			return { key = "Getup:" .. knockdown .. ":Stand" .. (if airProne then ":Air" else ""),
-				clip = if knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
+			return { key = "Getup:" .. lying .. ":Stand" .. (if airProne then ":Air" else ""),
+				clip = if lying == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp,
 				timeMode = "progress", progress = (elapsed - (total - lead)) / (lead + getupFrames),
-				keyframe = States.getup(0, scale, knockdown), fade = 0.12, styled = false, settle = "ground" }
+				keyframe = States.getup(0, scale, lying), fade = 0.12, styled = false, settle = "ground" }
+		end
+		if airProne and elapsed >= States.TURN_START then
+			if not turned then
+				return { key = "Down:FaceDown:Turn:Air", clip = States.CLIPS.ProneTurnOver, timeMode = "progress",
+					progress = (elapsed - States.TURN_START) / States.TURN_FRAMES, keyframe = States.knockdown(math.max(elapsed, 20), scale, "FaceUp"),
+					fade = 0.05, styled = false, ground = 1 }
+			end
+			return { key = "Down:FaceUp:Turned:Air", clip = States.CLIPS.KnockdownFaceUp, timeMode = "progress", progress = 1,
+				keyframe = States.knockdown(math.max(elapsed, 20), scale, "FaceUp"), fade = 0.05, styled = false, ground = 1, settle = true }
 		end
 		return { key = "Down:" .. knockdown .. (if fromAirKey then ":Air" else ""), clip = if knockdown == "FaceDown" then (if fromAirKey then States.CLIPS.KnockdownFaceDownAir else States.CLIPS.KnockdownFaceDown) else States.CLIPS.KnockdownFaceUp,
 			timeMode = "impact", frames = elapsed, impactFrames = fallFrames, fromContact = fromAirKey,
@@ -570,18 +593,19 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		local done = math.clamp(total - stun, 0, total)
 		local progress = if kind == "Stand" then (lead + done) / (lead + getupFrames) else done / math.max(total, 1)
 		-- Face down with the head toward the opponent (a grounded fall), every getup rises with GetupFront (a roll pushes
-		-- up while the sim slides the body back or aside). Out of a juggle (head away) the rolls play as before.
+		-- up while the sim slides the body back or aside). Out of a juggle the body lies on its back by now (rolled over
+		-- during Landing): the face-up getups.
 		local groundProne = knockdown == "FaceDown" and not airProne
+		local lying = if airProne then "FaceUp" else knockdown
 		local clip = if groundProne then States.CLIPS.GetupFaceDown
 			elseif kind == "BackRoll" then States.CLIPS.BackRoll elseif kind == "SideRoll" then States.CLIPS.SideRoll
-			elseif knockdown == "FaceDown" then States.CLIPS.GetupFaceDown else States.CLIPS.GetupFaceUp
-		-- Side roll: a log roll whose chest turns toward the travel side first. Face up it is one full turn from the
-		-- clip's first frame (the lying pose itself, so a short fade); face down (prone) it is the second half turn.
+			else States.CLIPS.GetupFaceUp
+		-- Side roll: a quarter turn onto the travel-side hip, a push into a crouch turning toward the opponent, the
+		-- stance (Motion.Clips.Core.SideRoll, tools/mocap/lying.py); mirrored for the other side.
 		local sideRoll = clip == States.CLIPS.SideRoll
-		return { key = "Getup:" .. knockdown .. ":" .. kind .. (if airProne then ":Air" else ""), clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
-			startTag = if sideRoll and knockdown == "FaceDown" then "proneStart" else nil,
-			keyframe = States.getup(math.clamp(done / math.max(total, 1), 0, 1) * 32, scale, knockdown),
-			fade = if sideRoll then (if knockdown == "FaceDown" then 0.06 else 0.03) else 0.08, styled = false,
+		return { key = "Getup:" .. lying .. ":" .. kind .. (if airProne then ":Air" else ""), clip = clip, timeMode = "progress", progress = math.clamp(progress, 0, 1), mirror = sideRoll and (view.rollDir or 1) < 0,
+			keyframe = States.getup(math.clamp(done / math.max(total, 1), 0, 1) * 32, scale, lying),
+			fade = if sideRoll then 0.05 else 0.08, styled = false,
 			settle = if kind == "Stand" then "ground" else nil }
 	end
 	if state == "KO" then

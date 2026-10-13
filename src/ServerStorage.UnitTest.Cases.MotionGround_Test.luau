@@ -99,6 +99,28 @@ end
 -- with the defender on all six rigs; max range (the sim carries the root `advance` / startup studs per frame up to and
 -- including the first active frame) and close range (Separation: keepApart cancels the advance). LEAD frames of the
 -- held stance first.
+-- Case groups of the move-clip sweeps (see the step-in and lock-release tests). The throw groups are split by the rig
+-- that plays the track (the attacker's own rig for the attacker role, each defender's rig for the defender role).
+local RIG_HALVES: { { [string]: boolean } } = { {}, {} }
+local HALF_NAMES: { { string } } = { {}, {} }
+for i, id in Roster.order do
+	local h = if i <= math.ceil(#Roster.order / 2) then 1 else 2
+	RIG_HALVES[h][id] = true
+	table.insert(HALF_NAMES[h], id)
+end
+local GROUND_GROUPS: { any } = { { label = "attacks", throw = false } }
+for _, far in { true, false } do
+	for h = 1, 2 do
+		table.insert(GROUND_GROUPS, { label = string.format("throws at %s range, %s rigs", if far then "max" else "close", table.concat(HALF_NAMES[h], ", ")), throw = true, far = far, ids = RIG_HALVES[h] })
+	end
+end
+local function groupCases(cases: { any }, group: any): { any }
+	local out = {}
+	for _, c in cases do
+		if (c.throw == true) == group.throw and (group.far == nil or c.far == group.far) and (group.ids == nil or group.ids[c.id]) then table.insert(out, c) end
+	end
+	return out
+end
 local function moveClipCases(rigs: { [string]: Staged }): { any }
 	local SEP = (Config :: any).Separation or 2.6
 	local BREAK_FRAMES = (Config :: any).ThrowBreakFrames or 16
@@ -474,155 +496,162 @@ return function(t)
 		print(string.format("[MotionGround] all other moves (information): %d planted foot-frames, %d over %.2f studs: %s", sweepPlanted, sweepOver, TOL, if #sweepList > 0 then table.concat(sweepList, ", ") else "none"))
 	end)
 
-	t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range)", function()
-		-- Step-ins: the sim carries the attacker's root forward by `advance` over the startup (at close range keepApart
-		-- cancels it) while the rear foot stays planted or trails, and a keyed clip can place a foot beyond a rig's leg
-		-- reach; the IK clamp then lifted the foot off the floor. Wherever the displayed pose's own sole (the clip's,
-		-- blended through crossfades) is within GATE leg lengths of the floor, the shown foot's lowest point stays within
-		-- TOL studs of the height the runtime intends for it (MotionPlayer rig.footClear: 0 for a planted foot, the clip's
-		-- own clearance for a released one; the clip's sole height on this rig when the runtime does not report it).
-		-- Every installed move clip (Moves.Strikes / Kicks / Throws: attacks, grab attempts, both throw roles and their
-		-- break tracks) on its fighter's rig — throw defenders on all six rigs — at max range (full sim advance) and at
-		-- close range (Separation: no advance). A foot the contact aim layer pulls to the opponent (aimWeight > 0) is the
-		-- strike itself and is not gated. Information: feet shown more than TOL above the floor at all (clip-side hover:
-		-- released near-floor feet, feet of a pelvis posed differently from the clip's).
-		local GATE, TOL = 0.05, 0.05
-		local rigs = stageAll()
-		local cases = moveClipCases(rigs)
-		type Stat = { checked: number, lifts: number, worst: number, where: string, over: number, worstGap: number, gapWhere: string, liftClips: { [string]: number }, gapClips: { [string]: number }, plays: number }
-		local stats: { [string]: Stat } = {}
-		local played: { [string]: boolean } = {}
-		local before = sweepFrames
-		for _, case in cases do
-			local s = stats[case.agent]
-			if not s then
-				s = { checked = 0, lifts = 0, worst = 0, where = "-", over = 0, worstGap = 0, gapWhere = "-", liftClips = {}, gapClips = {}, plays = 0 }
-				stats[case.agent] = s
+	-- The two sweeps over every move clip run in five groups (attacks; throws at max and at close range, each split by
+	-- the rig that plays the track) so each test stays well inside the runner's time limit (round 5: the knockdown and
+	-- thrown-defender clearance made a throw frame dearer). Same cases, same targets.
+	for _, group in GROUND_GROUPS do
+		t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range): " .. group.label, function()
+			-- Step-ins: the sim carries the attacker's root forward by `advance` over the startup (at close range keepApart
+			-- cancels it) while the rear foot stays planted or trails, and a keyed clip can place a foot beyond a rig's leg
+			-- reach; the IK clamp then lifted the foot off the floor. Wherever the displayed pose's own sole (the clip's,
+			-- blended through crossfades) is within GATE leg lengths of the floor, the shown foot's lowest point stays within
+			-- TOL studs of the height the runtime intends for it (MotionPlayer rig.footClear: 0 for a planted foot, the clip's
+			-- own clearance for a released one; the clip's sole height on this rig when the runtime does not report it).
+			-- Every installed move clip (Moves.Strikes / Kicks / Throws: attacks, grab attempts, both throw roles and their
+			-- break tracks) on its fighter's rig — throw defenders on all six rigs — at max range (full sim advance) and at
+			-- close range (Separation: no advance). A foot the contact aim layer pulls to the opponent (aimWeight > 0) is the
+			-- strike itself and is not gated. Information: feet shown more than TOL above the floor at all (clip-side hover:
+			-- released near-floor feet, feet of a pelvis posed differently from the clip's).
+			local GATE, TOL = 0.05, 0.05
+			local rigs = stageAll()
+			local cases = groupCases(moveClipCases(rigs), group)
+			type Stat = { checked: number, lifts: number, worst: number, where: string, over: number, worstGap: number, gapWhere: string, liftClips: { [string]: number }, gapClips: { [string]: number }, plays: number }
+			local stats: { [string]: Stat } = {}
+			local played: { [string]: boolean } = {}
+			local before = sweepFrames
+			for _, case in cases do
+				local s = stats[case.agent]
+				if not s then
+					s = { checked = 0, lifts = 0, worst = 0, where = "-", over = 0, worstGap = 0, gapWhere = "-", liftClips = {}, gapClips = {}, plays = 0 }
+					stats[case.agent] = s
+				end
+				s.plays += 1
+				played[case.clipName] = true
+				local rig = rigs[case.id].rig
+				playCase(rigs, case, function(f: number, pose: any, _v: any, clip: any?, t: number?)
+					if not (clip and t) then return end
+					local soleL, soleR = clipSoles(clip, t)
+					for i, foot in FEET do
+						local e = pose.targets[foot]
+						-- The displayed pose's own sole (crossfades blend it) when the runtime reports it, else the clip's.
+						local sole = (e and e.sole) or (if i == 1 then soleL else soleR)
+						if sole <= GATE and not (e and (e.aimWeight or 0) > 0.01) then
+							local gap = soleGap(rig, foot)
+							local intended = if rig.footClear and rig.footClear[foot] then rig.footClear[foot] else math.max(sole, 0) * rig.legLength
+							local lift = gap - intended
+							local key = case.label .. " " .. foot
+							s.checked += 1
+							if lift > TOL then
+								s.lifts += 1
+								s.liftClips[key] = math.max(s.liftClips[key] or 0, lift)
+							end
+							if lift > s.worst then s.worst, s.where = lift, string.format("%s f%d", key, f - LEAD) end
+							if gap > TOL then
+								s.over += 1
+								s.gapClips[key] = math.max(s.gapClips[key] or 0, gap)
+							end
+							if gap > s.worstGap then s.worstGap, s.gapWhere = gap, string.format("%s f%d (clip sole %.3f L)", key, f - LEAD, sole) end
+						end
+					end
+				end)
 			end
-			s.plays += 1
-			played[case.clipName] = true
-			local rig = rigs[case.id].rig
-			playCase(rigs, case, function(f: number, pose: any, _v: any, clip: any?, t: number?)
-				if not (clip and t) then return end
-				local soleL, soleR = clipSoles(clip, t)
-				for i, foot in FEET do
-					local e = pose.targets[foot]
-					-- The displayed pose's own sole (crossfades blend it) when the runtime reports it, else the clip's.
-					local sole = (e and e.sole) or (if i == 1 then soleL else soleR)
-					if sole <= GATE and not (e and (e.aimWeight or 0) > 0.01) then
-						local gap = soleGap(rig, foot)
-						local intended = if rig.footClear and rig.footClear[foot] then rig.footClear[foot] else math.max(sole, 0) * rig.legLength
-						local lift = gap - intended
-						local key = case.label .. " " .. foot
-						s.checked += 1
-						if lift > TOL then
-							s.lifts += 1
-							s.liftClips[key] = math.max(s.liftClips[key] or 0, lift)
+			destroyAll(rigs)
+			local count = 0
+			for _ in played do count += 1 end
+			local agents = {}
+			for agent in stats do table.insert(agents, agent) end
+			table.sort(agents)
+			print(string.format("[MotionGround] step-in feet: %d move clips played (%d frames); net %s", count, sweepFrames - before, tostring((MotionPlayer :: any).FootReachNet)))
+			for _, agent in agents do
+				local s = stats[agent]
+				print(string.format("[MotionGround] step-in feet %s: %d plays, %d gated foot-frames; lifted above the intended height by > %.2f: %d (worst %.3f, %s) | top: %s", agent, s.plays, s.checked, TOL, s.lifts, s.worst, s.where, topList(s.liftClips, 10)))
+				print(string.format("[MotionGround] step-in feet %s (information): displayed sole > %.2f above the floor: %d foot-frames (worst %.3f, %s) | top: %s", agent, TOL, s.over, s.worstGap, s.gapWhere, topList(s.gapClips, 8)))
+			end
+			t.expect.truthy(count >= 1, "move clips installed")
+			for _, agent in agents do
+				local s = stats[agent]
+				t.expect.truthy(s.lifts == 0, string.format("%s: %d foot-frames lifted off the floor (worst %.3f studs above the intended height, %s)", agent, s.lifts, s.worst, s.where))
+			end
+		end)
+	end
+
+	for _, group in GROUND_GROUPS do
+		t.test("a released foot lock lets go smoothly: no foot snaps when its contact drops (every move clip, max and close range): " .. group.label, function()
+			-- A planted foot is locked in world space; where the body travels differently from the clip (keepApart capping a
+			-- step-in's root, pushback) the anchor holds the foot up to the leash away from the clip's spot. When the contact
+			-- drops, the lock lets go over MotionPlayer.FootLockRelease instead of in one frame, and a foot landing again
+			-- while still letting go locks where it is shown: around every release and re-landing (the frames up to WINDOW
+			-- after a contact below 0.5) the shown foot never moves more than JUMP studs in a frame beyond the clip's own foot
+			-- motion (the same play with the leash at 0, where the foot follows the clip) plus a quarter of that foot's speed
+			-- over the last frames. Steady locks are not gated: there the reach net may slide a held foot. Every installed
+			-- move clip as in the step-in test.
+			local JUMP, WINDOW = 0.2, 5
+			local rigs = stageAll()
+			local cases = groupCases(moveClipCases(rigs), group)
+			local leash = MotionPlayer.FootLockLeash
+			local worst: { [string]: { v: number, where: string, over: number, clips: { [string]: number } } } = {}
+			local ok, err = pcall(function()
+				for _, case in cases do
+					local rig = rigs[case.id].rig
+					local contacts: { [string]: { number } } = { LeftFoot = {}, RightFoot = {} }
+					local function path(free: boolean): { [string]: { Vector3 } }
+						MotionPlayer.FootLockLeash = if free then 0 else leash
+						local out = { LeftFoot = {}, RightFoot = {} }
+						playCase(rigs, case, function(f: number, pose: any)
+							for _, foot in FEET do
+								local p = rig.tips[foot].Position
+								out[foot][f] = Vector3.new(p.X, 0, p.Z)
+								contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
+							end
+						end)
+						return out
+					end
+					local held, free = path(false), path(true)
+					local w = worst[case.agent]
+					if not w then
+						w = { v = 0, where = "-", over = 0, clips = {} }
+						worst[case.agent] = w
+					end
+					for _, foot in FEET do
+						local a, b, c = held[foot], free[foot], contacts[foot]
+						for f = LEAD + 2, case.n do
+							local near = false
+							for g = math.max(1, f - WINDOW), f do
+								if c[g] < 0.5 then near = true; break end
+							end
+							if near then
+								-- A foot already moving fast (a kick whipping out of its lock, a break shove) may lag and catch up
+								-- by a quarter of its recent speed; a foot at rest may not jump.
+								local recent = 0
+								for g = math.max(LEAD + 2, f - 2), f do recent = math.max(recent, (b[g] - b[g - 1]).Magnitude) end
+								local extra = (a[f] - a[f - 1]).Magnitude - (b[f] - b[f - 1]).Magnitude - 0.25 * recent
+								if extra > JUMP then
+									w.over += 1
+									local key = case.label .. " " .. foot
+									w.clips[key] = math.max(w.clips[key] or 0, extra)
+								end
+								if extra > w.v then w.v, w.where = extra, string.format("%s %s f%d", case.label, foot, f - LEAD) end
+							end
 						end
-						if lift > s.worst then s.worst, s.where = lift, string.format("%s f%d", key, f - LEAD) end
-						if gap > TOL then
-							s.over += 1
-							s.gapClips[key] = math.max(s.gapClips[key] or 0, gap)
-						end
-						if gap > s.worstGap then s.worstGap, s.gapWhere = gap, string.format("%s f%d (clip sole %.3f L)", key, f - LEAD, sole) end
 					end
 				end
 			end)
-		end
-		destroyAll(rigs)
-		local count = 0
-		for _ in played do count += 1 end
-		local agents = {}
-		for agent in stats do table.insert(agents, agent) end
-		table.sort(agents)
-		print(string.format("[MotionGround] step-in feet: %d move clips played (%d frames); net %s", count, sweepFrames - before, tostring((MotionPlayer :: any).FootReachNet)))
-		for _, agent in agents do
-			local s = stats[agent]
-			print(string.format("[MotionGround] step-in feet %s: %d plays, %d gated foot-frames; lifted above the intended height by > %.2f: %d (worst %.3f, %s) | top: %s", agent, s.plays, s.checked, TOL, s.lifts, s.worst, s.where, topList(s.liftClips, 10)))
-			print(string.format("[MotionGround] step-in feet %s (information): displayed sole > %.2f above the floor: %d foot-frames (worst %.3f, %s) | top: %s", agent, TOL, s.over, s.worstGap, s.gapWhere, topList(s.gapClips, 8)))
-		end
-		t.expect.truthy(count >= 1, "move clips installed")
-		for _, agent in agents do
-			local s = stats[agent]
-			t.expect.truthy(s.lifts == 0, string.format("%s: %d foot-frames lifted off the floor (worst %.3f studs above the intended height, %s)", agent, s.lifts, s.worst, s.where))
-		end
-	end)
-
-	t.test("a released foot lock lets go smoothly: no foot snaps when its contact drops (every move clip, max and close range)", function()
-		-- A planted foot is locked in world space; where the body travels differently from the clip (keepApart capping a
-		-- step-in's root, pushback) the anchor holds the foot up to the leash away from the clip's spot. When the contact
-		-- drops, the lock lets go over MotionPlayer.FootLockRelease instead of in one frame, and a foot landing again
-		-- while still letting go locks where it is shown: around every release and re-landing (the frames up to WINDOW
-		-- after a contact below 0.5) the shown foot never moves more than JUMP studs in a frame beyond the clip's own foot
-		-- motion (the same play with the leash at 0, where the foot follows the clip) plus a quarter of that foot's speed
-		-- over the last frames. Steady locks are not gated: there the reach net may slide a held foot. Every installed
-		-- move clip as in the step-in test.
-		local JUMP, WINDOW = 0.2, 5
-		local rigs = stageAll()
-		local cases = moveClipCases(rigs)
-		local leash = MotionPlayer.FootLockLeash
-		local worst: { [string]: { v: number, where: string, over: number, clips: { [string]: number } } } = {}
-		local ok, err = pcall(function()
-			for _, case in cases do
-				local rig = rigs[case.id].rig
-				local contacts: { [string]: { number } } = { LeftFoot = {}, RightFoot = {} }
-				local function path(free: boolean): { [string]: { Vector3 } }
-					MotionPlayer.FootLockLeash = if free then 0 else leash
-					local out = { LeftFoot = {}, RightFoot = {} }
-					playCase(rigs, case, function(f: number, pose: any)
-						for _, foot in FEET do
-							local p = rig.tips[foot].Position
-							out[foot][f] = Vector3.new(p.X, 0, p.Z)
-							contacts[foot][f] = (pose.contact and pose.contact[foot]) or 0
-						end
-					end)
-					return out
-				end
-				local held, free = path(false), path(true)
-				local w = worst[case.agent]
-				if not w then
-					w = { v = 0, where = "-", over = 0, clips = {} }
-					worst[case.agent] = w
-				end
-				for _, foot in FEET do
-					local a, b, c = held[foot], free[foot], contacts[foot]
-					for f = LEAD + 2, case.n do
-						local near = false
-						for g = math.max(1, f - WINDOW), f do
-							if c[g] < 0.5 then near = true; break end
-						end
-						if near then
-							-- A foot already moving fast (a kick whipping out of its lock, a break shove) may lag and catch up
-							-- by a quarter of its recent speed; a foot at rest may not jump.
-							local recent = 0
-							for g = math.max(LEAD + 2, f - 2), f do recent = math.max(recent, (b[g] - b[g - 1]).Magnitude) end
-							local extra = (a[f] - a[f - 1]).Magnitude - (b[f] - b[f - 1]).Magnitude - 0.25 * recent
-							if extra > JUMP then
-								w.over += 1
-								local key = case.label .. " " .. foot
-								w.clips[key] = math.max(w.clips[key] or 0, extra)
-							end
-							if extra > w.v then w.v, w.where = extra, string.format("%s %s f%d", case.label, foot, f - LEAD) end
-						end
-					end
-				end
+			MotionPlayer.FootLockLeash = leash
+			destroyAll(rigs)
+			if not ok then error(err, 0) end
+			local agents = {}
+			for agent in worst do table.insert(agents, agent) end
+			table.sort(agents)
+			for _, agent in agents do
+				local w = worst[agent]
+				print(string.format("[MotionGround] lock release %s: worst extra foot jump %.3f studs/frame (%s); %d foot-frames over %.2f | top: %s", agent, w.v, w.where, w.over, JUMP, topList(w.clips, 8)))
+			end
+			for _, agent in agents do
+				local w = worst[agent]
+				t.expect.truthy(w.over == 0, string.format("%s: a released foot snapped %.3f studs in one frame beyond its clip motion (%s)", agent, w.v, w.where))
 			end
 		end)
-		MotionPlayer.FootLockLeash = leash
-		destroyAll(rigs)
-		if not ok then error(err, 0) end
-		local agents = {}
-		for agent in worst do table.insert(agents, agent) end
-		table.sort(agents)
-		for _, agent in agents do
-			local w = worst[agent]
-			print(string.format("[MotionGround] lock release %s: worst extra foot jump %.3f studs/frame (%s); %d foot-frames over %.2f | top: %s", agent, w.v, w.where, w.over, JUMP, topList(w.clips, 8)))
-		end
-		for _, agent in agents do
-			local w = worst[agent]
-			t.expect.truthy(w.over == 0, string.format("%s: a released foot snapped %.3f studs in one frame beyond its clip motion (%s)", agent, w.v, w.where))
-		end
-	end)
+	end
 
 	t.test("a support leg crossing its reach limit never flips its planted foot onto the toes (slow pelvis lift, all six, stance and walk)", function()
 		-- Round 4 (Sierra's teep kick at Width .85, max range: a 0.223-stud foot snap on lock release). A planted foot whose

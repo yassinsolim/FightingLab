@@ -47,6 +47,15 @@ export type Pose = {
 	selfClear: boolean?,
 	-- cut: the pose starts a new round (no continuity with the previous frame: IK bend directions start over).
 	cut: boolean?,
+	-- pushBack: how far (studs) the attack's body is held back so its strike rests on the opponent (ContactPushBack).
+	pushBack: number?,
+	-- lyingFrames: the knockdown smoother is on for this pose (frames since the last shown one); apply limits every
+	-- part's turn relative to the pelvis (MotionPlayer.LyingJointDeg).
+	lyingFrames: number?,
+	-- defenderClear: a thrown defender (the self clearance keeps its gloves out of its own body).
+	defenderClear: boolean?,
+	-- ankleRange: a getup clip's pose (unplanted feet keep inside the ankle's range, MotionPlayer.GetupAnkleRange).
+	ankleRange: boolean?,
 }
 export type RigInfo = {
 	motors: { [string]: Motor6D }, parts: { [string]: BasePart }, rootHeight: number, legLength: number, armLength: number,
@@ -66,6 +75,10 @@ export type RigInfo = {
 	aimResidual: { [string]: { r: number, clock: number? } }?,
 	-- Strike contact retraction (fraction of the reach) per limb on the latest frame (MotionPlayer.applyContact).
 	contactHold: { [string]: { s: number, clock: number? } }?,
+	-- Deepest striking limb still inside the partner after the latest contact pass (studs beyond ContactAllowance).
+	contactResidual: number?,
+	-- Every part's rotation relative to the pelvis in the latest apply and its clock (MotionPlayer.LyingJointDeg).
+	lyingRel: { [string]: any }?,
 	-- Leg treatment of a lying body (0 standing .. 1 lying) on the latest frame and its real time (ramped).
 	lyingLegs: { v: number, t: number }?,
 	-- Relaxed-feet weight of a lying body on the latest frame and its real time (ramped, MotionPlayer.RelaxFeetRamp).
@@ -74,6 +87,10 @@ export type RigInfo = {
 	selfPush: { [string]: any }?,
 	-- The same for the forced pass after a contact retraction, and the arms that retraction drew back this frame.
 	selfPushForced: { [string]: any }?,
+	-- The throw grips' clearance pass (a defender's gripping hands, MotionPlayer.presentFrame) and the hands the latest
+	-- grip pass re-solved.
+	selfPushGrip: { [string]: any }?,
+	gripMoved: { [string]: boolean }?,
 	contactMoved: { [string]: boolean }?,
 	-- Body shapes for contact checks (Motion.BodyShape.of caches them here).
 	bodyShape: any?,
@@ -110,6 +127,13 @@ type SlotState = {
 	-- holds the body where it was when the sim pushed it on a hit, released over glideDur of animation time.
 	real: number, fadeReal: boolean?, fadeLinear: boolean?, hitStamp: string?, hitSeen: boolean?, glide: Vector3?, glideStart: number?, glideDur: number?,
 	absorbUntil: number?, timeKey: string?, resetSnapUntil: number?, entryPos: Vector3?, entryFrame: number?,
+	-- Point-blank spacing (MotionPlayer.LungeSpacing): the attack's lunge scale and the clock it was last set at.
+	lungeK: number?, lungeAt: number?,
+	-- Contact push-back of the current attack (studs) and the clock it was last set at (MotionPlayer.ContactPushBack).
+	pushBack: number?, pushAt: number?, pushGrow: number?,
+	-- Knockdown smoothing (MotionPlayer.LyingSmooth): the last shown pose in body frames, its real time, and until when
+	-- the stance after a getup stays smoothed.
+	lyingPrev: any?, lyingAt: number?, lyingTail: number?,
 }
 local slots: { [number]: SlotState } = {}
 local FINAL_HIT_HOLD = 1.1
@@ -292,9 +316,30 @@ local function blendHandPos(name: string, a: Vector3, b: Vector3, alpha: number)
 	return pivot + CFrame.fromAxisAngle(axis.Unit, ang * alpha):VectorToWorldSpace(ua) * (la + (lb - la) * alpha)
 end
 
-local function blendEffector(a: Effector, b: Effector, alpha: number, name: string?): Effector
+local function blendEffector(a: Effector, b: Effector, alpha: number, name: string?, chests: { CFrame }?): Effector
 	local rot: CFrame? = nil
 	local ra, rb = a.rot, b.rot
+	if chests and name and SHOULDER_PIVOT[name] then
+		-- Chest-frame blend (MotionPlayer.ChestBlend): the hand's reach from the shoulder, its pole and its rotation are
+		-- blended in each pose's chest frame and carried by the blended chest.
+		local ca, cb, cm = chests[1], chests[2], chests[3]
+		local pivot = SHOULDER_PIVOT[name]
+		local va = ca:VectorToObjectSpace(libVector(a.pos - pivot))
+		local vb = cb:VectorToObjectSpace(libVector(b.pos - pivot))
+		local pos = pivot + libVector(cm:VectorToWorldSpace(blendHandPos(name, pivot + va, pivot + vb, alpha) - pivot))
+		local pa = ca:VectorToObjectSpace(libVector(a.pole or Vector3.yAxis))
+		local pb = cb:VectorToObjectSpace(libVector(b.pole or a.pole or Vector3.yAxis))
+		local pole = libVector(cm:VectorToWorldSpace(pa:Lerp(pb, alpha)))
+		if ra and rb then rot = cm * (ca:Inverse() * ra):Lerp(cb:Inverse() * rb, alpha) elseif alpha >= 0.5 then rot = rb else rot = ra end
+		return {
+			pos = pos, pole = pole,
+			orient = a.orient, weight = (a.weight or 1) + ((b.weight or 1) - (a.weight or 1)) * alpha, rot = rot,
+			aimWorldY = b.aimWorldY or a.aimWorldY,
+			aimWeight = if a.aimWeight or b.aimWeight then (a.aimWeight or 0) + ((b.aimWeight or 0) - (a.aimWeight or 0)) * alpha else nil,
+			aimPhase = b.aimPhase or a.aimPhase,
+			sole = if a.sole and b.sole then a.sole + (b.sole - a.sole) * alpha else nil,
+		}
+	end
 	if ra and rb then rot = ra:Lerp(rb, alpha) elseif alpha >= 0.5 then rot = rb else rot = ra end
 	return {
 		pos = if name then blendHandPos(name, a.pos, b.pos, alpha) else a.pos:Lerp(b.pos, alpha),
@@ -307,18 +352,29 @@ local function blendEffector(a: Effector, b: Effector, alpha: number, name: stri
 	}
 end
 
--- Blends two heading-space poses (rotations slerp).
+-- Blends two heading-space poses (rotations slerp). Round 5 (ChestBlend): hands blend in the chest frames of the two
+-- poses — a crossfade that turns the body (a thrown defender squaring up from a bladed stance, a getup rising) carried
+-- the heading-space hand targets straight through the turning chest (up to 0.3 studs inside it).
+MotionPlayer.ChestBlend = true
 local function blendPose(a: Pose, b: Pose, alpha: number): Pose
 	if alpha <= 0 then return a end
 	if alpha >= 1 then return b end
+	local rootRot = (a.rootRot or anglesOf(a.rootRotation)):Lerp(b.rootRot or anglesOf(b.rootRotation), alpha)
+	local waistRot = (a.waistRot or anglesOf(a.waist)):Lerp(b.waistRot or anglesOf(b.waist), alpha)
+	local chests: { CFrame }? = nil
+	if MotionPlayer.ChestBlend then
+		chests = {
+			(a.rootRot or anglesOf(a.rootRotation)) * (a.waistRot or anglesOf(a.waist)),
+			(b.rootRot or anglesOf(b.rootRotation)) * (b.waistRot or anglesOf(b.waist)),
+			rootRot * waistRot,
+		}
+	end
 	local targets: { [string]: Effector } = {}
 	for name, ea in a.targets do
 		local eb = b.targets[name]
-		targets[name] = if eb then blendEffector(ea, eb, alpha, name) else copyEffector(ea)
+		targets[name] = if eb then blendEffector(ea, eb, alpha, name, chests) else copyEffector(ea)
 	end
 	for name, eb in b.targets do if not targets[name] then targets[name] = copyEffector(eb) end end
-	local rootRot = (a.rootRot or anglesOf(a.rootRotation)):Lerp(b.rootRot or anglesOf(b.rootRotation), alpha)
-	local waistRot = (a.waistRot or anglesOf(a.waist)):Lerp(b.waistRot or anglesOf(b.waist), alpha)
 	local neckRot = (a.neckRot or anglesOf(a.neck)):Lerp(b.neckRot or anglesOf(b.neck), alpha)
 	local ca = a.contact or { LeftFoot = 1, RightFoot = 1 }
 	local cb = b.contact or { LeftFoot = 1, RightFoot = 1 }
@@ -718,6 +774,164 @@ local function addArmor(pose: Pose, view: FighterView)
 	end
 end
 
+-- Knockdown smoothing (round 5). From the frame a fighter reaches the floor (Landing, KO; a getup) to LyingTail seconds
+-- into the stance after a getup, the shown pose changes by at most a few degrees per frame: the pelvis yaws (about the
+-- vertical) and rolls (about its own spine) at most LyingYawRoll and pitches (sit-ups, back rolls, falls) at most
+-- LyingPitch; each hand and foot keeps its place relative to the chest / pelvis and moves at most LyingLimb (direction)
+-- and LyingReach (extension, share of the reference limb) per frame, its elbow/knee pole LyingPole, the waist and neck
+-- LyingSpine, the feet LyingFoot. Limbs follow the body: a clamped pelvis carries them along instead of leaving them
+-- where the clip put them in heading space. Getup clips and the crossfades between them (a fall into a getup, a roll's
+-- first frame, the getup into the guard) used to whip arms and legs up to 180 degrees in a frame. Real time (hitstop
+-- impact fades keep moving); a round reset cuts.
+MotionPlayer.LyingSmooth = true
+MotionPlayer.LyingYawRoll = 12
+MotionPlayer.LyingPitch = 28
+MotionPlayer.LyingLimb = 18
+MotionPlayer.LyingReach = 0.08
+MotionPlayer.LyingPole = 22
+MotionPlayer.LyingSpine = 14
+MotionPlayer.LyingFoot = 22
+MotionPlayer.LyingTail = 0.6
+local LYING_SMOOTH_STATES = { Landing = true, Getup = true, KO = true, Knockdown = true }
+local LYING_TAIL_STATES = { Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true }
+local ARM_PIVOTS = { LeftHand = Vector3.new(-0.5, 1.1, 0), RightHand = Vector3.new(0.5, 1.1, 0) }
+local LEG_PIVOTS = { LeftFoot = Vector3.new(-0.3, -0.35, 0), RightFoot = Vector3.new(0.3, -0.35, 0) }
+type BodyLimb = { dir: Vector3, len: number, pole: Vector3?, rot: CFrame? }
+type BodyFrame = { root: CFrame, waist: CFrame, neck: CFrame, limbs: { [string]: BodyLimb } }
+local function rotOf(rot: CFrame?, euler: Vector3?): CFrame
+	if rot then return rot.Rotation end
+	return anglesOf(euler or Vector3.zero)
+end
+-- A pose's limbs in its own body frames (hands in the chest frame, feet in the pelvis frame; Roblox axes).
+local function bodyFrame(pose: Pose, scale: number): BodyFrame
+	local root = rotOf(pose.rootRot, pose.rootRotation)
+	local waist = rotOf(pose.waistRot, pose.waist)
+	local neck = rotOf(pose.neckRot, pose.neck)
+	local chest = root * waist
+	local limbs = {}
+	for limb, e in pose.targets do
+		local pivot = ARM_PIVOTS[limb] or LEG_PIVOTS[limb]
+		if pivot then
+			local frame = if ARM_PIVOTS[limb] then chest else root
+			local v = frame:VectorToObjectSpace(libVector(e.pos - pivot * scale))
+			local len = v.Magnitude
+			if len > 1e-4 then
+				limbs[limb] = {
+					dir = v / len, len = len,
+					pole = if e.pole and e.pole.Magnitude > 1e-4 then frame:VectorToObjectSpace(libVector(e.pole)).Unit else nil,
+					rot = if LEG_PIVOTS[limb] and e.rot then root:Inverse() * (e.rot :: CFrame).Rotation else nil,
+				}
+			end
+		end
+	end
+	return { root = root, waist = waist, neck = neck, limbs = limbs }
+end
+local function clampRotation(prev: CFrame, new: CFrame, maxDeg: number): CFrame
+	local axis, ang = (new * prev:Inverse()):ToAxisAngle()
+	local maxA = math.rad(maxDeg)
+	if ang <= maxA or ang ~= ang then return new end
+	return CFrame.fromAxisAngle(axis, maxA) * prev
+end
+local function clampDirection(prev: Vector3, new: Vector3, maxDeg: number): Vector3
+	local ang = math.acos(math.clamp(prev:Dot(new), -1, 1))
+	local maxA = math.rad(maxDeg)
+	if ang <= maxA then return new end
+	local axis = prev:Cross(new)
+	if axis.Magnitude < 1e-6 then
+		axis = prev:Cross(Vector3.xAxis)
+		if axis.Magnitude < 1e-6 then axis = prev:Cross(Vector3.yAxis) end
+	end
+	return CFrame.fromAxisAngle(axis.Unit, maxA):VectorToWorldSpace(prev)
+end
+-- The pelvis step split into its yaw/roll part (the plane of the vertical and the spine) and its pitch part.
+local function clampPelvis(prev: CFrame, new: CFrame, yawRollDeg: number, pitchDeg: number): CFrame
+	local axis, ang = (new * prev:Inverse()):ToAxisAngle()
+	if ang < 1e-6 or ang ~= ang then return new end
+	local w = axis * ang
+	local spine = prev.UpVector
+	local ys = Vector3.yAxis * w.Y
+	local s2 = spine - Vector3.yAxis * spine.Y
+	if s2.Magnitude > 0.05 then
+		local e2 = s2.Unit
+		ys += e2 * w:Dot(e2)
+	end
+	local pp = w - ys
+	local maxYS, maxP = math.rad(yawRollDeg), math.rad(pitchDeg)
+	if ys.Magnitude <= maxYS and pp.Magnitude <= maxP then return new end
+	if ys.Magnitude > maxYS then ys *= maxYS / ys.Magnitude end
+	if pp.Magnitude > maxP then pp *= maxP / pp.Magnitude end
+	local w2 = ys + pp
+	if w2.Magnitude < 1e-6 then return prev end
+	return CFrame.fromAxisAngle(w2.Unit, w2.Magnitude) * prev
+end
+-- How a shown pose lies (Motion.States RequestContext.shownLie): nil standing; else face up/down and the head toward or away
+-- from the opponent (heading space: -Z toward it).
+local function lieOf(pose: Pose?): string?
+	if not pose then return nil end
+	local r = rotOf(pose.rootRot, pose.rootRotation)
+	local up = r.UpVector
+	if math.abs(up.Y) > 0.6 then return nil end
+	return (if r.LookVector.Y > 0 then "Supine" else "Prone") .. (if up.Z > 0 then "Away" else "Toward")
+end
+-- A limb's own frame from its direction and pole (up along the limb toward its root, forward toward the pole).
+local function limbFrame(dir: Vector3, pole: Vector3?): CFrame?
+	if not pole then return nil end
+	local up = -dir
+	local fwd = pole - up * pole:Dot(up)
+	if fwd.Magnitude < 1e-3 then return nil end
+	local back = -fwd.Unit
+	return CFrame.fromMatrix(Vector3.zero, up:Cross(back), up, back)
+end
+local function lyingSmooth(pose: Pose, prev: BodyFrame, frames: number, scale: number): Pose
+	local new = bodyFrame(pose, scale)
+	local root = clampPelvis(prev.root, new.root, MotionPlayer.LyingYawRoll * frames, MotionPlayer.LyingPitch * frames)
+	local waist = clampRotation(prev.waist, new.waist, MotionPlayer.LyingSpine * frames)
+	local neck = clampRotation(prev.neck, new.neck, MotionPlayer.LyingSpine * frames)
+	local chest = root * waist
+	local out = table.clone(pose)
+	out.rootRot, out.waistRot, out.neckRot = root, waist, neck
+	out.rootRotation, out.waist, out.neck = eulerOf(root), eulerOf(waist), eulerOf(neck)
+	local targets = table.clone(pose.targets)
+	for limb, info in new.limbs do
+		local before = prev.limbs[limb]
+		local e = targets[limb]
+		if before and e then
+			local isArm = ARM_PIVOTS[limb] ~= nil
+			local reach = (if isArm then 1.95 else 2.75) * scale
+			local dir = clampDirection(before.dir, info.dir, MotionPlayer.LyingLimb * frames)
+			local step = MotionPlayer.LyingReach * reach * frames
+			local len = math.clamp(info.len, before.len - step, before.len + step)
+			local frame = if isArm then chest else root
+			local pivot = (ARM_PIVOTS[limb] or LEG_PIVOTS[limb]) :: Vector3
+			local copy = table.clone(e)
+			copy.pos = pivot * scale + libVector(frame:VectorToWorldSpace(dir * len))
+			local poleC: Vector3? = nil
+			if info.pole and before.pole then
+				poleC = clampDirection(before.pole, info.pole, MotionPlayer.LyingPole * frames)
+			elseif info.pole then
+				poleC = info.pole
+			end
+			if poleC then copy.pole = libVector(frame:VectorToWorldSpace(poleC)) end
+			if info.rot and before.rot then
+				-- The foot turns relative to its leg (a frame from the leg's direction and pole), so a clamped leg carries the
+				-- foot along: clamped separately, a back roll's legs swinging overhead left the foot 180 degrees off the shin.
+				local fPrev, fNew, fNow = limbFrame(before.dir, before.pole), limbFrame(info.dir, info.pole), limbFrame(dir, poleC)
+				if fPrev and fNew and fNow then
+					local rel = clampRotation(fPrev:Inverse() * before.rot, fNew:Inverse() * info.rot, MotionPlayer.LyingFoot * frames)
+					copy.rot = root * (fNow * rel)
+				else
+					copy.rot = root * clampRotation(before.rot, info.rot, MotionPlayer.LyingFoot * frames)
+				end
+			elseif info.rot then
+				copy.rot = root * info.rot
+			end
+			targets[limb] = copy
+		end
+	end
+	out.targets = targets
+	return out
+end
+
 local function validatePose(pose: Pose)
 	if not finiteVector(pose.rootOffset) or not finiteVector(pose.rootRotation) or not finiteVector(pose.waist) or not finiteVector(pose.neck) then error("MotionPlayer produced a non-finite body pose") end
 	for name, target in pose.targets do if not finiteVector(target.pos) or (target.pole and not finiteVector(target.pole)) then error("MotionPlayer produced non-finite target " .. name) end end
@@ -782,6 +996,55 @@ local function stepInScale(st: SlotState, view: FighterView, moveKey: string, re
 	local designed = st.stepDesigned or 0
 	if designed <= 0.05 * scale then return 1 end
 	return math.clamp((st.stepApplied or 0) / designed, 0, 1)
+end
+
+-- Point-blank spacing (round 5). Attack clips carry their own body lunge (the pelvis travels toward the contact on top
+-- of the sim's `advance`), authored for the move's designed range. Against an opponent standing closer (keepApart holds
+-- the bodies at Separation; mid range), that lunge carried the whole body into the opponent and no limb retraction
+-- could clear it (Rhys Jab 0.57 studs deep, a teep's hip inside the opponent's belly). The clip's forward pelvis travel
+-- from its first frame is scaled down by the distance missing at the predicted contact (the sim distance minus the
+-- advance still to come, never below Separation; the move's designed contact distance is its `range`), so the body
+-- stops where the strike can land; the contact pass (applyContact) then bends the limb onto the surface. The contact
+-- frame and the clip's timing are unchanged. The scale changes at most LungeRate per frame.
+MotionPlayer.LungeSpacing = true
+MotionPlayer.LungeRate = 0.15
+local function lungeSpacing(pose: Pose, clip: ClipLibrary.Clip, resolved: ResolvedMove, view: FighterView, frame: any?, slot: number, st: SlotState, legLength: number, config: any)
+	if not MotionPlayer.LungeSpacing then return end
+	local move = resolved.move
+	if type(move) ~= "table" or move.height == "Throw" then return end
+	local holder = clip :: any
+	local cache = holder._lunge
+	if cache == nil then
+		-- The clip's largest forward pelvis offset from the sim root (a lunge can peak after the contact and carry the body
+		-- on into the recovery; string follow-ups start where the previous hit left the body).
+		local zMax = 0
+		for i = 0, 24 do
+			zMax = math.max(zMax, ClipPlayer.sample(clip, clip.duration * i / 24, { legLength = 1, scale = 1 }).rootOffset.Z)
+		end
+		cache = { zMax = zMax }
+		holder._lunge = cache
+	end
+	local lunge = cache.zMax * legLength
+	local target = 1
+	local dist = opponentDistance(view, frame, slot)
+	if lunge > 0.02 and dist and type(move.range) == "number" then
+		local startup = math.max(resolved.timing.startup, 1)
+		local mf = view.moveFrame or 0
+		local remaining = (move.advance or 0) * math.max(0, startup - math.max(mf - 1, 0)) / startup
+		local sep = if type(config) == "table" and type(config.Separation) == "number" then config.Separation else 2.6
+		local predicted = math.max(sep, dist - remaining)
+		target = 1 - math.clamp((move.range - predicted) / lunge, 0, 1)
+	end
+	-- The scale carries over between consecutive attack frames (string hits included) and moves at most LungeRate a frame.
+	local k = target
+	local clock = st.clock
+	if st.lungeK and st.lungeAt and clock - (st.lungeAt :: number) <= 2.5 / 60 and clock >= (st.lungeAt :: number) then
+		k = math.clamp(target, (st.lungeK :: number) - MotionPlayer.LungeRate, (st.lungeK :: number) + MotionPlayer.LungeRate)
+	end
+	st.lungeK, st.lungeAt = k, clock
+	if k >= 0.999 then return end
+	local ro = pose.rootOffset
+	if ro.Z > 0 then pose.rootOffset = Vector3.new(ro.X, ro.Y, ro.Z * k) end
 end
 
 -- Identity of the last hit a fighter took (CombatSim's lastHit: frame + move + kind), nil before any.
@@ -899,6 +1162,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		local clip = ClipLibrary.forMove(characterId, moveKey, view.stringIndex)
 		if clip then
 			pose = ClipPlayer.sample(clip, ClipPlayer.moveTime(clip, resolved.timing, view.moveFrame or 0), { mirror = clip.mirror, legLength = legLength, scale = scale })
+			lungeSpacing(pose :: Pose, clip, resolved, view, frame, s, st, legLength, config)
 			aimContact(pose :: Pose, clip, resolved, view.moveFrame or 0, scale, rootHeight, opponentRootHeight(frame, s), opponentAimHeights(frame, s), legLength)
 		else
 			local normalized = moveTime(resolved.timing, view.moveFrame or 0)
@@ -910,9 +1174,22 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 		moveStartup = resolved.timing.startup
 		local step = stepInScale(st, view, moveKey, resolved, scale)
 		if step < 1 then (pose :: Pose).stepScale = step end
+		-- The contact push-back of the previous frames carries on, released on the animation clock.
+		st.pushGrow = 0
+		if MotionPlayer.ContactPushBack and st.pushBack and st.pushAt and st.clock >= (st.pushAt :: number) and st.clock - (st.pushAt :: number) < 0.25 then
+			local carried = math.max(0, (st.pushBack :: number) - (st.clock - (st.pushAt :: number)) * 60 * MotionPlayer.ContactPushRelease)
+			st.pushBack, st.pushAt = carried, st.clock
+			if carried > 1e-3 then
+				local p = pose :: Pose
+				p.rootOffset -= Vector3.new(0, 0, carried)
+				p.pushBack = carried
+			end
+		else
+			st.pushBack, st.pushAt = nil, nil
+		end
 	else
 		local style = if Roster.has(characterId) then Roster.get(characterId).stanceStyle else "boxer"
-		local req = States.request(view, frame, s, characterId, scale, { clock = st.clock, keyStarted = st.keyStarted, key = st.key, settling = settling, config = config, legLength = legLength })
+		local req = States.request(view, frame, s, characterId, scale, { clock = st.clock, keyStarted = st.keyStarted, key = st.key, settling = settling, config = config, legLength = legLength, shownLie = lieOf(previous) })
 		if req.key ~= st.key then
 			if req.timeKey == nil or req.timeKey ~= st.timeKey then st.keyStarted = st.clock end
 			if req.restart then st.travel = 0 end
@@ -1065,11 +1342,27 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	else
 		st.resetSnapUntil = nil
 	end
+	-- Knockdowns: the lying smoother (see lyingSmooth).
+	if LYING_SMOOTH_STATES[view.state] then st.lyingTail = st.real + MotionPlayer.LyingTail end
+	local smoothing = MotionPlayer.LyingSmooth and not roundReset and not settling and type(view.move) ~= "string" and type(view.throw) ~= "table"
+		and (LYING_SMOOTH_STATES[view.state] or (st.lyingTail ~= nil and st.real <= (st.lyingTail :: number) and LYING_TAIL_STATES[view.state] ~= nil))
+	if smoothing and st.lyingPrev and st.lyingAt then
+		local frames = math.clamp((st.real - (st.lyingAt :: number)) * 60, 0.25, 3)
+		result = lyingSmooth(result, st.lyingPrev, frames, scale)
+		result.lyingFrames = frames
+		-- Getup clips only (the stand-up lead in Landing's last frames and the Getup state): their feet swing with the shins
+		-- (MotionPlayer.GetupAnkleRange); lying and KO feet keep their relaxed pose.
+		if MotionPlayer.GetupAnkleRange and string.sub(key, 1, 6) == "Getup:" then result.ankleRange = true end
+	end
+	st.lyingPrev, st.lyingAt = bodyFrame(result, scale), st.real
 	validatePose(result)
 	result.clock = st.clock
 	result.real = st.real
 	result.selfClear = SELF_CLEAR_STATES[view.state] == true and type(view.move) ~= "string" and type(view.throw) ~= "table"
 		and (type(frame) ~= "table" or frame.phase == nil or frame.phase == "Fight")
+	-- A thrown defender keeps its gloves out of its own body too (clearArms; grips re-solve their limbs afterwards), and
+	-- so does a defender breaking the throw (MotionPlayer.DefenderClearBreak).
+	result.defenderClear = type(view.throw) == "table" and view.throw.role == "Defender" and (view.throw.broken ~= true or MotionPlayer.DefenderClearBreak == true)
 	if roundReset then result.cut = true end
 	st.pose = result
 	return result
@@ -1136,17 +1429,28 @@ local function restChain(motors: { [string]: Motor6D }, joint: string, mid: stri
 	-- A visible foot in a shoe longer or wider than the bare foot publishes the shoe's ground box (foot space; same
 	-- height and bottom as the foot box): feet then rest on the shoe, not on the bare foot inside it.
 	local tipCenter = Vector3.zero
+	-- The shoe worn on the foot (its part box, foot space): a foot the runtime re-orients after the solver rested it (the
+	-- getup ankle range, the knockdown whip limit) keeps its shoe no lower than the solve had it (a high-top's collar
+	-- reaches below the foot box once the foot turns).
+	local shoeBox: CFrame?, shoeSize: Vector3? = nil, nil
 	if isLeg and endPart then
-		local shoeSize, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
-		if typeof(shoeSize) == "Vector3" and typeof(shoeCenter) == "Vector3" then
-			tipSize, tipCenter = shoeSize, shoeCenter
+		local shoeSize0, shoeCenter = endPart:GetAttribute("FightingLabShoeGroundSize"), endPart:GetAttribute("FightingLabShoeGroundCenter")
+		if typeof(shoeSize0) == "Vector3" and typeof(shoeCenter) == "Vector3" then
+			tipSize, tipCenter = shoeSize0, shoeCenter
+		end
+		for _, d in endPart:GetDescendants() do
+			if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then
+				local weld = d:FindFirstChildOfClass("Weld")
+				if weld then shoeBox, shoeSize = weld.C0, d.Size end
+				break
+			end
 		end
 	end
 	return {
 		joint = joint, mid = mid, tip = tip, target = target, isLeg = isLeg, upperBone = upperBone, l1 = l1, l2 = l2,
 		ankleHeight = ankleHeight, refPivot = refPivotV, refReach = refReach, fullReach = fullReach, side = side,
 		upperSize = if upperPart then upperPart.Size else Vector3.one * 0.4, lowerSize = if lowerPart then lowerPart.Size else Vector3.one * 0.4,
-		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter),
+		tipSize = tipSize, tipOffset = t.C1.Position - tipCenter, tipBox = CFrame.new(tipCenter), shoeBox = shoeBox, shoeSize = shoeSize,
 		handRadius = math.min(tipSize.X, tipSize.Z) * 0.5 + 0.02,
 		midRadius = math.max(if upperPart then math.min(upperPart.Size.X, upperPart.Size.Z) else 0.4, if lowerPart then math.min(lowerPart.Size.X, lowerPart.Size.Z) else 0.4) * 0.5 + 0.02,
 	}
@@ -1207,6 +1511,17 @@ local function extentY(cf: CFrame, size: Vector3): number
 	return (box + ellipsoid) * 0.25
 end
 MotionPlayer.extentY = extentY
+-- Lowest point of an oriented box (its exact extent: a little below extentY's rounded estimate). Used where the runtime
+-- turns a foot after the solver rested it (the getup ankle range, the knockdown whip limit): a shoe mesh fills its box.
+local function boxBottom(cf: CFrame, size: Vector3): number
+	return cf.Position.Y - (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z) * 0.5
+end
+-- Lowest point of a foot given its part frame: its (ground) box, and its shoe's box when it wears one.
+local function footBottom(chain: any, footCF: CFrame): number
+	local b = boxBottom(footCF * chain.tipBox, chain.tipSize)
+	if chain.shoeBox then b = math.min(b, boxBottom(footCF * chain.shoeBox, chain.shoeSize)) end
+	return b
+end
 
 local function flatYaw(rot: CFrame): CFrame
 	local look = rot.LookVector
@@ -1336,6 +1651,40 @@ local function footLift(chain: any, r: CFrame): number
 	return r:VectorToWorldSpace(chain.tipOffset).Y + extentY(r, chain.tipSize)
 end
 
+-- Getup ankle range (round 5). On the knockdown smoother's poses (lying, rolling, getting up) a foot that is not planted
+-- keeps the clip's orientation in the world while its shin swings under it: the side roll's kneeling foot read 100-146
+-- deg of dorsiflexion and 60-95 deg of roll against its shin. Such a foot's turn against the shin is kept inside the
+-- ankle's range (toes toward the knee, sideways, about the foot's long axis — as MotionQA measures it; pointed toes are
+-- left alone: a lying foot lays its toes out along the floor), fading out as the foot plants (planted feet are flattened
+-- onto the floor as before).
+MotionPlayer.GetupAnkleRange = true
+MotionPlayer.AnkleRange = { dorsi = 40, plantar = 180, roll = 35, yaw = 40 }
+local function clampAnkle(shin: CFrame, foot: CFrame, w: number): CFrame
+	local a = shin.Rotation:Inverse() * foot.Rotation
+	local toe = a.LookVector
+	local pitch = math.deg(math.atan2(toe.Y, -toe.Z))
+	local yaw = math.deg(math.asin(math.clamp(toe.X, -1, 1)))
+	local ax, ang = a:ToAxisAngle()
+	local along = ax.Z * math.sin(ang * 0.5)
+	local qw = math.cos(ang * 0.5)
+	local len = math.sqrt(along * along + qw * qw)
+	local roll = if len > 1e-9 then math.deg(2 * math.atan2(along / len, qw / len)) else 0
+	while roll > 180 do roll -= 360 end
+	while roll < -180 do roll += 360 end
+	local R = MotionPlayer.AnkleRange
+	local p2 = math.clamp(pitch, -R.plantar, R.dorsi)
+	local y2 = math.clamp(yaw, -R.yaw, R.yaw)
+	local r2 = math.clamp(roll, -R.roll, R.roll)
+	if p2 == pitch and y2 == yaw and r2 == roll then return foot end
+	local cy = math.cos(math.rad(y2))
+	local toe2 = Vector3.new(math.sin(math.rad(y2)), cy * math.sin(math.rad(p2)), -cy * math.cos(math.rad(p2)))
+	local from = -Vector3.zAxis
+	local axis = from:Cross(toe2)
+	local swing = if axis.Magnitude > 1e-6 then CFrame.fromAxisAngle(axis.Unit, math.acos(math.clamp(from:Dot(toe2), -1, 1))) else CFrame.identity
+	local clamped = shin.Rotation * swing * CFrame.fromAxisAngle(Vector3.zAxis, math.rad(r2))
+	return foot.Rotation:Lerp(clamped, math.clamp(w, 0, 1))
+end
+
 -- The foot rises onto its ball — toes pitched down about the ankle, at most `limit` below the floor plane — just enough
 -- for its ankle (ankleAt: ankle height of the foot shown in a rotation, its lowest point keeping its clearance above the
 -- floor) to reach `needY`. When no rise within the limit gets there, the rise that lifts the ankle most (none when
@@ -1443,11 +1792,15 @@ end
 function MotionPlayer.resetRig(rig: RigInfo)
 	table.clear(rig.footLock)
 	rig.aimResidual = nil
+	rig.lyingRel = nil
 	rig.contactHold = nil
 	rig.lyingLegs = nil
 	rig.relaxFeet = nil
 	rig.selfPush = nil
 	rig.selfPushForced = nil
+	rig.selfPushGrip = nil
+	rig.gripMoved = nil
+	(rig :: any).clampJoints = nil
 	rig.contactMoved = nil
 	for _, chain in rig.chains do
 		chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
@@ -1491,7 +1844,7 @@ local function flattenRef(rig: RigInfo, chain: any): number?
 	return chain.flatRef
 end
 
-local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading: CFrame, legacyFrame: CFrame, effector: Effector, floorY: number, footFlat: CFrame, scale: number, headingSpace: boolean, contact: number, settle: number?, lying: number?, relax: number?, stepScale: number?): number
+local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading: CFrame, legacyFrame: CFrame, effector: Effector, floorY: number, footFlat: CFrame, scale: number, headingSpace: boolean, contact: number, settle: number?, lying: number?, relax: number?, stepScale: number?, ankleRange: number?): number
 	local motors = rig.motors
 	local jm, mm, tm = motors[chain.joint], motors[chain.mid], motors[chain.tip]
 	local pivot = parentFrame * jm.C0
@@ -1703,6 +2056,29 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 			-- derived from it. Keyframe fallbacks without a foot rotation flatten their planted feet here.
 			local wanted: CFrame? = footRot
 			if not wanted and planted > 0 then wanted = footFlat end
+			-- On getup poses an unplanted foot stays inside the ankle's range against this solve's shin (GetupAnkleRange),
+			-- as far as that does not take the foot or its shoe lower than the solve rested it (or below the floor).
+			if wanted and footRot and ankleRange and ankleRange > 0 and planted < 1 then
+				local w0 = ankleRange * (1 - planted)
+				local turned = clampAnkle(lowerWorld, wanted :: CFrame, w0)
+				if turned ~= wanted then
+					local base = lowerWorld * tm.C0
+					local c1 = tm.C1
+					local function bottomOf(rot: CFrame): number
+						return footBottom(chain, base * (base.Rotation:Inverse() * rot * c1.Rotation) * c1:Inverse())
+					end
+					local need = math.min(floorY, bottomOf(wanted :: CFrame))
+					if bottomOf(turned) < need then
+						local lo, hi = 0, w0
+						for _ = 1, 6 do
+							local mid = (lo + hi) * 0.5
+							if bottomOf(clampAnkle(lowerWorld, wanted :: CFrame, mid)) >= need then lo = mid else hi = mid end
+						end
+						turned = clampAnkle(lowerWorld, wanted :: CFrame, lo)
+					end
+					wanted = turned
+				end
+			end
 			if wanted then
 				local flat = (lowerWorld * tm.C0).Rotation:Inverse() * wanted * tm.C1.Rotation
 				tipTransform = if footRot then flat else CFrame.identity:Lerp(flat, planted)
@@ -1737,6 +2113,159 @@ end
 
 -- Applies a pose to a rig whose HumanoidRootPart has already been placed (fighter position + rootOffset).
 -- floorY: world floor height (defaults to HRP height - RootHeight).
+-- Knockdown whip limit (round 5), the last step of apply for the poses the knockdown smoother marks (lyingFrames): every
+-- body part's rotation relative to the pelvis turns at most LyingJointDeg per frame (real time) from the previous shown
+-- frame, parts processed from the pelvis outward (a clamped elbow carries its hand along), so neither a clip's fast
+-- getup or roll nor the floor rules (hands caught on the floor, the settle of a lying spine, knee lifts) whip a limb.
+-- Every apply records the parts' rotations, so a knockdown starting next frame has its reference.
+MotionPlayer.LyingJointDeg = 26
+-- Most a clamped leg is lifted about the hip in a frame to keep it out of the floor (degrees).
+MotionPlayer.LyingLiftMaxDeg = 3.5
+local CLAMP_CHAIN = {
+	{ "Waist", "UpperTorso" }, { "Neck", "Head" },
+	{ "LeftShoulder", "LeftUpperArm" }, { "LeftElbow", "LeftLowerArm" }, { "LeftWrist", "LeftHand" },
+	{ "RightShoulder", "RightUpperArm" }, { "RightElbow", "RightLowerArm" }, { "RightWrist", "RightHand" },
+	{ "LeftHip", "LeftUpperLeg" }, { "LeftKnee", "LeftLowerLeg" }, { "LeftAnkle", "LeftFoot" },
+	{ "RightHip", "RightUpperLeg" }, { "RightKnee", "RightLowerLeg" }, { "RightAnkle", "RightFoot" },
+}
+-- Per rig: the clamp chain's motors with their fixed offsets and part names (only Transform is read per frame); leg
+-- joints are grouped per side (`leg`).
+local function clampJoints(rig: RigInfo): { any }
+	local cached = (rig :: any).clampJoints
+	if cached then return cached end
+	local list = {}
+	for _, j in CLAMP_CHAIN do
+		local m = rig.motors[j[1]]
+		if m and m.Part0 and m.Part1 then
+			local side = string.match(j[1], "^(%a-)Hip$") or string.match(j[1], "^(%a-)Knee$") or string.match(j[1], "^(%a-)Ankle$")
+			table.insert(list, { motor = m, part = j[2], parent = (m.Part0 :: BasePart).Name, child = (m.Part1 :: BasePart).Name, c0 = m.C0, c1i = m.C1:Inverse(), c1r = m.C1.Rotation, leg = side })
+		end
+	end
+	(rig :: any).clampJoints = list
+	return list
+end
+-- Lowest point of a leg (thigh, shin, foot box and shoe) in the world frames `world`: the oriented boxes' exact extent, so
+-- a clamped leg is never shown lower than the solve rested it.
+local function legLowest(rig: RigInfo, side: string, world: { [string]: CFrame }): number
+	local chain = rig.chains[side .. "Leg"]
+	local up, low, foot = world[side .. "UpperLeg"], world[side .. "LowerLeg"], world[side .. "Foot"]
+	if not (chain and up and low and foot) then return math.huge end
+	return math.min(boxBottom(up, chain.upperSize), boxBottom(low, chain.lowerSize), footBottom(chain, foot))
+end
+local function jointClamp(rig: RigInfo, pose: Pose, floorY: number?)
+	local motors = rig.motors
+	local rootPart = motors.Root.Part0
+	if not rootPart then return end
+	local root = motors.Root
+	local pelvis = rootPart.CFrame * root.C0 * root.Transform * root.C1:Inverse()
+	local pelvisRot = pelvis.Rotation
+	local pelvisInv = pelvisRot:Inverse()
+	local world: { [string]: CFrame } = { [(rig :: any).pelvisName or (root.Part1 :: BasePart).Name] = pelvis }
+	if not (rig :: any).pelvisName then (rig :: any).pelvisName = (root.Part1 :: BasePart).Name end
+	local rel: { [string]: any } = {}
+	local prev = rig.lyingRel
+	local clock = pose.real or pose.clock
+	local frames = pose.lyingFrames
+	local fresh = frames ~= nil and prev ~= nil and clock ~= nil and prev.t ~= nil and clock > prev.t and clock - prev.t < 0.1 and not pose.cut
+	local limit = MotionPlayer.LyingJointDeg * (frames or 1)
+	-- One joint from its solved transform tr0 with the turn limit lim (degrees); returns whether it was clamped.
+	local function step(j: any, tr0: CFrame, lim: number): boolean
+		local parent = world[j.parent]
+		if not parent then return false end
+		local m = j.motor
+		local tr = tr0
+		local child = parent * j.c0 * tr * j.c1i
+		local r = pelvisInv * child.Rotation
+		local before = if fresh then (prev :: any)[j.part] else nil
+		local did = false
+		if before then
+			local limited = clampRotation(before, r, lim)
+			if limited ~= r then
+				local t = (parent * j.c0).Rotation:Inverse() * (pelvisRot * limited) * j.c1r
+				tr = CFrame.new(tr.Position) * t
+				child = parent * j.c0 * tr * j.c1i
+				r = limited
+				did = true
+			end
+		end
+		m.Transform = tr
+		world[j.child] = child
+		rel[j.part] = r
+		return did
+	end
+	local clamped = false
+	local legs: { [string]: { any } } = {}
+	for _, j in clampJoints(rig) do
+		if j.leg then
+			local list = legs[j.leg] or {}
+			legs[j.leg] = list
+			table.insert(list, j)
+		elseif step(j, j.motor.Transform, limit) then
+			clamped = true
+		end
+	end
+	-- Legs: a clamped leg that would end up lower than the solve rested it (or below the floor) — a foot held at last frame's
+	-- turn while the solver laid it down sank shoes 0.03-0.08 studs into the floor — is lifted rigidly about the hip by the
+	-- least angle that clears it (at most LyingLiftMaxDeg: clamp and lift stay within the whip limit). Relaxing the clamp
+	-- instead brought back the solver's foot flips (up to 146 deg in a frame).
+	for side, list in legs do
+		local orig = {}
+		for i, j in list do orig[i] = j.motor.Transform end
+		local any = false
+		for i, j in list do
+			if step(j, orig[i], limit) then any = true end
+		end
+		if any and floorY then
+			local low = legLowest(rig, side, world)
+			if low < (floorY :: number) + 0.02 then
+				local clampedTr = {}
+				for i, j in list do clampedTr[i] = j.motor.Transform end
+				for i, j in list do step(j, orig[i], 181) end
+				local need = math.min(floorY :: number, legLowest(rig, side, world))
+				for i, j in list do step(j, clampedTr[i], 181) end
+				local hipJ = list[1]
+				local parent = world[hipJ.parent]
+				local foot = world[side .. "Foot"]
+				if low < need and parent and foot and string.find(hipJ.motor.Name, "Hip", 1, true) then
+					local pivotCF = parent * hipJ.c0
+					local pivot = pivotCF.Position
+					local d = foot.Position - pivot
+					local dh = Vector3.new(d.X, 0, d.Z)
+					if dh.Magnitude > 0.05 then
+						local axis = dh:Cross(Vector3.yAxis).Unit
+						local upper0 = world[hipJ.child]
+						local c1 = hipJ.motor.C1
+						local function lift(theta: number): number
+							local upperNew = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, theta) * CFrame.new(-pivot) * upper0
+							step(hipJ, pivotCF:Inverse() * upperNew * c1, 181)
+							for i = 2, #list do step(list[i], clampedTr[i], 181) end
+							return legLowest(rig, side, world)
+						end
+						local hi = math.rad(MotionPlayer.LyingLiftMaxDeg)
+						if lift(hi) >= need then
+							local lo = 0
+							for _ = 1, 6 do
+								local mid = (lo + hi) * 0.5
+								if lift(mid) >= need then hi = mid else lo = mid end
+							end
+							lift(hi)
+						end
+					end
+				end
+			end
+		end
+		if any then clamped = true end
+	end
+	rel.t = clock
+	rig.lyingRel = rel
+	if clamped then
+		for name in rig.tips do
+			local w = world[name]
+			if w then rig.tips[name] = w end
+		end
+	end
+end
+
 function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local motors = rig.motors
 	local rootPart = motors.Root.Part0
@@ -1802,6 +2331,8 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 		relaxFeet = prevRelax.v + math.clamp(relaxFeet - prevRelax.v, -step, step)
 	end
 	if tReal then rig.relaxFeet = { v = relaxFeet, t = tReal } end
+	-- Getup ankle range (clampAnkle): the getup clips' poses only (Pose.ankleRange).
+	local ankleRange = if headingSpace and pose.ankleRange == true then 1 else 0
 	local limbLowest = math.huge
 	local armLowest, legLowest = math.huge, math.huge
 	local hang = rig.footHang
@@ -1819,7 +2350,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 			local effector = pose.targets[chain.target]
 			if effector then
 				local lowest = solveChain(rig, chain, if chain.isLeg then lower else upper, heading, if chain.isLeg then legFrame else armFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0,
-					nil, if chain.isLeg then lyingLegs else 0, if chain.isLeg then relaxFeet else 0, stepScale)
+					nil, if chain.isLeg then lyingLegs else 0, if chain.isLeg then relaxFeet else 0, stepScale, if chain.isLeg then ankleRange else 0)
 				limbLowest = math.min(limbLowest, lowest)
 				if chain.isLeg then legLowest = math.min(legLowest, lowest) else armLowest = math.min(armLowest, lowest) end
 			else
@@ -1895,7 +2426,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 				for _, chain in rig.chains do
 					local effector = pose.targets[chain.target]
 					if chain.isLeg and effector then
-						low = math.min(low, solveChain(rig, chain, lowerFrame, heading, legFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0, s, lyingLegs, relaxFeet))
+						low = math.min(low, solveChain(rig, chain, lowerFrame, heading, legFrame, effector, floor, footFlat, scale, headingSpace, if contacts then contacts[chain.target] or 0 else 0, s, lyingLegs, relaxFeet, nil, ankleRange))
 					end
 				end
 				return low
@@ -1929,7 +2460,10 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	end
 	rig.stats.groundShift = dy
 	rig.stats.lowest = math.min(coreAbs, limbLowest) - floor
+	-- The knockdown whip limit runs last: it also bounds what the self clearance's pushes and elbow swivels turn (a swivel
+	-- re-planes a nearly straight arm, twisting the upper arm and forearm far more than the pole moved).
 	if MotionPlayer.SelfClearance and headingSpace then MotionPlayer.clearArms(rig, pose, floor) end
+	jointClamp(rig, pose, floor)
 end
 
 -- Throw grips (FLThrow1 `grips`): call after BOTH fighters were applied this frame. Each active grip of this fighter's
@@ -1969,6 +2503,7 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
 	local moved = 0
+	local movedHands: { [string]: boolean } = {}
 	for _, g in tc.grips do
 		if g.role == role then
 			local w = gripWeight(g, t)
@@ -1990,10 +2525,12 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 					local heading = hrp.Rotation
 					solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
 					moved += 1
+					if not chain.isLeg then movedHands[limb] = true end
 				end
 			end
 		end
 	end
+	rig.gripMoved = if next(movedHands) then movedHands else nil
 	return moved
 end
 
@@ -2009,6 +2546,41 @@ function MotionPlayer.rootCFrame(pos: Vector3, facing: Vector3, rootHeight: numb
 	if right.Magnitude < 0.01 then right = Vector3.xAxis else right = right.Unit end
 	local center = floorPos + Vector3.new(0, rootHeight + airborne, 0) + right * offset.X + Vector3.yAxis * offset.Y + forward * offset.Z
 	return CFrame.lookAt(center, center + forward)
+end
+
+-- Contact push-back (round 5). After the contact pass bent the striking limb as far as it can, whatever still sinks into
+-- the partner (an elbow or knee strike's own joint, a hammer fist on a folded arm, a clip lunge that carries the body
+-- past the target) is cleared by holding the attacker's body back along its facing by the residual depth (at most
+-- ContactPushMax): the root moves back, the pose is applied again (planted feet stay locked in the world; the legs
+-- re-solve under the shifted pelvis) and the contact pass runs once more. The hold grows as needed in the same frame —
+-- the strike stops on the surface the frame it arrives — and lets go at ContactPushRelease per frame of animation time.
+MotionPlayer.ContactPushBack = true
+MotionPlayer.ContactPushMax = 0.8
+MotionPlayer.ContactPushRelease = 0.04
+-- Most the hold may grow in one frame (studs): a strike that would need more stays a little inside for a frame.
+MotionPlayer.ContactPushRate = 0.15
+local function pushBack(e: PresentEntry, pose: Pose, origin: Vector3, partner: RigInfo): boolean
+	local residual = e.rig.contactResidual
+	if not residual or residual <= 0.005 or type(e.view.move) ~= "string" or type(e.view.throw) == "table" then return false end
+	local carried = pose.pushBack or 0
+	local st = slotState(e.slot)
+	-- The hold grows at most ContactPushRate per shown frame (sample resets pushGrow) during the startup; from the first
+	-- active frame on the strike rests on the surface whatever it takes.
+	local grown = st.pushGrow or 0
+	local rateCap = math.huge
+	local mv = e.view.moveFrame
+	local def = if type(e.view.characterId) == "string" then Roster.getMove(e.view.characterId, rosterMoveKey(e.view.characterId, e.view.move :: string)) else nil
+	if type(mv) == "number" and type(def) == "table" and type(def.startup) == "number" and mv <= def.startup then rateCap = MotionPlayer.ContactPushRate - grown end
+	local extra = math.min(residual + 0.02, MotionPlayer.ContactPushMax - carried, rateCap)
+	if extra <= 0.005 then return false end
+	local total = carried + extra
+	pose.rootOffset -= Vector3.new(0, 0, extra)
+	pose.pushBack = total
+	st.pushBack, st.pushAt, st.pushGrow = total, st.clock, grown + extra
+	e.root.CFrame = MotionPlayer.rootCFrame(e.view.pos, e.view.facing, e.rig.rootHeight, pose.rootOffset, origin)
+	MotionPlayer.apply(e.rig, pose, origin.Y)
+	MotionPlayer.applyContact(e.rig, pose, e.view, partner, origin.Y)
+	return true
 end
 
 -- Poses the two fighters of one render frame (CharacterPresenter, MotionQA): sample each view (slot = its index in
@@ -2037,10 +2609,28 @@ function MotionPlayer.presentFrame(entries: { PresentEntry? }, frame: any, origi
 				end
 			end
 		end
+		-- Round 5: a thrown defender's grip (a hand on the attacker's arm or shoulder, the bodies pressed together) re-solves
+		-- the arm after the self clearance and drove the glove or forearm up to 0.35 studs into the defender's own chest:
+		-- the gripping hands get their own clearance pass (its own push record), the grip giving way by the overlap.
+		if MotionPlayer.SelfClearance and MotionPlayer.LyingSelfClear then
+			for i = 1, 2 do
+				local e = entries[i] :: PresentEntry
+				local pose = poses[i] :: Pose
+				if pose.defenderClear and (e.rig.gripMoved ~= nil or e.rig.selfPushGrip ~= nil) then
+					MotionPlayer.clearArms(e.rig, pose, origin.Y, true, e.rig.gripMoved or {}, "selfPushGrip")
+				end
+			end
+		end
 		if MotionPlayer.StrikeContact then
 			for i = 1, 2 do
 				local e = entries[i] :: PresentEntry
-				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, (entries[3 - i] :: PresentEntry).rig, origin.Y)
+				local partner = (entries[3 - i] :: PresentEntry).rig
+				local moved = MotionPlayer.applyContact(e.rig, poses[i] :: Pose, e.view, partner, origin.Y)
+				-- A strike its limb cannot bend clear (the elbow or knee itself, a folded hammer arm, a lunge that reaches past
+				-- the target) holds the body back instead: the pose is applied again with the root moved back.
+				if MotionPlayer.ContactPushBack and pushBack(e, poses[i] :: Pose, origin, partner) then
+					moved = math.max(moved, 1)
+				end
 				-- A strike drawn back toward its shoulder must not end inside its own head or chest.
 				-- Only the arms the contact pass drew back (the other arm is the clip's).
 				if MotionPlayer.SelfClearance and (moved > 0 or e.rig.selfPushForced ~= nil) then MotionPlayer.clearArms(e.rig, poses[i] :: Pose, origin.Y, true, e.rig.contactMoved or {}) end
@@ -2117,6 +2707,7 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	if pose.space ~= "heading" or type(view.throw) == "table" or not (striking or held) then
 		rig.contactHold = nil
 		rig.contactMoved = nil
+		rig.contactResidual = nil
 		return 0
 	end
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -2131,6 +2722,8 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 	local nextHold = {}
 	local moved = 0
 	local movedLimbs: { [string]: boolean } = {}
+	-- Deepest striking limb left inside the partner after the retraction (studs beyond the allowance; <= 0: clear).
+	local residual = -math.huge
 	local dbg = rig.debug
 	for limb, chainName in CONTACT_LIMBS do
 		local effector = pose.targets[limb]
@@ -2189,15 +2782,19 @@ function MotionPlayer.applyContact(rig: RigInfo, pose: Pose, view: FighterView, 
 					s = best
 				end
 			end
-			solveAt(s)
+			local finalDepth = solveAt(s)
+			residual = math.max(residual, finalDepth - allow)
 			if s > 0 then nextHold[limb] = { s = s, clock = clock } end
 			if dbg then dbg["contact" .. limb].s = s; dbg["contact" .. limb].steps = table.concat(steps :: { string }, " ") end
 			moved += 1
 			movedLimbs[limb] = true
+		elseif effector and chain and striking then
+			residual = math.max(residual, depth - allow)
 		end
 	end
 	rig.contactHold = if next(nextHold) then nextHold else nil
 	rig.contactMoved = movedLimbs
+	rig.contactResidual = if striking then residual else nil
 	return moved
 end
 
@@ -2261,22 +2858,138 @@ local function sdfNormal(fn: (Vector3) -> number, p: Vector3): Vector3
 	return safeUnit(g, Vector3.yAxis)
 end
 MotionPlayer.SelfPushRate = 0.05
+-- Self clearance on the floor (knockdowns, getups, rolls, KO, thrown defenders) and its faster push rate (studs/frame).
+MotionPlayer.LyingSelfClear = true
+MotionPlayer.LyingPushRate = 0.3
+MotionPlayer.LyingPushRamp = 6
+MotionPlayer.DefenderSwivelRamp = 3
+-- A defender breaking a throw gets the same clearance as a thrown one (its break pose pulls a glove into its chest).
+MotionPlayer.DefenderClearBreak = true
+-- Profile clearance (round 5). The player's own fight camera watches the local fighter's right side (that fighter always
+-- stands on the left of the screen) from slightly in front and below; a guard's rear glove held at the cheek sat between
+-- that camera and the face and hid Kael's nose and mouth (0-46% of his eye, nose and mouth landmarks visible in guard,
+-- walk, backwalk and blockstun). In the states the self clearance runs in, the right glove (or hand) is moved off the
+-- sight lines from the camera-side eye, nose and mouth (Motion.BodyShape.faceLandmarks) down along the jaw (a little
+-- forward: back would drive it into the shoulder), by the least distance that clears them (ProfileMargin): the glove
+-- stays at the chin, the profile reads. The push goes through the self clearance's rate-limited push.
+MotionPlayer.ProfileClearance = true
+MotionPlayer.ProfileHand = "RightHand"
+MotionPlayer.ProfileMargin = 0.03
+-- Share of the newly wanted profile shift taken each frame (the rest is the previous frame's shift).
+MotionPlayer.ProfileSmooth = 0.5
+-- How fast the shift lets go once the guard ends (studs per frame).
+MotionPlayer.ProfileRelease = 0.04
+-- Heading space (Roblox axes: +X right, +Y up, -Z toward the opponent): from the face toward the camera (the shot of a
+-- close and of a mid-range spacing: the camera stands at the middle of the pair), and the push.
+MotionPlayer.ProfileViews = { Vector3.new(0.995, -0.06, -0.07).Unit, Vector3.new(0.975, -0.06, -0.21).Unit }
+MotionPlayer.ProfileDir = Vector3.new(0, -1, -0.25).Unit
+local function pointSegDistance2(p: Vector2, a: Vector2, b: Vector2): number
+	local ab = b - a
+	local l2 = ab:Dot(ab)
+	local t = if l2 > 1e-9 then math.clamp((p - a):Dot(ab) / l2, 0, 1) else 0
+	return (p - (a + ab * t)).Magnitude
+end
+local function profileWant(rig: RigInfo, shape: any, frames: { [string]: CFrame }, limb: string, heading: CFrame): Vector3
+	local head = rig.parts.Head
+	local headCF = frames.Head
+	local h = shape.hand[limb]
+	local tip = rig.tips[limb]
+	if not (head and headCF and h and tip) then return Vector3.zero end
+	local a, b, r = BodyShape.handCapsule(h, tip)
+	local need = r + MotionPlayer.ProfileMargin
+	local best: Vector3 = Vector3.zero
+	for _, view in MotionPlayer.ProfileViews do
+		local d = heading:VectorToWorldSpace(view)
+		local up = (Vector3.yAxis - d * d.Y).Unit
+		local across = d:Cross(up)
+		local function flat(p: Vector3): Vector2 return Vector2.new(p:Dot(across), p:Dot(up)) end
+		local side = if headCF:VectorToObjectSpace(d).X >= 0 then 1 else -1
+		local gloveDepth = math.max(a:Dot(d), b:Dot(d)) + r
+		-- Landmarks the glove can hide (it is nearer the camera than they are).
+		local pts = {}
+		for _, lp in BodyShape.faceLandmarks(head, side) do
+			local w = headCF:PointToWorldSpace(lp)
+			if w:Dot(d) < gloveDepth then table.insert(pts, flat(w)) end
+		end
+		if #pts > 0 then
+			local dir = heading:VectorToWorldSpace(MotionPlayer.ProfileDir)
+			dir = (dir - d * dir:Dot(d)).Unit
+			local dir2 = flat(dir)
+			local a2, b2 = flat(a), flat(b)
+			local function blocked(t: number): boolean
+				local pa, pb = a2 + dir2 * t, b2 + dir2 * t
+				for _, q in pts do
+					if pointSegDistance2(q, pa, pb) < need then return true end
+				end
+				return false
+			end
+			local t = 0
+			while t < 0.8 and blocked(t) do t += 0.02 end
+			-- Refined (the shift follows the glove continuously instead of in 0.02 steps).
+			if t > 0 and t < 0.8 then
+				local lo, hi = t - 0.02, t
+				for _ = 1, 4 do
+					local mid = (lo + hi) * 0.5
+					if blocked(mid) then lo = mid else hi = mid end
+				end
+				t = hi
+			end
+			if t > 0 and t > best.Magnitude then best = dir * t end
+		end
+	end
+	return best
+end
+MotionPlayer._profileWant = profileWant
 -- Push passes per arm and frame (each re-solves the arm once and re-measures the overlap).
 MotionPlayer.SelfClearPasses = 3
+-- Elbow swivel before the hand push (round 5): passes and how far each turns the pole along the body's outward normal.
+MotionPlayer.ElbowSwivel = true
+MotionPlayer.ElbowSwivelPasses = 4
+MotionPlayer.ElbowSwivelGain = 0.6
+-- The swivel starts before the arm touches the body (centreline this close to the surface, studs): the elbow is already
+-- turning out when a throw's entry or a KO's impact fade carries it toward the chest.
+MotionPlayer.ElbowSwivelMargin = 0.25
+-- Most the swivel angle may change per frame (degrees): it builds up and lets go over a few frames.
+MotionPlayer.ElbowSwivelRate = 10
+-- An arm this deep inside the body (studs) doubles that rate (proportionally).
+MotionPlayer.ElbowSwivelDeep = 0.08
 -- Frames over which a push's base eases between the solve's goal and the landed hand (see clearArms).
 MotionPlayer.SelfBaseFrames = 6
-function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?, onlyLimbs: { [string]: boolean }?): number
+-- Most the elbow swivel may twist the upper arm about its own axis relative to the chest (degrees; the QA limit is 120).
+MotionPlayer.SwivelTwistMax = 112
+-- Twist of the upper arm about its long axis relative to the chest (degrees, 0-180: swing-twist, as MotionQA measures it).
+local function upperArmTwist(rig: RigInfo, limb: string): number
+	local side = if limb == "LeftHand" then "Left" else "Right"
+	local ut, ua = partWorld(rig, "UpperTorso"), partWorld(rig, side .. "UpperArm")
+	if not ut or not ua then return 0 end
+	local ax, ang = (ut.Rotation:Inverse() * ua.Rotation):ToAxisAngle()
+	local along = ax.Y * math.sin(ang * 0.5)
+	local qw = math.cos(ang * 0.5)
+	local len = math.sqrt(along * along + qw * qw)
+	if len < 1e-9 then return 0 end
+	local d = math.deg(2 * math.atan2(along / len, qw / len))
+	while d > 180 do d -= 360 end
+	while d < -180 do d += 360 end
+	return math.abs(d)
+end
+function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force: boolean?, onlyLimbs: { [string]: boolean }?, record: string?): number
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
 	-- Lying and getting up the hands push on the floor beside the body, attacks fold the arm on purpose: left to the clip
 	-- (an existing push lets go gradually). `force`: a strike the contact pass drew back toward its own head.
 	local ground = pose.ground or 0
-	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5)
+	-- Round 5: on the floor too — knockdowns, getups, rolls and the KO (the knockdown smoother's poses, LyingSelfClear) and
+	-- a thrown defender — the gloves and forearms are kept out of the own body (rolls drove them 0.4-0.7 studs into it); the
+	-- push only moves a hand out along the body's surface, and the IK floor rules keep it above the floor.
+	local lyingPush = MotionPlayer.LyingSelfClear and (pose.lyingFrames ~= nil or pose.defenderClear == true)
+	local allowPush = force == true or (pose.selfClear == true and ground <= 0.5) or lyingPush
 	-- The forced pass after a contact retraction (onlyLimbs: the arms the contact drew back) runs on top of the frame's
 	-- first pass, so it keeps its own push: rate-limited from zero when it starts (it used to apply in full in one
 	-- frame), and let go gradually once the contact releases (arms no longer listed).
 	local forcedPass = onlyLimbs ~= nil
-	local prevPush = if forcedPass then rig.selfPushForced else rig.selfPush
+	-- Push record (continuity and rate limit): the frame's first pass, the contact's forced pass, a grip's pass.
+	local recordKey = record or (if forcedPass then "selfPushForced" else "selfPush")
+	local prevPush = (rig :: any)[recordKey]
 	local clock = pose.real or pose.clock
 	local fresh = prevPush ~= nil and clock ~= nil and prevPush.t ~= nil and not pose.cut and clock > prevPush.t and clock - prevPush.t < 0.25
 	local shape = BodyShape.of(rig, rig.parts, rigModel(rig))
@@ -2289,13 +3002,23 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 	local hrp = (rootPart :: BasePart).CFrame
 	local heading = hrp.Rotation
 	local nextPush: { [string]: any } = { t = clock }
+	-- Frames the floor / thrown-defender clearance has been on: its push rate and the elbow swivel's depth boost ramp in
+	-- over LyingPushRamp frames (switching on at full rate turned a shoulder ~30 degrees on the first lying frame).
+	local lyingN = if lyingPush then ((if fresh then (prevPush :: any).lyingN else nil) or 0) + 1 else nil
+	nextPush.lyingN = lyingN
+	-- (A thrown defender's clearance starts at full rate: the grab carries its arms across its chest within a few frames;
+	-- a ramp left a slam's glove in the chest. Only its elbow swivel eases in over the throw's first DefenderSwivelRamp
+	-- frames: at full rate on the first frame it turned a guard's tucked elbow out 20-30 deg in that frame.)
+	local ramp = if lyingN and pose.lyingFrames == nil then 1 elseif lyingN then math.clamp((lyingN - 1) / math.max(MotionPlayer.LyingPushRamp, 1), 0, 1) else 0
+	local swivelRamp = if lyingN and pose.lyingFrames == nil then math.clamp((lyingN :: number) / math.max(MotionPlayer.DefenderSwivelRamp, 1), 0, 1) else ramp
+	local lyingRate = MotionPlayer.SelfPushRate + (MotionPlayer.LyingPushRate - MotionPlayer.SelfPushRate) * ramp
 	local moved = 0
 	for limb, chainName in ARM_LIMBS do
 		local chain = rig.chains[chainName]
 		local effector = pose.targets[limb]
 		local limbPush = allowPush and (not forcedPass or (onlyLimbs :: any)[limb] == true)
 		local kKey = limb .. "Base"
-		if forcedPass and not limbPush and not (fresh and ((prevPush :: any)[limb] or (prevPush :: any)[kKey])) then
+		if forcedPass and not limbPush and not (fresh and ((prevPush :: any)[limb] or (prevPush :: any)[kKey] or (prevPush :: any)[limb .. "Swivel"])) then
 			-- The forced pass leaves an arm it never pushed alone.
 			continue
 		elseif chain and effector then
@@ -2321,16 +3044,148 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 				solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
 				solvedAt = at
 			end
-			if limbPush then
-				local hand, arm = armSelfDepth(rig, shape, frames, limb)
-				for _ = 1, MotionPlayer.SelfClearPasses do
-					if hand.e <= 0 and arm.e <= 0 then break end
-					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
-					-- the body moves the hand out further (it carries the elbow along only partly).
-					if hand.e > 0 and hand.p and hand.fn then want += sdfNormal(hand.fn, hand.p) * (hand.e + 0.005) end
-					if arm.e > 0 and arm.p and arm.fn then want += sdfNormal(arm.fn, arm.p) * (arm.e * 2.5 + 0.005) end
+			-- Profile clearance first (the self passes below keep the moved glove out of the own body).
+			local profileOn = limbPush and MotionPlayer.ProfileClearance and limb == MotionPlayer.ProfileHand and pose.selfClear == true
+			if profileOn then
+				local pw = profileWant(rig, shape, frames, limb, heading)
+				-- Smoothed: the wanted shift follows the glove's sway across the sight lines; taking it frame by frame
+				-- zig-zagged Sierra's backwalk glove (3 reversals in 6 frames).
+				local prevPw = if fresh then (prevPush :: any).profile else nil
+				if prevPw then pw = heading:VectorToWorldSpace(prevPw):Lerp(pw, MotionPlayer.ProfileSmooth) end
+				if pw.Magnitude > 1e-4 then
+					nextPush.profile = heading:VectorToObjectSpace(pw)
+					want += pw
+					solveAt(want)
+				end
+			elseif limb == MotionPlayer.ProfileHand and fresh and (prevPush :: any).profile then
+				-- Out of the guard (an attack, a throw) the shift lets go at ProfileRelease per frame: dropped at the self
+				-- push's rate it added to the attack's first frame (Kael's hooks turned the shoulder 16 deg in that frame).
+				local was = heading:VectorToWorldSpace((prevPush :: any).profile)
+				local left = was.Magnitude - MotionPlayer.ProfileRelease * frameStep
+				if left > 1e-3 then
+					local pw = was.Unit * left
+					nextPush.profile = heading:VectorToObjectSpace(pw)
+					want += pw
+					solveAt(want)
+				end
+			end
+			-- Round 5 (on the floor and for a thrown defender; the standing guard keeps its tucked elbows): an elbow or upper
+			-- arm inside the body (or within ElbowSwivelMargin of it) swivels out first — the pole (the elbow's bend
+			-- direction) turns along the body's outward normal so the elbow comes out around the shoulder-hand line while the
+			-- hand stays where the clip put it (pushing the hand instead swung a thrown defender's glove behind her back).
+			-- The swivel angle (from the clip's pole) is kept per arm and changes at most ElbowSwivelRate per frame, also
+			-- while it lets go after the body stood up.
+			local swivelKey = limb .. "Swivel"
+			local prevSwivel = if fresh then ((prevPush :: any)[swivelKey] or 0) else 0
+			local swivelOn = MotionPlayer.ElbowSwivel and limbPush and lyingPush
+			local hand: SelfHit?, arm: SelfHit? = nil, nil
+			if swivelOn or (MotionPlayer.ElbowSwivel and prevSwivel > 0) then
+				local h0, a0 = armSelfDepth(rig, shape, frames, limb)
+				hand, arm = h0, a0
+				local clipPole = heading:VectorToWorldSpace(libVector(grip.pole or defaultPole(limb)))
+				local margin = -MotionPlayer.ElbowSwivelMargin
+				local depth0 = if swivelOn then math.max(a0.e, 0) else 0
+				local poleW = clipPole
+				-- Warm start: last frame's swivel, a step relaxed (most frames then need no pass at all; the swivel lets go by
+				-- itself once the arm stays clear).
+				local lastAxis = if fresh and prevSwivel > 0 then (prevPush :: any)[swivelKey .. "Axis"] else nil
+				if swivelOn and lastAxis then
+					local relaxed = math.max(prevSwivel - math.rad(MotionPlayer.ElbowSwivelRate) * math.max(frameStep, 1), 0)
+					if relaxed > 1e-4 then
+						poleW = CFrame.fromAxisAngle(heading:VectorToWorldSpace(lastAxis), relaxed):VectorToWorldSpace(clipPole)
+						grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+						solveAt(want)
+						hand, arm = armSelfDepth(rig, shape, frames, limb)
+					end
+				end
+				if swivelOn then
+					for _ = 1, MotionPlayer.ElbowSwivelPasses do
+						local a = arm :: SelfHit
+						if a.e <= margin or not a.p or not a.fn then break end
+						local n = sdfNormal(a.fn, a.p)
+						poleW = safeUnit(poleW + n * MotionPlayer.ElbowSwivelGain, poleW)
+						grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+						solveAt(want)
+						hand, arm = armSelfDepth(rig, shape, frames, limb)
+					end
+				end
+				local wantAngle = math.acos(math.clamp(clipPole:Dot(poleW), -1, 1))
+				-- Faster while an arm is deep in the body (a slam swinging the arm through the chest in a frame or two).
+				-- (It also ramps in with the floor clearance: a full-rate swivel on the first lying frame read as a shoulder jump.)
+				local step = math.rad(MotionPlayer.ElbowSwivelRate * (0.3 + 0.7 * swivelRamp)) * math.max(frameStep, 1) * (1 + swivelRamp * depth0 / MotionPlayer.ElbowSwivelDeep)
+				local angle = math.clamp(wantAngle, prevSwivel - step, prevSwivel + step)
+				if math.abs(angle - wantAngle) > 1e-3 then
+					-- Rate-limited: turn the clip's pole toward the wanted swivel by the allowed angle (a released swivel keeps
+					-- its last axis: it relaxes back toward the clip's pole).
+					local axis = clipPole:Cross(poleW)
+					if axis.Magnitude < 1e-4 then
+						local last = if fresh then (prevPush :: any)[swivelKey .. "Axis"] else nil
+						axis = if last then heading:VectorToWorldSpace(last) else Vector3.zero
+					end
+					if axis.Magnitude > 1e-4 and angle > 1e-4 then
+						poleW = CFrame.fromAxisAngle(axis.Unit, angle):VectorToWorldSpace(clipPole)
+					else
+						poleW, angle = clipPole, 0
+					end
+					grip.pole = libVector(heading:VectorToObjectSpace(poleW))
 					solveAt(want)
 					hand, arm = armSelfDepth(rig, shape, frames, limb)
+				end
+				-- The swivel never twists the upper arm about its own axis (relative to the chest) past SwivelTwistMax when the
+				-- clip's own pole stays within it: turning the elbow out around an arm reaching overhead or behind the back
+				-- twisted the shoulder 140-170 deg. (A clip pose already past the limit is left alone; so is a guarded swivel
+				-- that would leave the arm deeper in the body — the self clearance comes first.)
+				if angle > 1e-4 and MotionPlayer.SwivelTwistMax then
+					local limit = MotionPlayer.SwivelTwistMax :: number
+					local axis = clipPole:Cross(poleW)
+					if upperArmTwist(rig, limb) > limit and axis.Magnitude > 1e-4 then
+						axis = axis.Unit
+						local fullAngle, fullPole = angle, poleW
+						local fullDepth = math.max((hand :: SelfHit).e, (arm :: SelfHit).e)
+						local function poleAt(a: number): Vector3 return CFrame.fromAxisAngle(axis, a):VectorToWorldSpace(clipPole) end
+						grip.pole = libVector(heading:VectorToObjectSpace(clipPole))
+						solveAt(want)
+						local guarded = false
+						if upperArmTwist(rig, limb) <= limit then
+							local lo, hi = 0, angle
+							for _ = 1, 5 do
+								local mid = (lo + hi) * 0.5
+								grip.pole = libVector(heading:VectorToObjectSpace(poleAt(mid)))
+								solveAt(want)
+								if upperArmTwist(rig, limb) <= limit then lo = mid else hi = mid end
+							end
+							grip.pole = libVector(heading:VectorToObjectSpace(poleAt(lo)))
+							solveAt(want)
+							local h2, a2 = armSelfDepth(rig, shape, frames, limb)
+							if math.max(h2.e, a2.e) <= math.max(fullDepth, 0) + 0.01 then
+								angle, poleW, hand, arm = lo, poleAt(lo), h2, a2
+								guarded = true
+							end
+						end
+						if not guarded then
+							angle, poleW = fullAngle, fullPole
+							grip.pole = libVector(heading:VectorToObjectSpace(poleW))
+							solveAt(want)
+						end
+					end
+				end
+				if angle > 1e-4 then
+					nextPush[swivelKey] = angle
+					local axis = clipPole:Cross(poleW)
+					if axis.Magnitude > 1e-4 then nextPush[swivelKey .. "Axis"] = heading:VectorToObjectSpace(axis.Unit) end
+				end
+			end
+			if limbPush then
+				if not hand or not arm then hand, arm = armSelfDepth(rig, shape, frames, limb) end
+				local h, a = hand :: SelfHit, arm :: SelfHit
+				for _ = 1, MotionPlayer.SelfClearPasses do
+					if h.e <= 0 and a.e <= 0 then break end
+					-- Every push is proportional to its overlap: the hand moves out along the surface normal; an arm inside
+					-- the body moves the hand out further (it carries the elbow along only partly).
+					if h.e > 0 and h.p and h.fn then want += sdfNormal(h.fn, h.p) * (h.e + 0.005) end
+					if a.e > 0 and a.p and a.fn then want += sdfNormal(a.fn, a.p) * (a.e * 2.5 + 0.005) end
+					solveAt(want)
+					h, a = armSelfDepth(rig, shape, frames, limb)
 				end
 			end
 			-- The push follows at most SelfPushRate studs per frame (heading space, so it turns with the body): a hand
@@ -2339,11 +3194,13 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 			local prev = if fresh then (prevPush :: any)[limb] else nil
 			if prev then
 				local was = heading:VectorToWorldSpace(prev)
-				local maxStep = MotionPlayer.SelfPushRate * math.max((clock - (prevPush :: any).t) * 60, 1)
+				local rate = if lyingPush then lyingRate else MotionPlayer.SelfPushRate
+				local maxStep = rate * math.max((clock - (prevPush :: any).t) * 60, 1)
 				local d = want - was
 				shown = if d.Magnitude > maxStep then was + d.Unit * maxStep else want
 			elseif want.Magnitude > 0 and (fresh or (forcedPass and not pose.cut)) then
-				shown = if want.Magnitude > MotionPlayer.SelfPushRate then want.Unit * MotionPlayer.SelfPushRate else want
+				local rate = if lyingPush then lyingRate else MotionPlayer.SelfPushRate
+				shown = if want.Magnitude > rate then want.Unit * rate else want
 			end
 			local pushing = shown.Magnitude > 1e-4
 			local k = if pushing then kUp else math.max(0, prevK - kStep)
@@ -2362,9 +3219,9 @@ function MotionPlayer.clearArms(rig: RigInfo, pose: Pose, floorY: number, force:
 		end
 	end
 	if forcedPass then
-		rig.selfPushForced = if nextPush.LeftHand or nextPush.RightHand or nextPush.LeftHandBase or nextPush.RightHandBase then nextPush else nil
+		(rig :: any)[recordKey] = if nextPush.LeftHand or nextPush.RightHand or nextPush.LeftHandBase or nextPush.RightHandBase or nextPush.LeftHandSwivel or nextPush.RightHandSwivel then nextPush else nil
 	else
-		rig.selfPush = nextPush
+		(rig :: any)[recordKey] = nextPush
 	end
 	return moved
 end

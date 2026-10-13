@@ -326,7 +326,9 @@ return function(t)
 		if not ClipLibrary.get("SideRoll") then return end
 		local L, G, R = Config.LandingFrames or 34, Config.GetupFrames or 26, Config.RollFrames or 10
 		-- Chest direction in heading space (lying body: rootRot's look vector); rollDir +1 travels to the fighter's left (-X).
-		-- The getup crossfades in over up to GetupCrossfadeMax (0.1 s), so the turn is judged on the roll's third frame.
+		-- Round 5: the roll is a quarter turn onto the travel-side hip over the sim's 10 roll frames (the knockdown smoother
+		-- caps the body's turn at 12 deg/frame; the round-4 clip spun a full turn in 14 frames, 27 deg/frame), so the turn is
+		-- judged on the roll's sixth frame and the quarter turn by its tenth.
 		local function chest(pose: any): Vector3 return (pose.rootRot or CFrame.identity).LookVector end
 		for _, face in { "FaceUp", "FaceDown" } do
 			for _, dir in { 1, -1 } do
@@ -346,8 +348,8 @@ return function(t)
 						local c = chest(pose)
 						local toward = -c.X * dir
 						if not firstChestY then firstChestY = c.Y end
-						if f <= L + 8 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
-						if f == L + 3 then towardAtTurn = toward end
+						if f <= L + 10 then towardMax = math.max(towardMax, toward); towardMin = math.min(towardMin, toward) end
+						if f == L + 6 then towardAtTurn = toward end
 					end
 					local rot = pose.rootRot or CFrame.identity
 					if prevRot and f >= L - 2 then
@@ -361,6 +363,7 @@ return function(t)
 					t.expect.truthy(firstChestY > 0.5, tag .. " starts on its back")
 					t.expect.truthy((towardAtTurn or -1) > 0.6, string.format("%s: the chest turns toward the travel side first (%.2f)", tag, towardAtTurn or -1))
 					t.expect.truthy(towardMax > 0.85, string.format("%s: quarter turn reached (%.2f)", tag, towardMax))
+					t.expect.truthy(maxTurn <= 15, string.format("%s: the pelvis turns %.1f degrees in one frame", tag, maxTurn))
 				else
 					-- A grounded face-down knockdown lies head toward the opponent (FallFront lands in GetupFront's first
 					-- frame) and rises with GetupFront while the sim slides the body aside: the log roll's prone half turn

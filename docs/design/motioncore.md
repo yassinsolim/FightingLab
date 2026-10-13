@@ -30,6 +30,12 @@ Overhaul round 4 (motion QA, branch `r4-motion`): a smoothness / joint-limit / c
 runtime fixes for every root cause it found (transitions, hitstop, IK continuity, strike contact, self clearance, feet),
 re-timed throw clips, an eased fight camera and the `MotionQA_Test` suite — see §13.
 
+Overhaul round 5 (branch `r5-motion`): knockdowns into getups **without the 180-degree spin** (a turn-over clip and a
+rebuilt side roll; whole-body turns ≤ 12.2 deg/frame, limbs ≤ 29.5), **point-blank strikes that land on the surface**
+(lunge spacing + contact push-back), **no gloves or forearms in the own body on the floor or when thrown** (also when
+breaking a throw), and **Kael's face readable** from the fight camera behind a real guard — tests in
+`MotionQARound5_Test`; see §14.
+
 ---------------------------------------------------------------------------------------------------------------------
 
 ## 0. Quick start (one move, no Studio)
@@ -645,3 +651,174 @@ Not fixed:
   consistent through the chamber (a pole pointing along the forearm flips the elbow).
 - Gloves: the runtime keeps them out of the head/torso only in guard, movement and reactions; in attacks, getups and
   throws the clip must route the hands around the body.
+
+## 14. Round 5 (overhaul): getups without a spin, strikes on the surface, no self-clipping on the floor, Kael's face
+
+The user asked for four fixes after round 4:
+- a face-down knockdown must get up without turning 180 degrees;
+- point-blank strikes must not sink into the opponent;
+- gloves and forearms must stay out of the own body in getups, rolls, KO and thrown-defender tracks;
+- Kael's face must read from the fight camera.
+
+Everything below is measured on the real rigs of all six fighters (round-4 proportions, rigid gloves for Kael and
+Sierra).
+
+### 14.1 Harness and tests
+
+`ServerStorage.UnitTest.MotionQA` additions:
+- `QA.knockdownCases(id)`: knockdowns from a grounded hit, a launcher fall and a juggle, face up and face down, into
+  Stand, BackRoll, SideRoll left/right and late rolls (chosen at Landing 31, after the stand-up lead started), plus the
+  KO (grounded face up/down, launch face up, juggle face down). Each frame from the one before the body reaches the
+  floor to the end of the case (the stance after it) is checked for:
+  - `getup.spin`: pelvis yaw/roll per frame, limit 15 deg;
+  - `getup.whip`: every part's turn relative to the pelvis per frame, limit 30 deg.
+- `QA.moveCase(id, key, "mid")`: halfway between Separation and the move's range.
+- `QA.slotTwo(case)`: the subject in player slot 2.
+- An `onFrame` hook in `QA.play`.
+- Face metrics:
+  - `QA.fightCamera`: CameraDirector's shot for a pair;
+  - `QA.faceVisibility`: the share of the camera-side eye, nose and mouth landmarks (`Motion.BodyShape.faceLandmarks`,
+    13 points snapped onto the head) whose sight line to the camera no glove or hand capsule crosses;
+  - `QA.guardShape`: glove top vs chin, glove centre under the eyes, elbow outside the shoulder line.
+
+`ServerStorage.UnitTest.Cases.MotionQARound5_Test` has 84 tests, each well under the runner's 5 s:
+- 1: knockdown continuity per fighter, source and face.
+- 3: gloves/hands vs own head (≤ 0.03) and torso (≤ 0.05), and forearm centrelines (≤ 0.05), in two settings:
+  - Landing, Getup, KO and Knockdown, per fighter;
+  - every throw's defender track per defender, thrown (per defender and attacker half) and breaking the throw. Three
+    cases are capped in `DEFENDER_EXCEPTIONS` (14.6).
+- 2: every strike and kick at point-blank (Separation 2.6), mid and max range: `opp.strike` and `opp.through`
+  ≤ 0.15 after the startup (active and recovery).
+- 4: face visibility ≥ 70% from the fight camera at spacings 3.5 and 7, both player slots, in idle, walk, backwalk and
+  blockstun; and Kael's idle guard: glove tops at most 0.1 under the chin, centres under the eyes, elbows ≤ 0.3
+  outside the shoulders.
+
+On main's runtime 70 of the 78 failed, measured before the six thrown-defender tests were split into attacker halves
+(all six failed on main; the halves were not re-run on main). The 8 that pass on main are guards against regressions:
+- max-range strikes for Kael, Sierra, Goran, Lumi and Rhys (Nia's Elbow sinks 0.24 at max range on main);
+- faces for Goran, Lumi and Nia.
+
+Test time:
+- The round-4 `MotionQA_Test` group tests and the two `MotionGround_Test` sweeps over every move clip now run per
+  fighter or per case group (the throw tracks in two halves: the throws of three fighters, or the rigs of three
+  fighters), with the same cases and checks.
+- So each test stays well inside the runner's limit with the extra floor and thrown-defender clearance: in a timed
+  copy of the runner the slowest motion test takes 2.6 s (4.15 s before the throw halves).
+- Official runner on the branch: 501/501 in one Play session, 230 s, no timeouts.
+
+`tools/mocap/motionqa_report.py` reports `getup.spin` / `getup.whip` and a worst-value-per-category table.
+
+### 14.2 Runtime changes (MotionPlayer, States, BodyShape)
+
+| area | change | knobs |
+|---|---|---|
+| knockdown smoother | in Landing, Getup, KO and Knockdown (and 0.6 s of stance after) each frame's pose is limited against the shown one in body frames: pelvis yaw/roll and pitch, spine and neck, each limb's direction and reach in its chest/pelvis frame, poles, and the feet relative to their own leg | `LyingSmooth`, `LyingYawRoll` 12, `LyingPitch` 28, `LyingSpine` 14, `LyingLimb` 18, `LyingReach` 0.08, `LyingPole` 22, `LyingFoot` 22, `LyingTail` 0.6 |
+| knockdown whip limit | the last step of `apply` on those poses: every part's rotation relative to the pelvis turns at most 26 deg per frame from the shown frame (pelvis outward), so neither fast clip content nor the floor rules whip a limb. A clamped leg that would end up lower than the solve rested it (or below the floor) is lifted rigidly about the hip by the least angle that clears it, at most 3.5 deg (a foot held at last frame's turn while the solver laid it down sank shoes 0.03-0.08 into the floor) | `LyingJointDeg` 26, `LyingLiftMaxDeg` 3.5 |
+| getup ankle range | on getup clips' poses (`Pose.ankleRange`) a foot that is not planted keeps inside the ankle's range against its own shin (dorsiflexion 40, roll 35, yaw 40; pointed toes left alone), never taking the foot or its shoe lower than the solve had it; fades out as the foot plants. The new side roll's kneeling foot read 100-146 deg of dorsiflexion and 60-95 deg of roll against its shin | `GetupAnkleRange`, `AnkleRange` |
+| floor / thrown self clearance | the self clearance also runs on the floor and for a thrown defender or one breaking the throw. The push rate ramps in over 6 lying frames; a defender's push starts at full rate. A thrown defender's gripping hands get their own clearance pass after the grips | `LyingSelfClear`, `LyingPushRate` 0.3, `LyingPushRamp` 6, `DefenderClearBreak` |
+| elbow swivel | on the floor and for a thrown defender, an elbow or upper arm inside (or within 0.25 of) the body turns the pole out along the body's normal (the hand stays put). It is warm-started from the last frame, rate-limited and faster while deep; a defender's swivel eases in over the throw's first 3 frames. It never twists the upper arm past 112 deg about its own axis when the clip's pole stays within that and the guarded swivel leaves the arm no deeper (turning the elbow out around an arm reaching overhead twisted shoulders 140-170 deg) | `ElbowSwivel`, `ElbowSwivelPasses` 4, `ElbowSwivelGain` 0.6, `ElbowSwivelMargin` 0.25, `ElbowSwivelRate` 10, `ElbowSwivelDeep` 0.08, `DefenderSwivelRamp` 3, `SwivelTwistMax` 112 |
+| crossfade hands | hands blend in each pose's chest frame (reach, pole, rotation) and are carried by the blended chest | `ChestBlend` |
+| lunge spacing | an attack whose clip lunges toward a target at its designed range scales the forward pelvis travel down to what the real distance leaves (rate-limited, carried through a string) | `LungeSpacing`, `LungeRate` 0.15 |
+| contact push-back | what still sinks after the contact pass bent the limb (an elbow or knee strike, a folded hammer arm) holds the attacker's body back by the residual (re-applied pose, planted feet stay), released slowly. It grows at most 0.15/frame in the startup, freely from the first active frame | `ContactPushBack`, `ContactPushMax` 0.8, `ContactPushRelease` 0.04, `ContactPushRate` 0.15 |
+| profile clearance | in guard, movement and reactions the right glove moves off the sight lines from the camera to the eye, nose and mouth: down along the jaw and a little forward, by the least distance (refined), smoothed over frames. That is the camera side, because the local fighter stands on the left. Out of the guard the shift lets go at 0.04/frame (dropped at the self push's rate, it turned Kael's shoulder 16 deg on a hook's first frame) | `ProfileClearance`, `ProfileHand`, `ProfileMargin` 0.03, `ProfileSmooth` 0.5, `ProfileRelease` 0.04, `ProfileViews`, `ProfileDir` |
+| knockdown states | `Motion.States` knows how the shown body lies (`RequestContext.shownLie`). A juggle that ends face down (prone, head away) is rolled onto its back with `ProneTurnOver` during Landing (keys `Down:FaceDown:Turn:Air`, `Down:FaceUp:Turned:Air`), and every getup after it starts face up (`Getup:FaceUp:<kind>:Air`) | `States.TURN_START` 6, `States.TURN_FRAMES` 18 |
+| face landmarks | `BodyShape.FACE` and `BodyShape.faceLandmarks(head, side)` (eye, nose, mouth points on the real head) for the harness and the profile clearance | — |
+| shoes | rig chains carry the worn shoe's box (`shoeBox`, `shoeSize`), so the whip limit and the ankle range keep the shoe, not just the foot box, out of the floor | — |
+
+### 14.3 Clips (`tools/mocap/lying.py`, body-frame keys)
+
+`lying.py` builds lying clips from keys in body frames (pelvis rotation path, hands in the chest frame, feet in the
+pelvis frame), so limbs follow the body through a roll instead of counter-rotating against it.
+- `ProneTurnOver` (new, 18 frames): FallFrontAir's prone pose (head away) rolled onto the back over the right side at
+  ≤ 12 deg/frame.
+  - The lower arm reaches overhead along the floor and comes down beside the body.
+  - The upper arm guards the face; the legs stay together.
+  - It ends in FallBack's lying pose.
+- `SideRoll` (rebuilt, 36 frames): from FallBack's pose a quarter turn onto the travel-side hip (the old clip spun a
+  full turn in 14 frames, 27 deg/frame).
+  - The lower hand braces in front of the chest and the upper hand plants.
+  - A push up into a crouch turning toward the opponent, then the stance.
+  - The feet keep their lying set on the leg until they plant.
+  - The clip rolls left; the runtime mirrors it.
+
+### 14.4 Results (all six, real rigs; main -> branch)
+
+| issue | main | branch |
+|---|---|---|
+| 1. knockdown -> getup -> stance, worst whole-body turn per frame | 53.2 deg (all six) | 12.0-12.2 deg |
+| 1. worst limb turn relative to the pelvis per frame | 173-179.5 deg | 28.0-29.5 deg |
+| 1. QA report: `getup.spin` / `getup.whip` defects | 42 / 839 | 0 / 0 |
+| 2. strike depth after startup, point-blank | 0.38-0.77 (Goran CrouchJab 0.77, Rhys LowPunch 0.61) | 0.05-0.14 |
+| 2. mid range | 0.31-0.71 (Goran JabHammer 0.71) | 0.05-0.14 |
+| 2. max range | Nia Elbow 0.24, others ≤ 0.15 | 0.04-0.07 |
+| 3. glove/hand/forearm in own body, Landing/Getup/rolls/KO | 0.37-0.77 | clean (≤ the limits) for all six |
+| 3. thrown defender (every throw) | 0.07-0.35 (Goran's RamSlam 0.35) | clean except Rhys 0.20 (RamSlam slam frame), Nia 0.033 (Rhys Throw) |
+| 3. defender breaking a throw | up to 0.29 (Kael breaking RamSlam) | clean except Nia 0.030 (Rhys Throw) |
+| 4. Kael face visible (worst / average) | 0.00 / 0.38 | 0.85 / 1.00 |
+| 4. Sierra / Rhys / others (worst) | 0.38 / 0.54 / 1.00 | 1.00 / 1.00 / 1.00 |
+| 4. Kael idle guard: lowest glove top vs chin, widest elbow outside the shoulders | +0.18, -0.01 | -0.02 (at the chin), -0.09 |
+
+Round-4 QA report re-run (598 cases, 65,237 frames; `OV6\handoff\motion-shots\round5\report\`). Distinct defects
+main -> branch per category:
+
+| category | main -> branch |
+|---|---|
+| rotation pops | 1842 -> 1617 |
+| tip-speed pops | 720 -> 658 |
+| transition jumps | 254 -> 228 |
+| flips | 162 -> 68 |
+| joint limits | 1366 -> 1327 |
+| glove in head | 26 -> 18 |
+| glove in torso | 93 -> 54 |
+| arm in torso | 902 -> 612 |
+| legs | 158 -> 107 |
+| strike depth | 36 -> 1 |
+| strike through | 32 -> 2 |
+| bodies overlapping | 6 -> 0 |
+| jitter | 2 -> 2 |
+| getup spin | 42 -> 0 |
+| getup whip | 839 -> 0 |
+
+No category gets worse for any fighter (Kael's transition jumps 28 -> 28, the closest). Within joint limits the lying
+cases do get worse (14.6).
+
+### 14.5 For clip authors
+
+- Lying clips:
+  - key them in body frames (`lying.py`);
+  - never let a lying turn exceed ~12 deg/frame;
+  - keep the arm under the body out of the way (reach overhead or brace in front of the chest);
+  - start a getup from the lying pose its landing shows (`Motion.States` picks the face-up getups after the
+    turn-over).
+- Strikes: the runtime now scales a clip's forward lunge to the real distance and holds the body back for what still
+  sinks. A strike that should travel forward at point-blank must still not rely on reaching through the target.
+- Getup feet: the runtime keeps unplanted feet inside the ankle's range against the shin. A clip that wants a
+  kneeling toe-tuck should key it on the shin (`lying.py` `leg_frame`), not in the pelvis frame.
+
+### 14.6 Known issues (round 5)
+
+Defender cases over the limit, capped in `MotionQARound5_Test` `DEFENDER_EXCEPTIONS`:
+- Rhys's left forearm on Goran's RamSlam slam frame (0.20, 1 frame).
+- Nia's right fingertips grazing her cheek on Rhys's Throw entry, thrown (0.033) and breaking it (0.030).
+
+Other known issues:
+- Point-blank startup frames are outside the strike target. Goran's Hammer at Separation sinks 0.36 on a startup frame
+  (JabHammer 0.24), and Goran's Uppercut on hit 0.23 at its launch (the defender's launch pose rises into the fist
+  during hitstop); these are the QA report's remaining `opp.*` defects.
+- Joint limits: 1327 remain (main 1366), counted by case family main -> branch:
+  - lying cases 233 -> 272;
+  - hit cases 509 -> 456;
+  - states 491 -> 488;
+  - throws 133 -> 111.
+
+  The lying increase is the rebuilt SideRoll: 9-16 distinct limit defects per fighter over both roll directions
+  (main's old roll 2-4). They are:
+  - ankle dorsiflexion and roll where the runtime flattens a planted foot under the kneeling shin;
+  - hip twist at the kneel;
+  - shoulder twist at the hand plant.
+
+  The getup ankle range only acts on unplanted feet. A kneel keyed on the toes, with the contact released until the
+  shin is upright, would remove the rest (a clip change; a first attempt moved the defects into ankle yaw and was
+  reverted).
+- Cost: the floor and thrown-defender clearance makes a lying or thrown frame dearer (the move-clip ground sweeps run
+  ~1.5x longer); standing frames are unchanged.

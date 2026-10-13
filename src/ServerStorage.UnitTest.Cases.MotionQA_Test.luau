@@ -109,8 +109,10 @@ return function(t)
 		t.expect.truthy(#bad == 0, "loops: " .. report(bad))
 	end)
 
-	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
-		t.test("standing transitions (" .. table.concat(group, ", ") .. "): no joint turns > 15 deg in a frame at a switch, no flip, no pop outside attack clips", function()
+	-- One fighter per test (round 5: the runner's 5 s per test; same cases and checks as the round-4 groups of three).
+	for _, id0 in QA.Roster.order do
+		local group = { id0 }
+		t.test("standing transitions (" .. id0 .. "): no joint turns > 15 deg in a frame at a switch, no flip, no pop outside attack clips", function()
 			local cases = {}
 			for _, id in group do
 				for _, c in standingCases(id) do table.insert(cases, c) end
@@ -135,8 +137,9 @@ return function(t)
 		end)
 	end
 
-	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
-		t.test("strikes at their designed range rest on the opponent (" .. table.concat(group, ", ") .. ")", function()
+	for _, id0 in QA.Roster.order do
+		local group = { id0 }
+		t.test("strikes at their designed range rest on the opponent (" .. id0 .. ")", function()
 			local cases = {}
 			for _, id in group do
 				for _, c in QA.moveCases(id, { "max" }) do table.insert(cases, c) end
@@ -146,32 +149,41 @@ return function(t)
 		end)
 	end
 
-	t.test("face-down knockdowns, their getups and the face-down KO (all six fighters): no body part turns 90 degrees in a frame", function()
-		-- FallFront/KOFront used to land in the other prone pose (head away from the opponent) and the face-down getup to
-		-- turn the body back: feet, thighs and arms whipped 150-178 degrees in one frame. Now 46-70 at worst (the prone
-		-- legs still twist after the landing: see motioncore.md 13.4).
-		local wanted = { ["knockdownFaceDown>Stand>idle"] = true, ["knockdownFaceDown>BackRoll>idle"] = true, ["knockdownFaceDown>SideRollL>idle"] = true, ["idle>KOFaceDown"] = true }
-		local cases = {}
-		for _, id in QA.Roster.order do
-			for _, c in QA.stateCases(id) do
-				if wanted[c.label] then table.insert(cases, c) end
+	for _, group in { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } } do
+		t.test("face-down knockdowns, their getups and the face-down KO (" .. table.concat(group, ", ") .. "): no body part turns 90 degrees in a frame", function()
+			-- FallFront/KOFront used to land in the other prone pose (head away from the opponent) and the face-down getup to
+			-- turn the body back: feet, thighs and arms whipped 150-178 degrees in one frame. Now 46-70 at worst (the prone
+			-- legs still twist after the landing: see motioncore.md 13.4). Round 5: two groups of three (runner time limit).
+			local wanted = { ["knockdownFaceDown>Stand>idle"] = true, ["knockdownFaceDown>BackRoll>idle"] = true, ["knockdownFaceDown>SideRollL>idle"] = true, ["idle>KOFaceDown"] = true }
+			local cases = {}
+			for _, id in group do
+				for _, c in QA.stateCases(id) do
+					if wanted[c.label] then table.insert(cases, c) end
+				end
 			end
-		end
-		t.expect.truthy(#cases == 4 * #QA.Roster.order, "every fighter has the face-down cases")
-		local bad = violations(cases, { "pop.rot" }, { ["pop.rot"] = 90 })
-		t.expect.truthy(#bad == 0, "face-down whips: " .. report(bad))
-	end)
+			t.expect.truthy(#cases == 4 * #group, "every fighter has the face-down cases")
+			local bad = violations(cases, { "pop.rot" }, { ["pop.rot"] = 90 })
+			t.expect.truthy(#bad == 0, "face-down whips: " .. report(bad))
+		end)
+	end
 
-	t.test("throw tracks never teleport a body part (both roles, all six fighters)", function()
-		local cases = {}
-		for _, id in QA.Roster.order do
-			for _, c in QA.throwCases(id) do
-				if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+	-- Two tests (the throws of three fighters each, both roles) to stay well inside the runner's time limit; the second
+	-- releases the staged rigs.
+	local THROW_GROUPS = { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } }
+	for gi, group in THROW_GROUPS do
+		t.test("throw tracks never teleport a body part (both roles, the throws of " .. table.concat(group, ", ") .. ")", function()
+			local cases = {}
+			for _, id in group do
+				for _, c in QA.throwCases(id) do
+					if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+				end
 			end
-		end
-		local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
-		QA.destroy(rigs)
-		rigs = nil
-		t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
-	end)
+			local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
+			if gi == #THROW_GROUPS then
+				QA.destroy(rigs)
+				rigs = nil
+			end
+			t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
+		end)
+	end
 end
