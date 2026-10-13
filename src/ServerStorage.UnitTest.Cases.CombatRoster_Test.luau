@@ -77,8 +77,9 @@ return function(t)
 		local s = Sim.newFighter("Sierra", Vector3.zero, Vector3.xAxis, "Sierra")
 		s.state = "Sidestep"; expect.equal(Sim.selectMove(s, "LeadKick"), "AngleKick", "ss+3 during a sidestep")
 		s.state = "Idle"; s.stepRequest = -1; expect.equal(Sim.selectMove(s, "LeadKick"), "AngleKick", "ss+3 pressed with the step tap")
-		s.stepRequest = 0; expect.equal(Sim.selectMove(s, "RearPunch"), "Cross", "no ss move falls back to neutral")
-		s.state = "Sidestep"; expect.equal(Sim.selectMove(s, "RearPunch"), "Cross")
+		s.stepRequest = 0; expect.equal(Sim.selectMove(s, "RearPunch"), "SlashElbow", "no ss move falls back to neutral")
+		s.state = "Sidestep"; expect.equal(Sim.selectMove(s, "RearPunch"), "SlashElbow")
+		s.state = "Idle"; s.input.moveX = -1; expect.equal(Sim.selectMove(s, "RearPunch"), "Cross", "round 6: Sierra's cross is b+2")
 	end)
 
 	test("every roster move reports its target frame data", function()
@@ -86,7 +87,9 @@ return function(t)
 			local char = Roster.get(id)
 			for _, key in char.moveOrder do
 				local def = char.moves[key]
-				if def.height ~= "Throw" then
+				-- Throws, the no-hitbox signature moves (stance entries, parries, the catch) and the Ultimate (a cinematic on
+				-- hit) have their own tests.
+				if def.height ~= "Throw" and not def.noHit and def.cinematic == nil then
 					local m = Sim.newMatch("Training", id, "Kael")
 					place(m, Vector3.zero, Vector3.new(math.min(3, def.range - 0.2), 0, 0))
 					m.fighters[2].input.block = true
@@ -173,43 +176,78 @@ return function(t)
 	end)
 
 	test("each moveset has the required tools with honest frame data", function()
+		-- Round 6 (movesets.md): 20-26 moves; three 3-hit strings with different enders; a standard and a unique launcher
+		-- (from the stance, on counter hit, a low or a string ender); one tumble extender; a good low and a power low;
+		-- an i10-12 punisher; the 3+4 signature; the 1+2 Ultimate last; both throws.
 		for _, id in Roster.order do
 			local char = Roster.get(id)
 			local n = #char.moveOrder
-			expect.truthy(n >= 12 and n <= 18, id .. " has 12-18 moves (" .. n .. ")")
+			expect.truthy(n >= 20 and n <= 26, id .. " has 20-26 moves (" .. n .. ")")
 			local jab = char.moves[char.moveOrder[1]]
 			expect.equal(jab.startup + 1, 10, id .. " first move is a 10 frame jab")
 			expect.equal(jab.onBlock, 1, id .. " jab is +1 on block")
-			local strings, lows, launchers, powerLows, homing, throws12, throws24, directional = 0, 0, 0, 0, 0, false, false, {}
+			local lows, standardLaunch, uniqueLaunch, powerLows, homing, throws12, throws24, directional = 0, 0, 0, 0, 0, false, false, {}
+			local tumbles, signatures, goodLows, punisher = 0, 0, 0, false
+			local enders: { [string]: boolean } = {}
+			local threeHit = 0
 			for _, key in char.moveOrder do
 				local def = char.moves[key]
 				expect.truthy(type(def.intent) == "string" and #def.intent > 20, id .. "." .. key .. " has an animation intent")
 				expect.truthy(type(def.notation) == "string" and #def.notation > 0, id .. "." .. key .. " has notation")
 				expect.falsy(string.find(string.lower(def.name .. " " .. def.intent), "crane", 1, true), id .. "." .. key .. " avoids iconic film wording")
-				if def.chainFrom then strings += 1 end
+				local source = if def.chainFrom then char.moves[def.chainFrom] else nil
+				if source and source.chainFrom then threeHit += 1; enders[def.height .. (if def.onHit == "KND" then "KND" else "")] = true end
 				if def.height == "Low" then lows += 1 end
+				if def.height == "Low" and def.onHit ~= "KND" and def.startup + 1 <= 15 and def.onBlock >= -13 then goodLows += 1 end
 				if def.onHit == "LAUNCH" then
-					launchers += 1
 					expect.truthy(def.onBlock <= -13, id .. "." .. key .. " launcher is punishable")
+					if def.stance or def.chainFrom or def.height == "Low" then uniqueLaunch += 1 else standardLaunch += 1 end
 				end
+				if def.onCounter == "LAUNCH" then uniqueLaunch += 1 end
 				if def.height == "Low" and def.onHit == "KND" then
 					powerLows += 1
 					expect.truthy(def.onBlock <= -15, id .. "." .. key .. " power low is punishable")
 				end
+				if def.tumble then tumbles += 1 end
+				if def.notation == "3+4" then signatures += 1; expect.truthy(def.toStance ~= nil or def.props.catch ~= nil, id .. " 3+4 is a stance or a catch") end
 				if def.homing or def.track >= 3 then homing += 1 end
 				if def.notation == "1+3" then throws12 = true end
 				if def.notation == "2+4" then throws24 = true end
+				if def.height ~= "Throw" and not def.noHit and def.chainFrom == nil and def.stance == nil and def.startup + 1 <= 12 then
+					local best = def.damage
+					for _, k2 in char.moveOrder do if char.moves[k2].chainFrom == key then best = math.max(best, def.damage + char.moves[k2].damage) end end
+					if best >= 12 then punisher = true end
+				end
 				local prefix = string.match(def.input, "^(%a+)%+")
 				if prefix then directional[prefix] = true end
 				if def.height ~= "Throw" then expect.truthy(def.onBlock <= 1, id .. "." .. key .. " is at most +1 on block") end
 			end
-			expect.truthy(strings >= 2, id .. " has strings")
-			expect.truthy(lows >= 2, id .. " has a low poke and a power low")
-			expect.truthy(launchers >= 1, id .. " has a launcher")
+			expect.truthy(threeHit >= 3, id .. " has three 3-hit strings (" .. threeHit .. ")")
+			local enderKinds = 0
+			for _ in enders do enderKinds += 1 end
+			expect.truthy(enderKinds >= 2, id .. " string enders differ")
+			expect.truthy(standardLaunch >= 1, id .. " has a standard launcher")
+			expect.truthy(uniqueLaunch >= 1, id .. " has a unique launcher (stance, counter hit, low or string)")
+			expect.equal(tumbles, 1, id .. " has one tumble extender")
+			expect.truthy(goodLows >= 1, id .. " has a good low")
 			expect.truthy(powerLows >= 1, id .. " has a power low")
+			expect.truthy(punisher, id .. " has an i10-12 punisher for 12+ damage")
+			expect.equal(signatures, 1, id .. " has one 3+4 signature")
 			expect.truthy(homing >= 1, id .. " has a tracking move")
 			expect.truthy(throws12 and throws24, id .. " has 1+3 and 2+4 throws")
 			for _, prefix in { "f", "d", "b" } do expect.truthy(directional[prefix], id .. " uses " .. prefix .. " + button") end
+			local ult = char.moves.Ultimate
+			expect.truthy(ult ~= nil and char.moveOrder[n] == "Ultimate", id .. " Ultimate is last")
+			expect.equal(ult.input, "LP+RP"); expect.equal(ult.notation, "1+2")
+			expect.truthy(ult.startup + 1 >= 18 and ult.startup + 1 <= 22, id .. " Ultimate about i20")
+			expect.truthy(ult.onBlock <= -13 and ult.height == "Mid" and ult.tier == "Heavy", id .. " Ultimate is a launch-punishable mid")
+			expect.truthy(ult.damage >= 30 and ult.damage <= 36, id .. " Ultimate damage 30-36")
+			expect.truthy(ult.props.armor ~= nil and ult.props.armor[1] <= 1 and ult.props.armor[2] >= ult.startup and ult.props.armorMulti == true, id .. " Ultimate armored through startup")
+			local cin = ult.cinematic :: any
+			expect.truthy(cin.duration >= 180 and cin.duration <= 270 and #cin.impacts >= 4 and #cin.impacts <= 6, id .. " cinematic 180-270 f, 4-6 impacts")
+			expect.truthy(cin.endKind == "FaceUp" or cin.endKind == "FaceDown", id .. " endKind")
+			expect.truthy(cin.endDistance >= 4.4 and cin.endDistance <= 5.5, id .. " endDistance leaves room for the lying body (motion request)")
+			expect.truthy(type(ult.name) == "string" and ult.name ~= "" and string.lower(ult.name) ~= "ultimate", id .. " Ultimate has its own name")
 		end
 	end)
 
