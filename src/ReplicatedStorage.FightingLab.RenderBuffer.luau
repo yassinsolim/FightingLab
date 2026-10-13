@@ -18,7 +18,7 @@ export type SnapEvent = {
 	kind: string, attacker: number, target: number, move: string?, damage: number,
 	advantage: number, combo: number, air: boolean, point: Vector3?, frame: number,
 	counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?,
-	height: string?, limb: string?, evaded: boolean?, tumble: boolean?,
+	height: string?, limb: string?, evaded: boolean?, tumble: boolean?, punish: boolean?,
 }
 export type Entry = {
 	frame: number, epoch: number, serverTime: number, phase: string, mode: string, sparring: boolean,
@@ -132,6 +132,7 @@ local function parseEvent(raw: unknown): SnapEvent?
 		limb = if typeof(raw.limb) == "string" then raw.limb else nil,
 		evaded = if raw.evaded == true then true else nil,
 		tumble = if raw.tumble == true then true else nil,
+		punish = if raw.punish == true then true else nil,
 	}
 end
 function RenderBuffer.parse(raw: unknown): Entry?

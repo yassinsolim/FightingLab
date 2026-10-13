@@ -54,7 +54,7 @@ fighters (true combo, damage ±1). Damage 31-40 on a 100 HP bar (≤ 44 % of Lum
 (table in combat-balance.md R6).
 
 **Netcode.** Codec v3 (`surge` bit 32, `ultUsed` bit 64, `tumble` bit 128, `stance`, `stanceFrame`, the cinematic
-`throw` table, event `tumble`); MatchRunner / RenderBuffer fields; debug attributes `LearnerSurge`, `LearnerUltUsed`,
+`throw` table, event `tumble`, and `punish` on hits that land in the opponent's recovery or parry stagger); MatchRunner / RenderBuffer fields; debug attributes `LearnerSurge`, `LearnerUltUsed`,
 `LearnerStance`.
 
 **Controls / input.** `fight.keyboard.ultimate = "L"`, `fight.gamepad.ultimate = "ButtonR2"`, notation

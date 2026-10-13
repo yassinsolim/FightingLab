@@ -38,6 +38,7 @@ local function cloneEvent(e: Sim.Event): { [string]: any }
 		limb = if typeof(raw.limb) == "string" then raw.limb else nil,
 		evaded = if raw.evaded == true then true else nil,
 		tumble = if raw.tumble == true then true else nil,
+		punish = if raw.punish == true then true else nil,
 	}
 end
 

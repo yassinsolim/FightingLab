@@ -223,7 +223,8 @@ return function(t: TestContext)
 		a.characterId = "Kael"; a.stance = "Pocket"; a.stanceFrame = 6; a.surge = true; a.ultUsed = false
 		b.characterId = "Sierra"; b.stance = "Pocket"; b.tumble = true; b.ultUsed = true
 		local raw = { frame = 20, phase = "Fight", mode = "Match", fighters = { a, b },
-			events = { { frame = 20, kind = "Hit", attacker = 1, target = 2, move = "RibRoller", damage = 6, advantage = 0, combo = 3, air = true, tumble = true } } }
+			events = { { frame = 20, kind = "Hit", attacker = 1, target = 2, move = "RibRoller", damage = 6, advantage = 0, combo = 3, air = true, tumble = true },
+				{ frame = 20, kind = "Hit", attacker = 2, target = 1, move = "Jab", damage = 6, advantage = 8, combo = 1, air = false, punish = true } } }
 		local e = RB.parse(raw)
 		assert(e)
 		t.expect.equal(e.fighters[1].state, "Stance")
@@ -235,6 +236,8 @@ return function(t: TestContext)
 		t.expect.equal(e.fighters[2].tumble, true)
 		t.expect.equal(e.fighters[2].ultUsed, true)
 		t.expect.equal(e.events[1].tumble, true)
+		t.expect.equal(e.events[1].punish, nil)
+		t.expect.equal(e.events[2].punish, true, "punish hits are flagged")
 		t.expect.falsy(RB.canExtrapolate(e, e.fighters[1]), "a stance moves on its own (Aerial travel)")
 		local u = fighter(0, "Ultimate")
 		u.throw = { role = "Attacker", archetype = "ultimate", move = "Ultimate", frame = 30, duration = 220, impactFrame = 34 }

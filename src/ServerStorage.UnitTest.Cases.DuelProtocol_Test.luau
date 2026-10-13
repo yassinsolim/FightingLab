@@ -274,6 +274,7 @@ return function(t)
 		end
 		local stanceEntry: any = runner:buildEntry({
 			{ kind = "Hit", attacker = 1, target = 2, move = "RibRoller", damage = 6, advantage = 0, frame = m.frame, point = Vector3.new(1, 3, 0), combo = 3, air = true, tumble = true, tier = "Medium", archetype = "hook", height = "Mid", limb = "LeadArm" } :: any,
+			{ kind = "Hit", attacker = 2, target = 1, move = "Jab", damage = 6, advantage = 8, frame = m.frame, point = Vector3.new(1, 3, 0), combo = 1, air = false, punish = true, tier = "Light", archetype = "straight", height = "High", limb = "LeadArm" } :: any,
 		})
 		stanceEntry.fighters[1].state = "Stance"; stanceEntry.fighters[1].stance = "Pocket"; stanceEntry.fighters[1].stanceFrame = 7
 		stanceEntry.fighters[1].surge = true; stanceEntry.fighters[1].ultUsed = false; stanceEntry.fighters[1].throw = nil
@@ -290,8 +291,11 @@ return function(t)
 			t.expect.equal(pb.tumble, true, codec .. " tumble flag")
 			t.expect.equal(pb.stance, nil, codec .. " no stance")
 			t.expect.equal(parsed.events[1].tumble, true, codec .. " tumble hit event")
+			t.expect.equal(parsed.events[1].punish, nil, codec .. " no punish flag")
+			t.expect.equal(parsed.events[2].punish, true, codec .. " punish hit event")
+			t.expect.equal(parsed.events[2].tumble, nil, codec .. " no tumble flag")
 		end
-		t.expect.truthy(buffer.len(NetProtocol.encodeEntry(stanceEntry, "m#7").b) < 260, "binary entry stays small")
+		t.expect.truthy(buffer.len(NetProtocol.encodeEntry(stanceEntry, "m#7").b) < 320, "binary entry with two hit events stays small")
 	end)
 
 	t.test("round 5 PLAY panel kinds: QuickPlay, CancelQueue and Travel are validated; the server's Teleport notice", function()

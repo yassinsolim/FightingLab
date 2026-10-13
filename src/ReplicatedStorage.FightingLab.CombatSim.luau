@@ -38,7 +38,7 @@ export type Fighter = {
 	stance: string?, stanceFrame: number, surge: boolean, surgeFree: boolean, ultUsed: boolean, ultStartPending: boolean,
 	tumbled: boolean, tumbling: boolean,
 }
-export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean?, tumble: boolean? }
+export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean?, tumble: boolean?, punish: boolean? }
 export type TrainerDifficulty = "Easy" | "Normal" | "Hard"
 export type AISnapshot = { state: string, move: string?, moveFrame: number, pos: Vector3, health: number, crouched: boolean, hasHit: boolean, lastDefendedMove: string?, stepFrame: number, guard: string?, velocityY: number }
 export type Match = {
@@ -1150,6 +1150,9 @@ local function hits(m: Match, events: { Event })
 			stanceCounter = st ~= nil and st.counterHit
 		end
 		local counter=not blocked and not armored and (t.state=="Startup" or stanceCounter)
+		-- Punish (HUD call-out): a clean ground hit while the opponent recovers from its own move (whiffed or blocked)
+		-- or staggers after a parry.
+		local punish = not blocked and not armored and not air and (t.state == "Recovery" or t.state == "Stagger")
 		local airScale = Config.AirDamageScale * ((Config.AirDamageDecay or 0.84) ^ math.max(0, t.airHits))
 		local continuing=(t.state=="Hitstun" or air) and t.chain>0
 		local damage=if blocked then math.floor(def.damage*Config.BlockMultiplier+0.5) elseif air then math.max(1,math.floor(def.damage*airScale+0.5)) else def.damage
@@ -1220,7 +1223,7 @@ local function hits(m: Match, events: { Event })
 		local airHit=not blocked and (air or launched)
 		if not armored then t.pos+=a.facing*(if blocked then def.push*0.35 elseif air then def.push*0.45 else def.push*0.75); clamp(t) end
 		m.hitstop=math.max(m.hitstop,hitstopFor(kind,def,counter))
-		table.insert(events,{kind=kind,attacker=i,target=3-i,move=entry.name,damage=damage,advantage=if airHit or knockdown then 0 else advantage,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,if def.height=="Low" then 1.2 else 3.5,0),combo=if blocked or armored then 0 else t.chain,air=airHit,counter=if counter then true else nil,launch=if launched then true else nil,knockdown=if knockdown then true else nil,tier=def.tier,archetype=def.anim.archetype,height=def.height,limb=def.limb,tumble=if tumbleNow then true else nil})
+		table.insert(events,{kind=kind,attacker=i,target=3-i,move=entry.name,damage=damage,advantage=if airHit or knockdown then 0 else advantage,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,if def.height=="Low" then 1.2 else 3.5,0),combo=if blocked or armored then 0 else t.chain,air=airHit,counter=if counter then true else nil,launch=if launched then true else nil,knockdown=if knockdown then true else nil,tier=def.tier,archetype=def.anim.archetype,height=def.height,limb=def.limb,tumble=if tumbleNow then true else nil,punish=if punish and (kind=="Hit" or kind=="KO") then true else nil})
 	end
 end
 
