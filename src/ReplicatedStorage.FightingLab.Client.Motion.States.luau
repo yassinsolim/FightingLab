@@ -247,8 +247,9 @@ function States.floorImpact(tracker: any, view: any, config: any, now: number): 
 	local state = view.state
 	local y = if typeof(view.pos) == "Vector3" then view.pos.Y else 0
 	if state ~= tracker.state then
-		-- A thrown body already hit the floor at the throw impact (ThrowHit presents it): no second impact.
-		local thrown = tracker.state == "Throw"
+		-- A thrown body already hit the floor at the throw impact (ThrowHit presents it), and a body knocked down by the
+		-- Ultimate landed inside the cinematic (Effects/Audio present it from the clip): no second impact.
+		local thrown = tracker.state == "Throw" or tracker.state == "Ultimate"
 		tracker.fromAir = tracker.state == "Airborne" or y > 0.05
 		tracker.state = state
 		tracker.fired = thrown
@@ -540,8 +541,9 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		return { key = "Airborne:" .. hitStamp(hit), clip = States.CLIPS.Airborne, timeMode = "progress", progress = progress,
 			keyframe = States.launch(scale, view.velocityY, view.airFrames, view.airHits, hitSide), fade = 0.05, styled = false, ground = 0 }
 	end
-	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.
-	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or string.find(ctx.key, ":Air", 1, true) ~= nil)
+	-- A body that already fell (out of a juggle) or was thrown down (a throw or the Ultimate cinematic, whose defender track
+	-- ends on the knockdown clip's floor contact) continues the knockdown clip from its floor contact.
+	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or ctx.key == "Ultimate" or string.find(ctx.key, ":Air", 1, true) ~= nil)
 	-- The pose actually shown decides for a body that is already lying when the knockdown starts (a throw's defender
 	-- track, whatever the sim's knockdown side): face down with the head away it continues like a juggle's face-down
 	-- landing below.

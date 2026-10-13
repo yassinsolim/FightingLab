@@ -17,6 +17,10 @@
 --   anchor = <GRIP_ANCHORS name> or part = <partner R15 part> + at = { x, y, z } (point in that part's box, -1..1 of
 --   the half size per axis, -z = front), from = s, to = s (clip seconds the limb holds on), fade = s, weight = 0..1 } }:
 --   after both bodies are posed the limb is re-solved onto the partner's real body point (any fighter sizes).
+-- FLThrow1 Ultimate cinematics (round 6, Motion.Cinematic; bound to move "Ultimate"): the same two roles plus optional
+--   impacts = { normalised times } (impact k lands on the roster cinematic.impacts[k].frame), hits = { { limb, height } }
+--   per impact (effects), camera = { { t, pos = {x,y,z}, look = {x,y,z}, fov, cut, ease, roll } } (studs, attacker frame),
+--   release = 0..1 (the defender glides onto its sim spot from here) and endKind = "FaceUp" | "FaceDown".
 --
 -- Channel layout of FLClip1 (per frame, Roblox character space of the clip heading: +X right, +Y up, -Z toward the
 -- opponent):
@@ -49,6 +53,10 @@ export type Clip = {
 	mirror: boolean,
 }
 export type Grip = { role: string, limb: string, part: string, at: Vector3, from: number, to: number, fade: number, weight: number }
+-- Cinematic camera key (round 6, Ultimate clips): normalised clip time `t`; `pos`/`look` in studs in the ATTACKER's frame
+-- (library axes: +X its right, +Y up, +Z toward the defender, origin = the attacker's sim root on the floor); `cut` = the
+-- shot starts here (no blend from the previous key); a key followed by a cut holds still.
+export type CameraKey = { t: number, pos: Vector3, look: Vector3, fov: number, cut: boolean, ease: string, roll: number }
 export type ThrowClip = {
 	name: string,
 	fighter: string?,
@@ -61,6 +69,14 @@ export type ThrowClip = {
 	breakDefender: Clip?,
 	grips: { Grip }?,
 	sources: { string },
+	-- Round 6 (Ultimate cinematics, all optional): normalised clip time of every impact (impacts[k] lands on the roster's
+	-- cinematic.impacts[k].frame), the striking limb per impact, camera keys, the normalised time from which the defender
+	-- glides from the authored spacing onto its sim spot, and the side it ends lying on.
+	impacts: { number }?,
+	hits: { { limb: string?, height: string? } }?,
+	camera: { CameraKey }?,
+	release: number?,
+	endKind: string?,
 }
 
 ClipLibrary.FORMAT = "FLClip1"
@@ -111,6 +127,55 @@ local function decodeGrips(list: any, name: string): { Grip }?
 			fade = if type(g.fade) == "number" then math.max(g.fade, 0) else 0.06,
 			weight = if type(g.weight) == "number" then math.clamp(g.weight, 0, 1) else 1,
 		})
+	end
+	return out
+end
+
+-- Round 6 cinematic fields (FLThrow1 Ultimate clips). Malformed data raises (the clip is listed in problems()).
+local HIT_LIMBS = { LeftHand = true, RightHand = true, LeftFoot = true, RightFoot = true, Head = true, LeftElbow = true,
+	RightElbow = true, LeftKnee = true, RightKnee = true, LeftShoulder = true, RightShoulder = true, Body = true }
+local function decodeImpacts(list: any, name: string): { number }?
+	if list == nil then return nil end
+	if type(list) ~= "table" or #list == 0 then error("ClipLibrary: throw " .. name .. " impacts must be a non-empty list") end
+	local out: { number } = {}
+	for i, u in list do
+		if type(u) ~= "number" or u < 0 or u > 1 or (i > 1 and u <= out[i - 1]) then
+			error(string.format("ClipLibrary: throw %s impact %d must be a normalised time after the previous one", name, i))
+		end
+		out[i] = u
+	end
+	return out
+end
+local function decodeHits(list: any, name: string): { { limb: string?, height: string? } }?
+	if list == nil then return nil end
+	if type(list) ~= "table" then error("ClipLibrary: throw " .. name .. " hits must be a list") end
+	local out = {}
+	for i, h in list do
+		if type(h) ~= "table" then error(string.format("ClipLibrary: throw %s hit %d is not a table", name, i)) end
+		if h.limb ~= nil and not HIT_LIMBS[h.limb] then error(string.format("ClipLibrary: throw %s hit %d has an unknown limb %s", name, i, tostring(h.limb))) end
+		out[i] = { limb = h.limb, height = if type(h.height) == "string" then h.height else nil }
+	end
+	return out
+end
+local CAMERA_EASES = { smooth = true, linear = true, ["in"] = true, out = true, hold = true }
+local function vec3(v: any, where: string): Vector3
+	if type(v) ~= "table" or type(v[1]) ~= "number" or type(v[2]) ~= "number" or type(v[3]) ~= "number" then error(where .. " needs {x, y, z}") end
+	return Vector3.new(v[1], v[2], v[3])
+end
+local function decodeCamera(list: any, name: string): { CameraKey }?
+	if list == nil then return nil end
+	if type(list) ~= "table" or #list == 0 then error("ClipLibrary: throw " .. name .. " camera must be a non-empty list") end
+	local out: { CameraKey } = {}
+	for i, k in list do
+		local where = string.format("ClipLibrary: throw %s camera key %d", name, i)
+		if type(k) ~= "table" or type(k.t) ~= "number" or k.t < 0 or k.t > 1 then error(where .. " needs t in 0..1") end
+		if i > 1 and k.t < out[i - 1].t then error(where .. " is earlier than the previous key") end
+		if k.ease ~= nil and not CAMERA_EASES[k.ease] then error(where .. " has an unknown ease " .. tostring(k.ease)) end
+		out[i] = {
+			t = k.t, pos = vec3(k.pos, where .. " pos"), look = vec3(k.look, where .. " look"),
+			fov = if type(k.fov) == "number" then math.clamp(k.fov, 10, 90) else 40, cut = k.cut == true,
+			ease = if type(k.ease) == "string" then k.ease else "smooth", roll = if type(k.roll) == "number" then k.roll else 0,
+		}
 	end
 	return out
 end
@@ -287,6 +352,11 @@ local function decodeRaw(name: string, raw: any): any
 			breakDefender = if type(raw.breakDefender) == "table" then ClipLibrary.decode(raw.breakDefender, name .. ".breakDefender") else nil,
 			grips = decodeGrips(raw.grips, name),
 			sources = if type(raw.sources) == "table" then raw.sources else {},
+			impacts = decodeImpacts(raw.impacts, name),
+			hits = decodeHits(raw.hits, name),
+			camera = decodeCamera(raw.camera, name),
+			release = if type(raw.release) == "number" then math.clamp(raw.release, 0, 1) else nil,
+			endKind = if raw.endKind == "FaceDown" or raw.endKind == "FaceUp" then raw.endKind else nil,
 		}
 	else
 		result = ClipLibrary.decode(raw, name)

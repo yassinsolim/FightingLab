@@ -22,6 +22,7 @@ local MoveAnimOverrides = require(MotionFolder.MoveAnimOverrides)
 local ClipLibrary = require(MotionFolder.ClipLibrary)
 local ClipPlayer = require(MotionFolder.ClipPlayer)
 local BodyShape = require(MotionFolder.BodyShape)
+local Cinematic = require(MotionFolder.Cinematic)
 
 export type FighterView = {
 	pos: Vector3, facing: Vector3, state: string, move: string?, moveFrame: number, walkPhase: number,
@@ -556,6 +557,18 @@ local function throwClipPose(view: FighterView, frame: any?, slot: number, chara
 		end
 	end
 	return pose
+end
+
+-- Ultimate cinematic (round 6, Motion.Cinematic): this role's track of the attacker's Ultimate clip, else keyframes.
+local function ultimatePose(view: FighterView, frame: any?, slot: number, characterId: string, scale: number, legLength: number): Pose
+	local defender = view.throw.role == "Defender"
+	local attackerId = if defender then (opponentId(frame, slot) or characterId) else characterId
+	local other = if frame and type(frame.fighters) == "table" then frame.fighters[if slot == 1 then 2 else 1] else nil
+	local attackerLeg = if defender and type(other) == "table" and type(other.legLength) == "number" then other.legLength else legLength
+	local pose = Cinematic.samplePose(view, { attackerId = attackerId, actual = opponentDistance(view, frame, slot), attackerLeg = attackerLeg }, scale, legLength)
+	if pose then return pose end
+	local now = if frame and type(frame.now) == "number" then frame.now else 0
+	return toHeading(poseFromKey(Cinematic.fallbackKeyframe(view, { attackerId = attackerId }, characterId, scale, States, now)), scale)
 end
 
 -- A broken throw (combat: `throw.broken`, `throw.breakFrame`; both fighters stay in Throw for ThrowBreakFrames, then
@@ -1145,7 +1158,10 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	local moveStartup: number? = nil
 	local pose: Pose? = nil
 	if not settling and type(view.throw) == "table" then
-		if view.throw.broken == true then
+		if Cinematic.isUltimate(view.throw) then
+			pose = ultimatePose(view, frame, s, characterId, scale, legLength)
+			key, fade = "Ultimate", 0.06
+		elseif view.throw.broken == true then
 			local breakPose = throwBreakPose(view, frame, s, characterId, scale, legLength, config)
 			pose = breakPose
 			key, fade = "ThrowBreak", 0.05
@@ -1210,7 +1226,10 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	-- The sim pushes both fighters apart on the frame a throw (or a broken throw) ends. The crossfade out of the throw
 	-- starts from the last throw pose held where it was in the world (compensated by the sim jump), so the body slides
 	-- over the push during the fade instead of popping. A track that already ends at the pushed spot shows no slide.
-	local leavingThrow = st.key ~= nil and string.sub(st.key, 1, 5) == "Throw" and string.sub(key, 1, 5) ~= "Throw"
+	local leavingThrow = st.key ~= nil and (string.sub(st.key, 1, 5) == "Throw" or st.key == "Ultimate") and string.sub(key, 1, 5) ~= "Throw" and key ~= "Ultimate"
+	-- Entering the Ultimate cinematic: the sim locks the defender endDistance in front of the attacker on the hit frame;
+	-- that jump glides like a hit push.
+	local enteringUltimate = key == "Ultimate" and st.key ~= nil and st.key ~= "Ultimate"
 	-- A new round (the sim puts both fighters back on their marks; the KO'd loser is standing again) is a clean cut:
 	-- crossfading from the lying/celebrating pose at the new spot would show a body morphing upright.
 	-- The renderers interpolate the position between two sim frames (or snapshots), so the reset can arrive as an
@@ -1244,7 +1263,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	if roundReset then
 		st.glide = nil
 		st.absorbUntil = nil
-	elseif (newHit or absorbing) and prevPos and typeof(view.pos) == "Vector3" then
+	elseif (newHit or absorbing or enteringUltimate) and prevPos and typeof(view.pos) == "Vector3" then
 		local d = view.pos - prevPos
 		d = Vector3.new(d.X, 0, d.Z)
 		if d.Magnitude > 0.05 and d.Magnitude < 2.5 then
@@ -1254,7 +1273,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 			st.glideDur = math.clamp(0.08 + (remaining - d).Magnitude * 0.06, 0.08, 0.2)
 		end
 	end
-	if not roundReset and (newHit or leavingThrow) then st.absorbUntil = st.real + MotionPlayer.PushAbsorbWindow end
+	if not roundReset and (newHit or leavingThrow or enteringUltimate) then st.absorbUntil = st.real + MotionPlayer.PushAbsorbWindow end
 	if st.key ~= key then
 		-- An impact entry (a new key on a hit or during the hitstop freeze): the crossfade runs on real time so the
 		-- impact pose arrives during the freeze, long enough that no joint turns more than ImpactDegPerFrame per frame.
@@ -2489,16 +2508,23 @@ local function swapSide(name: string): string
 end
 function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, frame: any?, slot: number, partner: RigInfo, floorY: number): number
 	local throw = view.throw
-	if type(throw) ~= "table" or throw.broken == true or type(throw.move) ~= "string" or pose.space ~= "heading" then return 0 end
+	local ultimate = Cinematic.isUltimate(throw)
+	if type(throw) ~= "table" or throw.broken == true or (type(throw.move) ~= "string" and not ultimate) or pose.space ~= "heading" then return 0 end
 	local defender = throw.role == "Defender"
 	local characterId = if type(view.characterId) == "string" then view.characterId else ""
 	local attackerId = if defender then (opponentId(frame, slot) or characterId) else characterId
-	local tc = ClipLibrary.forThrow(attackerId, throw.move)
+	local tc = ClipLibrary.forThrow(attackerId, if ultimate then Cinematic.MOVE else throw.move)
 	if not tc or not tc.grips then return 0 end
 	local track = if defender then tc.defender else tc.attacker
-	local duration = if type(throw.duration) == "number" then throw.duration else 48
-	local impactFrame = if type(throw.impactFrame) == "number" then throw.impactFrame else duration * 0.6
-	local t = MotionPlayer.throwTime(tc.impact, if type(throw.frame) == "number" then throw.frame else 0, impactFrame, duration) * track.duration
+	local t
+	if ultimate then
+		local tl = Cinematic.timeline(attackerId, throw)
+		t = Cinematic.clipU(tc, tl, Cinematic.displayFrame(tl, if type(throw.frame) == "number" then throw.frame else 0)) * track.duration
+	else
+		local duration = if type(throw.duration) == "number" then throw.duration else 48
+		local impactFrame = if type(throw.impactFrame) == "number" then throw.impactFrame else duration * 0.6
+		t = MotionPlayer.throwTime(tc.impact, if type(throw.frame) == "number" then throw.frame else 0, impactFrame, duration) * track.duration
+	end
 	local role = if defender then "Defender" else "Attacker"
 	local rootPart = rig.motors.Root.Part0
 	if not rootPart then return 0 end
