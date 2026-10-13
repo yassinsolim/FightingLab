@@ -342,6 +342,123 @@ function ArenaKit.paintFloor(model: Model, def: ArenaDef, opts: PaintOpts): Base
 	return sheet
 end
 
+-- Round 6 floor detail ----------------------------------------------------------------------------------------------
+
+-- A thin bar on the floor paint (studs, centred at canvas offset x/z from the fight centre, rotated by `deg`).
+local function paintBar(gui: SurfaceGui, x: number, z: number, length: number, width: number, deg: number, color: Color3, transparency: number, name: string?): Frame
+	local pps = gui.PixelsPerStud
+	local f = Instance.new("Frame")
+	f.Name = name or "Mark"
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.Position = UDim2.new(0.5, math.floor(x * pps + 0.5), 0.5, math.floor(z * pps + 0.5))
+	f.Size = UDim2.fromOffset(math.max(1, math.floor(width * pps + 0.5)), math.max(1, math.floor(length * pps + 0.5)))
+	f.Rotation = deg
+	f.BackgroundColor3 = color
+	f.BackgroundTransparency = transparency
+	f.BorderSizePixel = 0
+	f.Parent = gui
+	return f
+end
+
+-- Tick marks round the fight circle at `radius` (every 6 degrees; longer every 30), like a dial.
+function ArenaKit.paintTicks(sheet: BasePart, radius: number, color: Color3, transparency: number?)
+	local gui = sheet:FindFirstChild("Paint") :: SurfaceGui
+	if not gui then return end
+	for i = 0, 59 do
+		local deg = i * 6
+		local a = math.rad(deg)
+		local long = i % 5 == 0
+		local len = if long then 0.9 else 0.45
+		local r = radius - len / 2
+		paintBar(gui, math.sin(a) * r, -math.cos(a) * r, len, if long then 0.16 else 0.1, deg, color, transparency or 0.35, "Tick")
+	end
+end
+
+-- The arena's crest in the centre of the floor between the fighters' start marks (original geometric designs).
+--   "hex"     neon hexagon rings with three slashes (rooftop)
+--   "compass" an eight-point compass rose in a ring (harbor)
+--   "flake"   a six-armed frost star with diamond tips (summit)
+--   "enso"    a brushed open circle round a square seal (dojo)
+function ArenaKit.paintCrest(sheet: BasePart, kind: string, color: Color3, accent: Color3?, transparency: number?)
+	local gui = sheet:FindFirstChild("Paint") :: SurfaceGui
+	if not gui then return end
+	local tr = transparency or 0.3
+	local second = accent or color
+	local pps = gui.PixelsPerStud
+	local function ring(radius: number, thickness: number, c: Color3, t: number, name: string)
+		local f = Instance.new("Frame")
+		f.Name = name
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(0.5, 0.5)
+		f.Size = UDim2.fromOffset(math.floor(radius * 2 * pps), math.floor(radius * 2 * pps))
+		f.BackgroundTransparency = 1
+		local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0.5, 0); corner.Parent = f
+		local stroke = Instance.new("UIStroke"); stroke.Thickness = thickness * pps; stroke.Color = c; stroke.Transparency = t; stroke.Parent = f
+		f.Parent = gui
+		return f
+	end
+	if kind == "hex" then
+		for k, r in { 2.6, 1.9 } do
+			for i = 0, 5 do
+				local a = math.rad(i * 60 + 30)
+				local apothem = r * math.cos(math.rad(30))
+				paintBar(gui, math.sin(a) * apothem, -math.cos(a) * apothem, r, if k == 1 then 0.16 else 0.1, i * 60 + 120, if k == 1 then color else second, tr, "HexEdge")
+			end
+		end
+		for _, off in { -0.55, 0, 0.55 } do
+			paintBar(gui, off, 0, 1.6, 0.14, 30, second, tr + 0.1, "HexSlash")
+		end
+	elseif kind == "compass" then
+		ring(2.5, 0.12, color, tr, "CompassRing")
+		ring(1.1, 0.08, color, tr + 0.15, "CompassHub")
+		for i = 0, 7 do
+			local long = i % 2 == 0
+			local len = if long then 4.6 else 2.8
+			local w = if long then 0.34 else 0.22
+			local d = Instance.new("Frame")
+			d.Name = "CompassPoint"
+			d.AnchorPoint = Vector2.new(0.5, 0.5)
+			d.Position = UDim2.fromScale(0.5, 0.5)
+			d.Size = UDim2.fromOffset(math.floor(w * pps), math.floor(len * pps))
+			d.Rotation = i * 45
+			d.BackgroundColor3 = if long then color else second
+			d.BackgroundTransparency = tr
+			d.BorderSizePixel = 0
+			local g = Instance.new("UIGradient")
+			g.Rotation = 90
+			g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.35, 0), NumberSequenceKeypoint.new(0.65, 0), NumberSequenceKeypoint.new(1, 1) })
+			g.Parent = d
+			d.Parent = gui
+		end
+	elseif kind == "flake" then
+		ring(0.7, 0.1, second, tr, "FlakeHub")
+		for i = 0, 5 do
+			local deg = i * 60
+			local a = math.rad(deg)
+			paintBar(gui, math.sin(a) * 1.35, -math.cos(a) * 1.35, 2.7, 0.14, deg, color, tr, "FlakeArm")
+			for _, at in { 1.5, 2.2 } do
+				for _, side in { -1, 1 } do
+					local b = math.rad(deg + side * 35)
+					local px, pz = math.sin(a) * at + math.sin(b) * 0.3, -math.cos(a) * at - math.cos(b) * 0.3
+					paintBar(gui, px, pz, 0.6, 0.1, deg + side * 35, color, tr + 0.1, "FlakeBarb")
+				end
+			end
+			local tip = paintBar(gui, math.sin(a) * 2.9, -math.cos(a) * 2.9, 0.42, 0.42, 45, second, tr, "FlakeTip")
+			tip.Rotation = 45 + deg
+		end
+	elseif kind == "enso" then
+		local circle = ring(2.4, 0.3, color, tr, "Enso")
+		local stroke = circle:FindFirstChildOfClass("UIStroke") :: UIStroke
+		-- the open brush circle: a gradient that thins and fades the stroke toward its gap
+		local g = Instance.new("UIGradient")
+		g.Rotation = 35
+		g.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.78, 0.15), NumberSequenceKeypoint.new(0.86, 1), NumberSequenceKeypoint.new(1, 1) })
+		g.Parent = stroke
+		local seal = paintBar(gui, 0, 0, 1.1, 1.1, 0, second, tr + 0.05, "Seal")
+		local inner = Instance.new("UIStroke"); inner.Thickness = 0.08 * pps; inner.Color = color; inner.Transparency = tr; inner.Parent = seal
+	end
+end
+
 -- Pads and exits ---------------------------------------------------------------------------------------------------
 
 -- A glowing pad disc on the plaza in front of the stage (top = plaza + PAD_TOP) with halo ring, emblem, light, light

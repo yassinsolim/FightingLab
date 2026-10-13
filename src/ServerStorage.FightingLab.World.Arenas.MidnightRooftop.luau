@@ -207,7 +207,7 @@ function Arena.build(def: Layout.ArenaDef): Model
 		},
 	})
 	ArenaKit.contractPieces(model, def)
-	ArenaKit.paintFloor(model, def, {
+	local paint = ArenaKit.paintFloor(model, def, {
 		lineColor = Color3.fromRGB(240, 240, 250),
 		rings = { { 9.5, 0.28, 0.15 }, { 15.5, 0.12, 0.55 } },
 		emblem = "MIDNIGHT",
@@ -216,6 +216,18 @@ function Arena.build(def: Layout.ArenaDef): Model
 		emblemTransparency = 0.6,
 		lightInfluence = 0.8,
 	})
+	-- round 6: the neon hex crest between the start marks, a dial of ticks and a wet sheen on the deck
+	ArenaKit.paintCrest(paint, "hex", C.pink, C.cyan, 0.3)
+	ArenaKit.paintTicks(paint, 19.8, Color3.fromRGB(230, 230, 250), 0.55)
+	local deck = model:FindFirstChild("Stage") and (model :: any).Stage:FindFirstChild("FightFloor")
+	if deck and deck:IsA("BasePart") then deck.Reflectance = 0.06 end
+	for i, s in { { 168, "MIDNIGHT", C.pink }, { -168, "ROOFTOP", C.cyan } } do
+		local d = Layout.around(def, s[1] :: number)
+		local p = def.origin + d * 26.3
+		local foot = Vector3.new(p.X, def.floorY - Layout.APRON_DROP, p.Z)
+		Kit.cylinder(model, foot + Vector3.new(0, 6.6, 0), 13.2, 0.3, M.Metal, C.metalDark, { Name = "BannerPole" .. i })
+		Props.banner(model, foot + Vector3.new(0, 12.6, 0) + def.inward * 0.4, def.inward, 2.2, 8.6, Color3.fromRGB(22, 20, 34), s[2] :: string, s[3] :: Color3)
+	end
 	rooftopKit(model, def)
 	local lights = Kit.model(model, "StageLights")
 	for _, a in { 128, 160, -160, -128 } do
