@@ -109,6 +109,17 @@ function FighterSelect.acquireModel(_presenter: any, id: string): (Model?, numbe
 	return clone, FighterSelect.WARMUP, function() clone:Destroy() end
 end
 
+-- The template's one-line look note (string attribute `Signature` that CharacterFactory publishes on each fighter
+-- template, e.g. "White tape over the glove cuffs"); nil when the template or the attribute is missing or empty.
+function FighterSelect.signatureOf(id: string, folder: Instance?): string?
+	local f = folder or Lab:FindFirstChild("Characters")
+	local source = f and f:FindFirstChild(id)
+	local v = source and source:GetAttribute("Signature")
+	if typeof(v) ~= "string" then return nil end
+	local trimmed = string.match(v, "^%s*(.-)%s*$")
+	return if trimmed and trimmed ~= "" then trimmed else nil
+end
+
 function FighterSelect.newViewport(parent: Instance, name: string): (ViewportFrame, Camera, WorldModel)
 	local vp: ViewportFrame = make("ViewportFrame", {
 		Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1),
@@ -328,7 +339,18 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		refs.styleChip = styleChip
 		refs.style = styleChip.label
 		refs.tagline = text(info, "Tagline", "", T.medium, 19, Color3.fromRGB(226, 230, 238), { Position = UDim2.fromOffset(6, 166), Size = UDim2.fromOffset(500, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
-		local attrs = make("Frame", { Name = "Attributes", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 230), Size = UDim2.fromOffset(420, 112), Parent = info })
+		-- the template's look note (optional): an accent diamond and one muted line right under the tagline
+		local note: Frame = make("Frame", { Name = "LookNote", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 195), Size = UDim2.fromOffset(500, 18), Visible = false, Parent = info })
+		refs.noteMark = make("Frame", { Name = "Mark", BackgroundColor3 = T.ember, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 4, 0.5, 0), Size = UDim2.fromOffset(6, 6), Rotation = 45, Parent = note })
+		refs.noteText = text(note, "Text", "", T.medium, 14, T.muted, { Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -16, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+		refs.note = note
+		local function placeNote()
+			local h = refs.tagline.TextBounds.Y
+			note.Position = UDim2.fromOffset(6, 166 + math.clamp(if h > 0 then h else 23, 18, 48) + 6)
+		end
+		table.insert(conns, refs.tagline:GetPropertyChangedSignal("TextBounds"):Connect(placeNote))
+		placeNote()
+		local attrs = make("Frame", { Name = "Attributes", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 236), Size = UDim2.fromOffset(420, 112), Parent = info })
 		UIHelpers.list(attrs, false, 8)
 		refs.bars = {}
 		for i = 1, 4 do
@@ -338,9 +360,9 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			local value = text(r, "Value", "", T.number, 13, T.text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(44, 20), TextXAlignment = Enum.TextXAlignment.Right })
 			refs.bars[i] = { label = label, set = set, recolor = recolor, value = value }
 		end
-		local sigTitle = text(info, "SignatureTitle", "SIGNATURE MOVES", T.heavy, 12, T.ember, { Position = UDim2.fromOffset(6, 356), Size = UDim2.fromOffset(240, 16) })
+		local sigTitle = text(info, "SignatureTitle", "SIGNATURE MOVES", T.heavy, 12, T.ember, { Position = UDim2.fromOffset(6, 362), Size = UDim2.fromOffset(240, 16) })
 		sigTitle.Name = "SignatureTitle"
-		refs.signature = make("Frame", { Name = "Signature", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 376), Size = UDim2.fromOffset(500, 92), Parent = info })
+		refs.signature = make("Frame", { Name = "Signature", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 382), Size = UDim2.fromOffset(500, 92), Parent = info })
 		UIHelpers.list(refs.signature, false, 6)
 		refs.infoScale = make("UIScale", { Parent = info })
 		-- Stage-side messages: loading shimmer and the confirm stamp.
@@ -475,6 +497,10 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		refs.name.TextColor3 = WHITE
 		refs.styleChip.set(string.upper(def.style), def.accentColor, def.accentColor:Lerp(T.ink, 0.86))
 		refs.tagline.Text = def.tagline
+		local lookNote = FighterSelect.signatureOf(selectedId)
+		refs.note.Visible = lookNote ~= nil
+		refs.noteText.Text = lookNote or ""
+		refs.noteMark.BackgroundColor3 = def.accentColor
 		for i, a in UIHelpers.attributes(def) do
 			local bar = refs.bars[i]
 			bar.label.Text = a.name
@@ -499,6 +525,8 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			UIHelpers.tween(refs.styleChip.holder, 0.3, { Position = UDim2.fromOffset(4, 126) }, Enum.EasingStyle.Quint)
 			refs.tagline.TextTransparency = 1
 			UIHelpers.tween(refs.tagline, 0.3, { TextTransparency = 0 })
+			refs.noteText.TextTransparency = 1
+			UIHelpers.tween(refs.noteText, 0.35, { TextTransparency = 0 })
 		end
 	end
 

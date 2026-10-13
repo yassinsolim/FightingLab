@@ -186,6 +186,45 @@ return function(t)
 		parent:Destroy()
 	end)
 
+	t.test("fighter select: the template's Signature look note shows under the tagline, hidden without it", function()
+		local folder = Instance.new("Folder")
+		local a = Instance.new("Model"); a.Name = "Kael"; a:SetAttribute("Signature", "  White tape over the glove cuffs "); a.Parent = folder
+		local b = Instance.new("Model"); b.Name = "Sierra"; b:SetAttribute("Signature", "   "); b.Parent = folder
+		local c = Instance.new("Model"); c.Name = "Lumi"; c:SetAttribute("Signature", 12); c.Parent = folder
+		t.expect.equal(FighterSelect.signatureOf("Kael", folder), "White tape over the glove cuffs", "trimmed")
+		t.expect.equal(FighterSelect.signatureOf("Sierra", folder), nil, "blank text")
+		t.expect.equal(FighterSelect.signatureOf("Lumi", folder), nil, "not a string")
+		t.expect.equal(FighterSelect.signatureOf("Goran", folder), nil, "no template")
+		folder:Destroy()
+		-- the real select: the line follows the template attribute (set for the test, then put back)
+		local templates = Lab:FindFirstChild("Characters")
+		local first, second = Roster.order[1], Roster.order[2]
+		local tFirst = templates and templates:FindFirstChild(first)
+		local tSecond = templates and templates:FindFirstChild(second)
+		local saved1 = tFirst and tFirst:GetAttribute("Signature")
+		local saved2 = tSecond and tSecond:GetAttribute("Signature")
+		local ok, err = pcall(function()
+			if tFirst then tFirst:SetAttribute("Signature", "Test look note") end
+			if tSecond then tSecond:SetAttribute("Signature", nil) end
+			local ctl, parent = mountSelect(first)
+			ctl.open()
+			local info = (ctl.gui :: any).Stage.Body.Info
+			local note = info:FindFirstChild("LookNote") :: Frame
+			t.expect.truthy(note ~= nil, "the look note line exists")
+			if tFirst then
+				t.expect.truthy(note.Visible, "shown when the template carries a note")
+				t.expect.equal((note:FindFirstChild("Text") :: TextLabel).Text, "Test look note")
+			end
+			ctl.select(second)
+			t.expect.falsy(note.Visible, "hidden for a template without the attribute")
+			ctl.destroy()
+			parent:Destroy()
+		end)
+		if tFirst then tFirst:SetAttribute("Signature", saved1) end
+		if tSecond then tSecond:SetAttribute("Signature", saved2) end
+		if not ok then error(err, 0) end
+	end)
+
 	t.test("select camera: every fighter height stays whole at rest and keeps the head in a push", function()
 		local aspect = 16 / 9
 		for _, h in { 4.6, 5.6, 6.8, 7.6 } do
