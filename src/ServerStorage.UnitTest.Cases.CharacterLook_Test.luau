@@ -5,7 +5,8 @@
 -- through knockdowns and getups, boxing gloves sized like real gloves that never clip into the head or hide the eyes in
 -- guard, gear worn close to the body, every authored item applied and textured, fitted fightwear (no ballooning
 -- garments), welded extras, originality blocklist, exact credits, and Factory.dressCharacter idempotency (gear and hand
--- scale) on a live-style (unanchored) Humanoid character.
+-- scale) on a live-style (unanchored) Humanoid character. Round 6: one signature detail per fighter (worn, unique, tape
+-- seated on the glove cuff) and six silhouettes that differ pairwise in feet, hands, legwear or hair.
 local AssetService = game:GetService("AssetService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -193,9 +194,16 @@ local LAYERED_GEAR_RENDERS: { [number]: { GearFit } } = {
 	[93954966441244] = { -- waist wrap (sash): band protrusion and band height
 		{ fighter = "Nia", scales = { 0.86, 0.89, 0.8 }, hands = { 1.0, 1.13, 1.0 }, protrusion = 0.159, band = 0.465 },
 	},
+	-- Round 6 (chroma renders vs the precise bare limb, front and side, in OV6\work\r6-characters\data\r6-items.json)
+	[11790893653] = { -- Goran's wrist chain (signature): loose links around the left forearm
+		{ fighter = "Goran", scales = { 0.85, 0.91, 0.98 }, hands = { 0.88, 1.18, 0.76 }, protrusion = 0.211 },
+	},
+	[72553576375381] = { -- Lumi's fingerless grip gloves (signature): flush on the hand and wrist
+		{ fighter = "Lumi", scales = { 0.82, 0.84, 0.76 }, protrusion = 0.076 },
+	},
 }
 -- Layered gear items, recognised by their credit kind (garments such as tops, gi, shorts and pants are not gear).
-local GEAR_KIND_WORDS = { "hand wrap", "waist wrap", "sweatband", "arm sleeve", "knee pad", "bracer", "belt", "sash", "pouch" }
+local GEAR_KIND_WORDS = { "hand wrap", "waist wrap", "sweatband", "arm sleeve", "knee pad", "bracer", "belt", "sash", "pouch", "chain", "grip glove" }
 -- Assets rejected for logos/text, franchise likeness, costume evocation or ballooning fit; they must never come back.
 local BLOCKED: { [number]: string } = {
 	[113345926237908] = "compression shirt with chest text",
@@ -803,6 +811,8 @@ local function layeredGearFit(spec: any, assetId: number): GearFit?
 	return nil
 end
 
+-- Boxing gloves: rigid gear with role "glove", or a layered item credited as a boxing glove (fingerless grip gloves are
+-- open-hand gear, measured as gear close to the body instead).
 local function wearsGloves(spec: any): boolean
 	for _, g in spec.gear or {} do
 		if g.role == "glove" then return true end
@@ -810,14 +820,14 @@ local function wearsGloves(spec: any): boolean
 	local kinds: { [number]: string } = {}
 	for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
 	for _, acc in spec.accessories or {} do
-		if string.find(kinds[acc.AssetId] or "", "glove", 1, true) then return true end
+		if string.find(kinds[acc.AssetId] or "", "boxing glove", 1, true) then return true end
 	end
 	return false
 end
 
 -- Boxing gloves per hand, in the hand frame (Y along the forearm, Z across the knuckles, X palm to back): rigid glove
--- gear measured exactly from its precise mesh surface through its weld (pose-independent); layered gloves (credit kind
--- "glove") looked up in LAYERED_GLOVE_RENDERS.
+-- gear measured exactly from its precise mesh surface through its weld (pose-independent); layered boxing gloves (credit
+-- kind "boxing glove") looked up in LAYERED_GLOVE_RENDERS.
 type GloveBox = { name: string, measured: boolean, rigid: boolean, length: number, width: number, depth: number, top: number, bottom: number, center: Vector3, part: BasePart?, c0: CFrame? }
 local function glovesOn(model: Model, spec: any, folder: Instance): { [string]: { GloveBox } }
 	local out: { [string]: { GloveBox } } = { Left = {}, Right = {} }
@@ -846,7 +856,7 @@ local function glovesOn(model: Model, spec: any, folder: Instance): { [string]: 
 	local kinds: { [number]: string } = {}
 	for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
 	for _, acc in spec.accessories or {} do
-		if string.find(kinds[acc.AssetId] or "", "glove", 1, true) then
+		if string.find(kinds[acc.AssetId] or "", "boxing glove", 1, true) then
 			local r = LAYERED_GLOVE_RENDERS[acc.AssetId]
 			local s = spec.scales or {}
 			local ok = r ~= nil and r.fighter == spec.id and sameFit(r.scales, { s.Height or 1, s.Width or 1, s.Depth or 1 }) and spec.handScale == nil
@@ -1634,6 +1644,144 @@ return function(t)
 				t.expect.truthy(credited[assetId], id .. " uses asset " .. assetId .. " without a credit entry")
 			end
 			t.expect.truthy(type(spec.look) == "string" and #spec.look > 40, id .. " has a look description")
+		end
+	end)
+
+	-- Round 6: one memorable detail per fighter, authored in the spec (label + the items that carry it) and worn on the
+	-- template; no two fighters share a signature item or label. Tape on a glove must be seated on the glove's cuff.
+	t.test("each fighter wears one signature detail of its own", function()
+		local chars = waitForTemplates()
+		local problems: { string } = {}
+		local function check(ok: boolean, message: string)
+			if not ok then table.insert(problems, message) end
+		end
+		local owner: { [number]: string } = {}
+		local labels: { [string]: string } = {}
+		for _, id in IDS do
+			local spec = Specs.specs[id]
+			local sig = spec.signature
+			check(type(sig) == "table" and type(sig.label) == "string" and #sig.label >= 12 and type(sig.assetIds) == "table" and #sig.assetIds > 0,
+				id .. " authors a signature { label, assetIds }")
+			if type(sig) ~= "table" or type(sig.assetIds) ~= "table" then continue end
+			local model = chars:FindFirstChild(id) :: Model
+			check(model:GetAttribute("Signature") == sig.label, id .. " template publishes its Signature attribute")
+			check(labels[sig.label] == nil, string.format("%s's signature '%s' is already %s's", id, sig.label, tostring(labels[sig.label])))
+			labels[sig.label] = id
+			local used = usedAssetIds(spec)
+			local map = appliedAccessories(model)
+			for _, assetId in sig.assetIds do
+				check(used[assetId] == true, string.format("%s signature item %d is part of the outfit", id, assetId))
+				check(owner[assetId] == nil, string.format("%s signature item %d is already %s's", id, assetId, tostring(owner[assetId])))
+				owner[assetId] = id
+				local worn = map[assetId] ~= nil
+				for _, g in spec.gear or {} do
+					if g.assetId == assetId then
+						local part = model:FindFirstChild(g.name, true)
+						worn = worn or (part ~= nil and part:GetAttribute("FightingLabExtra") == true)
+					end
+				end
+				check(worn, string.format("%s signature item %d is worn on the template", id, assetId))
+			end
+			-- tape wrapped over a glove: inside the glove's cuff (hand frame), never floating past it
+			for _, g in spec.gear or {} do
+				if g.role ~= "tape" then continue end
+				local clone = model:Clone()
+				clone.Parent = Workspace
+				clone:PivotTo(CFrame.new(0, 800 + ((clone:GetAttribute("RootHeight") :: number?) or 3), 220))
+				local folder = Instance.new("Folder")
+				folder.Name = "_R6Tape"
+				folder.Parent = Workspace
+				local gloves = glovesOn(clone, spec, folder)
+				local tape = clone:FindFirstChild(g.name, true) :: BasePart?
+				local weld = tape and tape:FindFirstChildOfClass("Weld")
+				local side = if string.find(g.target, "Left", 1, true) then "Left" else "Right"
+				local glove = gloves[side][1]
+				if tape and weld and glove and glove.measured then
+					local c, h = weld.C0.Position, tape.Size * 0.5
+					check(c.Y - h.Y >= glove.bottom and c.Y + h.Y <= glove.top, string.format("%s %s sits on the glove (%.3f..%.3f inside %.3f..%.3f along the forearm)", id, g.name, c.Y - h.Y, c.Y + h.Y, glove.bottom, glove.top))
+					check(math.abs(c.X - glove.center.X) + h.X <= glove.depth * 0.5 + 0.03 and math.abs(c.Z - glove.center.Z) + h.Z <= glove.width * 0.5 + 0.03,
+						string.format("%s %s wraps the cuff without standing off it (%.3f x %.3f vs glove %.3f x %.3f)", id, g.name, h.X * 2, h.Z * 2, glove.depth, glove.width))
+				else
+					check(false, string.format("%s %s and its %s glove are measurable", id, g.name, side))
+				end
+				folder:Destroy()
+				clone:Destroy()
+			end
+		end
+		t.expect.equal(#problems, 0, #problems .. " signature problems:\n  " .. table.concat(problems, "\n  "))
+	end)
+
+	-- Round 6: at fight-camera distance a fighter reads by its outline: feet (barefoot, low shoes, boots/high-tops), hands
+	-- (boxing gloves, fingerless gloves, wraps, open), legwear (bare shins under shorts or trunks, long pants/tights/gi)
+	-- and hair (shaved or a hair item of its own). Every pair of fighters must differ in at least two of the four. On main
+	-- Lumi and Goran differed only in hair (both in boots, open hands and long legwear).
+	t.test("the six silhouettes differ at fight-camera distance (feet, hands, legwear, hair)", function()
+		local chars = waitForTemplates()
+		local features: { [string]: { [string]: string } } = {}
+		for _, id in IDS do
+			local spec = Specs.specs[id]
+			local model = chars:FindFirstChild(id) :: Model
+			local kinds: { [number]: string } = {}
+			for _, s in spec.sourceAssets or {} do kinds[s.id] = string.lower(s.kind) end
+			local shoes = 0
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") and d:GetAttribute("FightingLabRole") == "shoe" then shoes += 1 end
+			end
+			local f = { feet = if shoes == 0 then "barefoot" else tostring(spec.shoeStyle), hands = "open", legs = "shorts", hair = "shaved" }
+			if wearsGloves(spec) then f.hands = "boxing gloves" end
+			for _, acc in spec.accessories do
+				local kind = kinds[acc.AssetId] or ""
+				if f.hands == "open" and (string.find(kind, "grip glove", 1, true) or string.find(kind, "fingerless", 1, true)) then f.hands = "fingerless gloves" end
+				if f.hands == "open" and string.find(kind, "hand wrap", 1, true) then f.hands = "wraps" end
+				for _, word in { "pants", "tights", "leggings", "karate gi" } do
+					if string.find(kind, word, 1, true) then f.legs = "long" end
+				end
+				if acc.AccessoryType == "Hair" then f.hair = tostring(acc.AssetId) end
+			end
+			for _, acc in model:GetChildren() do
+				if acc:IsA("Accessory") and acc.AccessoryType == Enum.AccessoryType.Hair and f.hair == "shaved" then f.hair = "unauthored " .. acc.Name end
+			end
+			features[id] = f
+		end
+		local problems: { string } = {}
+		for i, a in IDS do
+			for j = i + 1, #IDS do
+				local b = IDS[j]
+				local same = {}
+				local differ = 0
+				for _, key in { "feet", "hands", "legs", "hair" } do
+					if features[a][key] ~= features[b][key] then differ += 1 else table.insert(same, key .. " " .. features[a][key]) end
+				end
+				if differ < 2 then
+					table.insert(problems, string.format("%s and %s differ in %d of feet/hands/legwear/hair (both: %s)", a, b, differ, table.concat(same, ", ")))
+				end
+			end
+		end
+		t.expect.equal(#problems, 0, #problems .. " look-alike pairs:\n  " .. table.concat(problems, "\n  "))
+	end)
+
+	-- Round 6: the motion runtime sizes each hand from Motion.BodyShape.handVolume, which reads any "*glove*" part or
+	-- accessory as a boxing glove; open-hand gear (wraps, fingerless grips) must leave the hand an open hand there, and
+	-- every boxing-gloved fighter must read as gloved.
+	t.test("the motion runtime reads boxing gloves as gloves and open-hand gear as open hands", function()
+		local chars = waitForTemplates()
+		local BodyShape = require(ReplicatedStorage.FightingLab.Client.Motion.BodyShape) :: any
+		for _, id in IDS do
+			local spec = Specs.specs[id]
+			local model = chars:FindFirstChild(id) :: Model
+			local map = appliedAccessories(model)
+			for _, acc in spec.accessories do
+				if acc.Name then
+					t.expect.truthy(map[acc.AssetId] ~= nil, string.format("%s renamed accessory %d is applied", id, acc.AssetId))
+					for _, inst in map[acc.AssetId] or {} do
+						t.expect.equal(inst.Name, acc.Name, string.format("%s accessory %d carries its authored instance name", id, acc.AssetId))
+					end
+				end
+			end
+			for _, side in { "Left", "Right" } do
+				local volume = BodyShape.handVolume(model, model:FindFirstChild(side .. "Hand") :: BasePart)
+				t.expect.equal(volume.gloved, wearsGloves(spec), string.format("%s %s hand reads as %s (source %s)", id, side, if volume.gloved then "gloved" else "open", tostring(volume.source)))
+			end
 		end
 	end)
 

@@ -49,7 +49,12 @@
       "AccessoryType": "Shirt",
       "IsLayered": true,
       "Order": 2,
-      "Puffiness": 0.3
+      "Puffiness": 0.3,
+      "Tint": [
+        255,
+        206,
+        140
+      ]
     },
     {
       "AssetId": 80566106375297,
@@ -58,9 +63,9 @@
       "Order": 3,
       "Puffiness": 0.3,
       "Tint": [
-        104,
-        58,
-        134
+        62,
+        32,
+        86
       ]
     },
     {
@@ -130,7 +135,7 @@
       "id": 95142893482414,
       "name": "✧♡✧ Black Gold Martial Arts Top",
       "creator": "AIKA fashion",
-      "kind": "Layered martial top"
+      "kind": "Layered martial top (warm gold tint)"
     },
     {
       "id": 198808991844647,
@@ -154,17 +159,23 @@
       "id": 80566106375297,
       "name": "White Slim fit tracksuit pants",
       "creator": "Blue infinity studios",
-      "kind": "Layered tapered training pants (tinted)"
+      "kind": "Layered tapered training pants (tinted plum)"
     },
     {
       "id": 93954966441244,
       "name": "Elegant Waist Wrap Drape (Purple)",
       "creator": "GAULTIER",
       "kind": "Layered waist wrap (sash)"
+    },
+    {
+      "id": 73260183475840,
+      "name": "☆ Boho Gold Thick Arm Cuff",
+      "creator": "Mind & Beauty",
+      "kind": "Rigid armlet (catalog mesh welded around the upper arm)"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with gold brush embroidery and laced gold bracers, deep-purple draped waist wrap, purple tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
+  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with warm gold brush embroidery and laced gold bracers, gold armlets on both bare upper arms, deep-purple draped waist wrap, dark plum tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
   "bodyColors": {
     "Head": [
       236,
@@ -232,6 +243,48 @@
         0,
         -0.0265
       ]
+    },
+    {
+      "assetId": 73260183475840,
+      "name": "LeftArmlet",
+      "target": "LeftUpperArm",
+      "role": "armlet",
+      "scale": [
+        0.5,
+        0.3769,
+        0.5093
+      ],
+      "offset": [
+        0.075,
+        0.29,
+        -0.004
+      ],
+      "rotation": [
+        0,
+        0,
+        -13
+      ]
+    },
+    {
+      "assetId": 73260183475840,
+      "name": "RightArmlet",
+      "target": "RightUpperArm",
+      "role": "armlet",
+      "scale": [
+        0.5,
+        0.3769,
+        0.5093
+      ],
+      "offset": [
+        -0.075,
+        0.29,
+        -0.004
+      ],
+      "rotation": [
+        0,
+        180,
+        -13
+      ]
     }
   ],
   "hideHands": false,
@@ -240,5 +293,11 @@
     1.0,
     1.13,
     1.0
-  ]
+  ],
+  "signature": {
+    "label": "gold armlets on both bare upper arms",
+    "assetIds": [
+      73260183475840
+    ]
+  }
 }

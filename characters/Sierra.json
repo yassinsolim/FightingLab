@@ -140,19 +140,31 @@
       "id": 14775127400,
       "name": "Boxing Glove Right White",
       "creator": "VochtigDoekje",
-      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, white)"
     },
     {
       "id": 14775131832,
       "name": "Boxing Glove Left White",
       "creator": "VochtigDoekje",
-      "kind": "Rigid boxing glove (catalog mesh welded to the hand, tinted)"
+      "kind": "Rigid boxing glove (catalog mesh welded to the hand, white)"
     },
     {
       "id": 5227532062,
       "name": "Doll High Ponytail (Platinum)",
       "creator": "Ellzd",
       "kind": "Hair"
+    },
+    {
+      "id": 14777057611,
+      "name": "White Muay thai armband Prajied (Left Shoulder)",
+      "creator": "OlympusϞ",
+      "kind": "Rigid braided armband (catalog mesh welded around the upper arm)"
+    },
+    {
+      "id": 14777046729,
+      "name": "White Muay thai armband Prajied (Right Shoulder)",
+      "creator": "OlympusϞ",
+      "kind": "Rigid braided armband (catalog mesh welded around the upper arm)"
     }
   ],
   "mood": 14618207727,
@@ -178,9 +190,9 @@
         0.023
       ],
       "tint": [
-        150,
-        88,
-        52
+        236,
+        236,
+        230
       ],
       "hideTarget": true
     },
@@ -205,14 +217,56 @@
         0.023
       ],
       "tint": [
-        150,
-        88,
-        52
+        236,
+        236,
+        230
       ],
       "hideTarget": true
+    },
+    {
+      "assetId": 14777057611,
+      "name": "LeftArmband",
+      "target": "LeftUpperArm",
+      "role": "armband",
+      "scale": [
+        0.241,
+        0.4444,
+        0.2211
+      ],
+      "offset": [
+        0.018,
+        0.12,
+        0.006
+      ],
+      "rotation": [
+        0,
+        0,
+        -8
+      ]
+    },
+    {
+      "assetId": 14777046729,
+      "name": "RightArmband",
+      "target": "RightUpperArm",
+      "role": "armband",
+      "scale": [
+        0.241,
+        0.4444,
+        0.2211
+      ],
+      "offset": [
+        -0.018,
+        0.12,
+        0.006
+      ],
+      "rotation": [
+        0,
+        0,
+        8
+      ]
     }
   ],
-  "look": "Adult lean kickboxer with fair realistic face and a platinum high ponytail with swept fringe; teal striped training tank over a sports bra, deep-teal satin kickboxing trunks with black waistband, brown leather boxing gloves, barefoot.",
+  "look": "Adult lean kickboxer with fair realistic face and a platinum high ponytail with swept fringe; teal striped training tank over a sports bra, deep-teal satin kickboxing trunks with black waistband, white leather boxing gloves, white braided armbands on both upper arms, barefoot.",
   "bodyColors": {
     "Head": [
       255,
@@ -247,5 +301,12 @@
   },
   "face": 0,
   "hideHands": true,
-  "shoeStyle": "barefoot"
+  "shoeStyle": "barefoot",
+  "signature": {
+    "label": "white braided armbands on both upper arms",
+    "assetIds": [
+      14777057611,
+      14777046729
+    ]
+  }
 }

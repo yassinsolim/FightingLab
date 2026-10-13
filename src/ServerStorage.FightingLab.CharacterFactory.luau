@@ -10,8 +10,9 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 -- Tint multiplies the accessory's SurfaceAppearance ColorMap (PBR detail is kept), used to put each fighter's palette
--- on neutral textured garments.
-export type Accessory = { AssetId: number, AccessoryType: string, IsLayered: boolean?, Order: number?, Puffiness: number?, Position: { number }?, Rotation: { number }?, Scale: { number }?, Tint: { number }? }
+-- on neutral textured garments. Name (round 6) renames the applied accessory instance: Motion.BodyShape reads any
+-- accessory named "*glove*" as a layered boxing glove, so thin fingerless gloves are worn under a neutral name.
+export type Accessory = { AssetId: number, AccessoryType: string, IsLayered: boolean?, Order: number?, Puffiness: number?, Position: { number }?, Rotation: { number }?, Scale: { number }?, Tint: { number }?, Name: string? }
 export type FistSpec = { meshId: string, textureId: string?, color: { number }, material: string?, scale: { number }?, offset: { number }?, rotation: { number }? }
 export type FistsSpec = { shared: FistSpec?, Left: FistSpec?, Right: FistSpec? }
 export type BandSpec = { width: number, inflate: number?, inflateZ: number? }
@@ -41,6 +42,9 @@ export type Spec = {
 	-- "high" (high-tops/boots), "low" or "barefoot": the shoe-size bounds CharacterLook_Test applies (shoes are gear
 	-- with role "shoe", seat "sole"; boxing gloves are gear with role "glove").
 	shoeStyle: string?,
+	-- Round 6: the one detail that makes the fighter memorable at fight-camera distance (label + the catalog items that
+	-- carry it). build() publishes the label as the template's Signature attribute (UI may show it).
+	signature: { label: string, assetIds: { number } }?,
 	shirt: number?,
 	pants: number?,
 	graphicTShirt: number?,
@@ -494,12 +498,27 @@ local function applyTints(model: Model, accessories: { Accessory }?): number
 	return tinted
 end
 
+-- Renames applied accessories whose spec entry has a Name (idempotent; a missing accessory is skipped).
+local function applyAccessoryNames(model: Model, accessories: { Accessory }?)
+	local map: { [number]: { Accessory } }? = nil
+	for _, acc in accessories or {} do
+		if acc.Name then
+			local found = map or appliedAccessories(model)
+			map = found
+			for _, inst in found[acc.AssetId] or {} do
+				if inst.Name ~= acc.Name then inst.Name = acc.Name end
+			end
+		end
+	end
+end
+
 local function applyExtras(model: Model, spec: Spec): { number }
 	scaleHands(model, spec.handScale)
 	addFists(model, spec.fists)
 	local skipped = addGear(model, spec.gear)
 	applyHandVisibility(model, spec.hideHands)
 	applyTints(model, spec.accessories)
+	applyAccessoryNames(model, spec.accessories)
 	return skipped
 end
 
@@ -540,6 +559,7 @@ function Factory.dressCharacter(character: Model, spec: Spec): Model
 	if character:GetAttribute(DRESSED_ATTRIBUTE) == signature and intactExtras(character) == expected then
 		applyHandVisibility(character, spec.hideHands)
 		applyTints(character, spec.accessories)
+		applyAccessoryNames(character, spec.accessories)
 		return character
 	end
 	for _, d in character:GetDescendants() do
@@ -714,6 +734,7 @@ function Factory.build(spec: Spec): Model
 	model:SetAttribute("DisplayName", spec.displayName)
 	model:SetAttribute("Tagline", spec.tagline)
 	model:SetAttribute("Style", spec.style)
+	if spec.signature then model:SetAttribute("Signature", spec.signature.label) end
 	model:SetAttribute("PrimaryColor", rgb(spec.primaryColor, "primaryColor"))
 	model:SetAttribute("AccentColor", rgb(spec.accentColor, "accentColor"))
 	model:SetAttribute("RootHeight", rootHeight)

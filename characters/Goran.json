@@ -14,9 +14,9 @@
     60
   ],
   "skinColor": [
-    184,
-    132,
-    94
+    170,
+    116,
+    84
   ],
   "scales": {
     "Height": 0.85,
@@ -36,7 +36,7 @@
   },
   "accessories": [
     {
-      "AssetId": 13631074853,
+      "AssetId": 13631062181,
       "AccessoryType": "Face",
       "Position": [
         0,
@@ -61,7 +61,12 @@
       "AccessoryType": "Shorts",
       "IsLayered": true,
       "Order": 3,
-      "Puffiness": 0.3
+      "Puffiness": 0.3,
+      "Tint": [
+        70,
+        70,
+        74
+      ]
     },
     {
       "AssetId": 17697195879,
@@ -75,6 +80,13 @@
       "AccessoryType": "Pants",
       "IsLayered": true,
       "Order": 2
+    },
+    {
+      "AssetId": 11790893653,
+      "AccessoryType": "Shirt",
+      "IsLayered": true,
+      "Order": 13,
+      "Puffiness": 0.1
     }
   ],
   "sourceAssets": [
@@ -130,7 +142,7 @@
       "id": 135168322016429,
       "name": "Y2K Active Shorts (Grey Camo)",
       "creator": "dont look down",
-      "kind": "Layered fight shorts"
+      "kind": "Layered fight shorts (tinted charcoal)"
     },
     {
       "id": 15824475572,
@@ -169,16 +181,22 @@
       "kind": "Welded gear (lifting belt)"
     },
     {
-      "id": 13631074853,
-      "name": "Light Brown Full Trimmed Beard",
-      "creator": "The Barber Shoppe",
-      "kind": "3D beard"
-    },
-    {
       "id": 135571447604238,
       "name": "Tight Muscle Tank Top (Dark Red)",
       "creator": "GALLIANO",
       "kind": "Layered muscle tank"
+    },
+    {
+      "id": 13631062181,
+      "name": "Brown Full Trimmed Beard",
+      "creator": "The Barber Shoppe",
+      "kind": "3D beard"
+    },
+    {
+      "id": 11790893653,
+      "name": "Left Wrist Chains",
+      "creator": "Eternos Digital",
+      "kind": "Layered wrist chain"
     }
   ],
   "mood": 14618207727,
@@ -235,37 +253,37 @@
       "hideTarget": true
     }
   ],
-  "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full light-brown beard; deep-red ribbed muscle tank, grey camo fight shorts over black compression tights, black leather lifting belt, red wrist sweatbands, light-brown suede combat boots, open grappler hands.",
+  "look": "Adult heavyweight grappler with tan realistic face, shaved head and a full dark-brown beard; deep-red ribbed muscle tank, charcoal fight shorts over black compression tights, black leather lifting belt, red wrist sweatbands, a steel chain wrapped around his left forearm, light-brown suede combat boots, open grappler hands.",
   "bodyColors": {
     "Head": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ],
     "Torso": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ],
     "LeftArm": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ],
     "RightArm": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ],
     "LeftLeg": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ],
     "RightLeg": [
-      184,
-      132,
-      94
+      170,
+      116,
+      84
     ]
   },
   "face": 0,
@@ -275,5 +293,11 @@
     0.88,
     1.18,
     0.76
-  ]
+  ],
+  "signature": {
+    "label": "steel chain wrapped around his left forearm",
+    "assetIds": [
+      11790893653
+    ]
+  }
 }

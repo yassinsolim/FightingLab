@@ -70,10 +70,23 @@
       "Order": 2,
       "Puffiness": 0.3,
       "Tint": [
+        52,
+        64,
+        70
+      ]
+    },
+    {
+      "AssetId": 72553576375381,
+      "AccessoryType": "Jacket",
+      "IsLayered": true,
+      "Order": 11,
+      "Puffiness": 0.1,
+      "Tint": [
         86,
         214,
         160
-      ]
+      ],
+      "Name": "FingerlessGrips"
     }
   ],
   "sourceAssets": [
@@ -147,7 +160,7 @@
       "id": 80566106375297,
       "name": "White Slim fit tracksuit pants",
       "creator": "Blue infinity studios",
-      "kind": "Layered slim track pants (tinted)"
+      "kind": "Layered slim track pants (tinted charcoal)"
     },
     {
       "id": 199239061768347,
@@ -166,10 +179,16 @@
       "name": "Tabi Suede Boots in Black - Right Shoe Accessory",
       "creator": "creepertDev",
       "kind": "Rigid shoe (catalog mesh welded to the foot)"
+    },
+    {
+      "id": 72553576375381,
+      "name": "Fingerless Gloves",
+      "creator": "Blizzei",
+      "kind": "Layered fingerless grip gloves (tinted mint)"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint slim-fit track pants tucked into black suede split-toe tabi boots, open hands.",
+  "look": "Adult freerunner with deep-brown realistic face and a black curly taper with a sports band; olive athletic crop tank, black ribbed techwear arm sleeves, mint fingerless grip gloves, charcoal slim-fit track pants tucked into black suede split-toe tabi boots.",
   "bodyColors": {
     "Head": [
       118,
@@ -242,5 +261,11 @@
     }
   ],
   "hideHands": false,
-  "shoeStyle": "high"
+  "shoeStyle": "high",
+  "signature": {
+    "label": "mint fingerless grip gloves",
+    "assetIds": [
+      72553576375381
+    ]
+  }
 }
