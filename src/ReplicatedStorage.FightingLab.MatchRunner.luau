@@ -37,6 +37,7 @@ local function cloneEvent(e: Sim.Event): { [string]: any }
 		height = if typeof(raw.height) == "string" then raw.height else nil,
 		limb = if typeof(raw.limb) == "string" then raw.limb else nil,
 		evaded = if raw.evaded == true then true else nil,
+		tumble = if raw.tumble == true then true else nil,
 	}
 end
 
@@ -60,6 +61,9 @@ local function serialize(match: Sim.Match, f: Sim.Fighter, index: number, accept
 		dashFrame = num(raw.dashFrame, 0), dashTotal = num(raw.dashTotal, 0),
 		stringIndex = num(raw.stringIndex, 0), crouchFrames = num(raw.crouchFrames, 0),
 		getupKind = if typeof(raw.getupKind) == "string" then raw.getupKind else nil, rollDir = num(raw.rollDir, 0),
+		-- Round 6: Surge / Ultimate, signature stance, tumble.
+		surge = raw.surge == true, ultUsed = raw.ultUsed == true, tumble = raw.tumbling == true,
+		stance = if typeof(raw.stance) == "string" then raw.stance else nil, stanceFrame = num(raw.stanceFrame, 0),
 	}
 end
 
@@ -252,6 +256,8 @@ function MatchRunner:publishDebugAttributes()
 		folder:SetAttribute(prefix .. "Health", f.health); folder:SetAttribute(prefix .. "MaxHealth", f.maxHealth)
 		folder:SetAttribute(prefix .. "CharacterId", f.characterId); folder:SetAttribute(prefix .. "State", f.state); folder:SetAttribute(prefix .. "Pos", f.pos)
 		folder:SetAttribute(prefix .. "Move", f.move or ""); folder:SetAttribute(prefix .. "Combo", f.combo); folder:SetAttribute(prefix .. "Crouched", f.crouched); folder:SetAttribute(prefix .. "MoveFrame", f.moveFrame)
+		local raw: any = f
+		folder:SetAttribute(prefix .. "Surge", raw.surge == true); folder:SetAttribute(prefix .. "UltUsed", raw.ultUsed == true); folder:SetAttribute(prefix .. "Stance", raw.stance or "")
 	end
 	folder:SetAttribute("Dummy", if match.mode == "Training" then match.dummy else nil)
 	folder:SetAttribute("AcceptedCommandId", self.accepted[1]); folder:SetAttribute("AcceptedMoveStartFrame", if match.fighters[1].move then match.frame - match.fighters[1].moveFrame + 1 else nil)

@@ -50,8 +50,16 @@ export type StanceDef = {
 	entryIntent: string, exitIntent: string,
 }
 export type Signature = { kind: string, key: string, name: string, summary: string }
+-- A combo route (data for the move list, the CPU and CombatCombo_Test). steps[i].wait = frames since the previous
+-- press while the sim is not in hitstop (the first wait is 0); input uses display notation with the stance tags
+-- ("df+2", "PKT+2", "3+4", "1+2"). damage = expected total vs a standing 100 HP dummy (Surge multiplier included
+-- when surge = true: the attacker is in Surge, as an Ultimate ender needs); counter = the opener is a counter hit.
+-- kind: "launch" (bread and butter), "stance" (signature route), "counter", "low", "max" (max damage), "ultimate".
 export type ComboStep = { wait: number, input: string }
-export type ComboDef = { name: string, notation: string, kind: string, damage: number, difficulty: number, surge: boolean?, steps: { ComboStep }, distance: number? }
+export type ComboDef = {
+	name: string, notation: string, kind: string, damage: number, difficulty: number, surge: boolean?, counter: boolean?,
+	steps: { ComboStep }, distance: number?,
+}
 export type Stats = {
 	maxHealth: number, walkSpeed: number, backSpeed: number, sideSpeed: number, dashSpeed: number, dashDistance: number,
 	dashFrames: number, backdashDistance: number, backdashFrames: number, sidestepArc: number, weight: number, height: number,
@@ -180,6 +188,10 @@ local function define(c: { [string]: any }, list: { { [string]: any } }, extra: 
 	c.moveOrder = order
 	c.stances = stances
 	c.combos = x.combos or {}
+	for _, combo in c.combos do
+		assert(#combo.steps >= 2 and combo.steps[1].wait == 0, c.id .. " combo " .. combo.name .. " steps")
+		assert(combo.kind ~= "ultimate" or combo.steps[#combo.steps].input == "1+2", c.id .. " combo " .. combo.name .. " ends in the Ultimate")
+	end
 	c.signature = x.signature
 	characters[c.id] = (c :: any) :: CharacterDef
 end
@@ -252,6 +264,12 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Final Bell': an armored lunging right straight opens it; on hit the cinematic plays the beats listed in movesets.md (shovel, body hook, uppercut, straight, then the overhand that drops the opponent face-down)." }),
 }, {
+	combos = {
+		{ name = "Uppercut Bread", kind = "launch", notation = "df+2, 1, b+1, 2,1", damage = 32, difficulty = 2, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
+		{ name = "Pocket Launch", kind = "stance", notation = "3+4, PKT+2, 1, b+1, 2,1", damage = 31, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "PKT+2" }, { wait = 38, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
+		{ name = "Counter Uppercut", kind = "max", notation = "CH df+2, 1, b+1, 2,1", damage = 36, difficulty = 3, counter = true, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
+		{ name = "Final Bell Finish", kind = "ultimate", notation = "df+2, 1+2", damage = 37, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1+2" } } },
+	},
 	signature = { kind = "stance", key = "Pocket", name = "Pocket", summary = "3+4: a low bob-and-roll crouch. Highs sail over him the whole time; PKT+1 is a +1 body shovel, PKT+2 an uppercut launcher. Cancel 1,2 / 2 / d+2 into it; hold back to leave." },
 	stances = {
 		{ key = "Pocket", name = "Pocket", tag = "PKT", entryFrames = 6, cancelFrom = 6, backExit = 8, maxFrames = 40, drift = 0.025, counterHit = true, props = { highCrush = { 1, 40 } },
@@ -310,11 +328,11 @@ define({
 		intent = "Fake a rear knee, push off it and hop forward, throwing the rear cross in mid-air while the leg kicks back for balance; lands on the lead foot (feet leave the floor = low crush)." },
 	{ key = "AngleKick", name = "Angle Kick", input = "ss+LK", notation = "ss+3", startup = 15, active = 3, recovery = 18, damage = 12, height = "Mid", range = 3.25, width = 2.4, homing = true, advance = 1.75, push = 0.8, onBlock = -8, onHit = 4, tier = "Medium", limb = "LeadLeg", anim = { archetype = "roundhouse", side = "Lead", height = "Mid" },
 		intent = "From a sidestep, a lead-leg roundhouse to the ribs that turns with the opponent; pivot on the rear foot, kick arcs horizontally at waist height." },
-	{ key = "Southpaw", name = "Southpaw", input = "LK+RK", notation = "3+4", toStance = "Southpaw", noHit = true, startup = 8, active = 1, recovery = 1, damage = 0, height = "Mid", range = 2.6, width = 1.2, push = 0, onBlock = 0, onHit = 0, tier = "Light", limb = "Body", anim = { archetype = "parry", side = "Lead", height = "High", stance = true },
+	{ key = "Southpaw", name = "Southpaw", input = "LK+RK", notation = "3+4", toStance = "Southpaw", noHit = true, startup = 5, active = 1, recovery = 1, damage = 0, height = "Mid", range = 2.6, width = 1.2, push = 0, onBlock = 0, onHit = 0, tier = "Light", limb = "Body", anim = { archetype = "parry", side = "Lead", height = "High", stance = true },
 		intent = "SIGNATURE stance entry (no strike): a small hop-switch of the feet (the right leg becomes the lead leg, the left the rear), the guard mirrors (right glove forward), she lands light on the balls of the feet in a mirrored, bladed kickboxing stance (see the stance)." },
 	{ key = "SouthpawHeadKick", name = "Southpaw Head Kick", input = "SPW+RK", notation = "SPW+4", stance = "Southpaw", startup = 13, active = 3, recovery = 19, damage = 13, height = "High", range = 4.6, width = 2.2, track = 3, advance = 0.5, push = 0.8, onBlock = -7, onHit = 6, tier = "Medium", limb = "RearLeg", anim = { archetype = "roundhouse", side = "Rear", height = "High" },
 		intent = "From Southpaw the RIGHT leg is the lead: a fast lead-leg round kick to the head with almost no chamber, the hip flicks over, the foot snaps to the temple and back; long reach, quick return to the southpaw guard." },
-	{ key = "SouthpawBodyKick", name = "Southpaw Body Kick", input = "SPW+LK", notation = "SPW+3", stance = "Southpaw", startup = 15, active = 3, recovery = 20, damage = 13, height = "Mid", range = 4.0, width = 2.2, track = 3, advance = 0.6, push = 1.0, tumble = true, onBlock = -8, onHit = 4, tier = "Medium", limb = "LeadLeg", anim = { archetype = "roundhouse", side = "Lead", height = "Mid" },
+	{ key = "SouthpawBodyKick", name = "Southpaw Body Kick", input = "SPW+LK", notation = "SPW+3", stance = "Southpaw", startup = 13, active = 3, recovery = 20, damage = 13, height = "Mid", range = 4.0, width = 2.2, track = 3, advance = 0.6, push = 1.0, tumble = true, onBlock = -8, onHit = 4, tier = "Medium", limb = "LeadLeg", anim = { archetype = "roundhouse", side = "Lead", height = "Mid" },
 		intent = "From Southpaw the LEFT leg is the rear (power) leg: a full rear roundhouse into the liver, the right foot pivots, hips turn over completely and the shin lands flat on the ribs, left arm swings down. TUMBLE: on an airborne opponent the shin rolls the body over in the air." },
 	{ key = "SouthpawLowKick", name = "Southpaw Low Kick", input = "SPW+d+RK", notation = "SPW+d+4", stance = "Southpaw", startup = 14, active = 2, recovery = 20, damage = 9, height = "Low", range = 4.0, width = 1.5, track = 1.5, push = 0.3, onBlock = -12, onHit = 2, tier = "Medium", limb = "RearLeg", anim = { archetype = "low_kick", side = "Rear", height = "Low" },
 		intent = "From Southpaw (holding down), the right (now lead) leg chops a short low kick into the inside of the opponent's lead knee; hands stay high, she stays upright and bladed." },
@@ -335,10 +353,16 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Eight Limbs': an armored long teep opens it; on hit the cinematic plays the beats in movesets.md (body kick, clinch knees, elbow, switch head kick)." }),
 }, {
+	combos = {
+		{ name = "Switch Teep", kind = "launch", notation = "df+3, 3, 3+4, SPW+3, 1,3", damage = 34, difficulty = 4, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "3" }, { wait = 15, input = "3+4" }, { wait = 8, input = "SPW+3" }, { wait = 32, input = "1" }, { wait = 8, input = "3" } } },
+		{ name = "Counter Knee", kind = "counter", notation = "CH f+3, 1,3,4", damage = 32, difficulty = 2, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 26, input = "1" }, { wait = 8, input = "3" }, { wait = 11, input = "4" } } },
+		{ name = "Knee To Southpaw", kind = "max", notation = "CH f+3, 1,3, 3+4, SPW+3, 2", damage = 36, difficulty = 4, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 26, input = "1" }, { wait = 8, input = "3" }, { wait = 19, input = "3+4" }, { wait = 8, input = "SPW+3" }, { wait = 32, input = "2" } } },
+		{ name = "Eight Limbs Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 37, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "1+2" } } },
+	},
 	signature = { kind = "stance", key = "Southpaw", name = "Southpaw", summary = "3+4: switch the lead leg. Southpaw guards highs and mids while held; SPW+4 fast long head kick, SPW+3 power body kick (tumbles in juggles), SPW+d+4 low kick. Cancel 3 / 1,3 into it; 3+4 again or back to switch back." },
 	stances = {
-		{ key = "Southpaw", name = "Southpaw", tag = "SPW", entryFrames = 8, cancelFrom = 8, backExit = 10, maxFrames = 90, guard = "Stand", counterHit = false,
-			entryIntent = "Hop-switch of the feet (8 frames): right leg forward, guard mirrored.",
+		{ key = "Southpaw", name = "Southpaw", tag = "SPW", entryFrames = 5, cancelFrom = 5, backExit = 8, maxFrames = 90, guard = "Stand", counterHit = false,
+			entryIntent = "Quick hop-switch of the feet (5 frames): right leg forward, guard mirrored.",
 			intent = "Southpaw loop: the mirrored kickboxing stance, right foot and right glove forward, light rhythmic bounce, standing guard up (blocks highs and mids). Stationary (no walking in it).",
 			exitIntent = "Hop-switch back to the orthodox stance (left leg forward).", },
 	},
@@ -412,6 +436,12 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Landslide': an armored charging shoulder opens it; on hit the cinematic plays the beats in movesets.md (body-lock crush, suplex, knee slam, carry and forward drop)." }),
 }, {
+	combos = {
+		{ name = "Lift And Hammer", kind = "launch", notation = "d+2, f+3, 1,2", damage = 34, difficulty = 2, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" } } },
+		{ name = "Counter Haymaker", kind = "counter", notation = "CH b+2, f+3, 1,2", damage = 40, difficulty = 3, counter = true, steps = { { wait = 0, input = "b+2" }, { wait = 32, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" } } },
+		{ name = "Forearm Finish", kind = "max", notation = "d+2, f+3, 1,2,1", damage = 39, difficulty = 3, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" }, { wait = 11, input = "1" } } },
+		{ name = "Landslide Finish", kind = "ultimate", notation = "d+2, 1+2", damage = 42, difficulty = 2, surge = true, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "1+2" } } },
+	},
 	signature = { kind = "catch", key = "BearTrap", name = "Bear Trap", summary = "3+4: open arms for frames 4-24. A high or mid strike that touches him is caught into an unbreakable Belly Suplex. Lows and throws beat it; very punishable on whiff. Plus armored power moves (3, f+2, f,f+2, 3,2,2) and the f+1+3 command grab." },
 })
 
@@ -428,8 +458,8 @@ define({
 }, {
 	{ key = "Palm", name = "Quick Palm", input = "LP", notation = "1", startup = 10, active = 2, recovery = 12, damage = 5, height = "High", range = 3.95, width = 1.2, track = 1.5, advance = 0.25, push = 0.4, onBlock = 1, onHit = 8, tier = "Light", limb = "LeadArm", anim = { archetype = "palm", side = "Lead", height = "High" },
 		intent = "Loose lead palm strike to the face from a bouncy low stance: wrist bent back, heel of the palm snaps forward and back, knees springy." },
-	{ key = "PalmHeel", name = "Palm To Spin Heel", input = "LP, RK", notation = "1,4", chainFrom = "Palm", startup = 15, active = 3, recovery = 22, damage = 12, height = "Mid", range = 3.5, width = 1.8, track = 2.5, advance = 1.4, push = 1.0, onBlock = -10, onHit = 3, tier = "Medium", limb = "RearLeg", anim = { archetype = "spin_kick", side = "Rear", height = "Mid", spin = 1.0 },
-		intent = "After the palm, she spins a full turn on the lead foot and the rear heel swings around into the ribs (spinning heel kick), arms flung out for momentum." },
+	{ key = "PalmHeel", name = "Palm To Spin Heel", input = "LP, RK", notation = "1,4", chainFrom = "Palm", startup = 15, active = 3, recovery = 22, damage = 12, height = "Mid", range = 3.5, width = 1.8, track = 2.5, advance = 1.4, push = 1.0, tumble = true, onBlock = -10, onHit = 3, tier = "Medium", limb = "RearLeg", anim = { archetype = "spin_kick", side = "Rear", height = "Mid", spin = 1.0 },
+		intent = "After the palm, she spins a full turn on the lead foot and the rear heel swings around into the ribs (spinning heel kick), arms flung out for momentum. TUMBLE: on an airborne opponent the spinning heel flips the body over in the air (one more juggle hit connects)." },
 	{ key = "PalmHeelHook", name = "Palm Heel Hook Kick", input = "LP, RK, RK", notation = "1,4,4", chainFrom = "PalmHeel", startup = 16, active = 3, recovery = 22, damage = 13, height = "High", range = 3.8, width = 2.2, track = 3, advance = 0.6, push = 1.2, onBlock = -12, onHit = "KND", tier = "Heavy", limb = "RearLeg", anim = { archetype = "spin_kick", side = "Rear", height = "High", spin = 1.0 },
 		intent = "High ender of 1,4: the spinning heel lands and she keeps the spin going, hopping on the lead foot into a second full turn; the rear heel hooks around at head height (spinning hook kick) and knocks the opponent down." },
 	{ key = "PalmHeelSweep", name = "Palm Heel Sweep", input = "LP, RK, LK", notation = "1,4,3", chainFrom = "PalmHeel", startup = 16, active = 3, recovery = 22, damage = 10, height = "Low", range = 3.9, width = 2.2, track = 2, advance = 0.4, push = 0.3, crouching = true, onBlock = -13, onHit = 1, tier = "Medium", limb = "LeadLeg", anim = { archetype = "sweep", side = "Lead", height = "Low", crouch = true, spin = 0.5 },
@@ -444,8 +474,8 @@ define({
 		intent = "Mid ender of 3,4: the crescent leg lands and she jumps off it straight away, tucking the lead knee and shooting the rear leg out flat into the chest in mid-air (flying side kick, low crush while airborne), landing in a crouch; knockdown." },
 	{ key = "CrescentKick", name = "Crescent Kick", input = "RK", notation = "4", startup = 14, active = 3, recovery = 19, damage = 12, height = "High", range = 3.6, width = 2.4, track = 3, advance = 1.6, push = 0.8, onBlock = -7, onHit = 4, tier = "Medium", limb = "RearLeg", anim = { archetype = "crescent_kick", side = "Rear", height = "High" },
 		intent = "Rear-leg crescent kick: straight leg lifts and swings across the face in a wide arc, hips open then close, foot lands back in stance." },
-	{ key = "CartwheelKick", name = "Cartwheel Kick", input = "b+LK", notation = "b+3", startup = 18, active = 4, recovery = 20, damage = 15, height = "Mid", range = 3.7, width = 1.6, track = 1.5, advance = 1.5, push = 1.2, props = { highCrush = { 4, 16 } }, onBlock = -9, onHit = "KND", tier = "Heavy", limb = "LeadLeg", anim = { archetype = "cartwheel_kick", side = "Lead", height = "Mid" },
-		intent = "Hands go to the floor in a sideways cartwheel (head drops low = high crush) and the lead leg comes over the top into the chest; lands back on her feet." },
+	{ key = "CartwheelKick", name = "Cartwheel Kick", input = "b+LK", notation = "b+3", startup = 18, active = 4, recovery = 20, damage = 15, height = "Mid", range = 3.7, width = 1.6, track = 1.5, advance = 1.5, push = 1.2, props = { highCrush = { 4, 16 } }, onBlock = -9, onHit = "KND", onCounter = "LAUNCH", tier = "Heavy", limb = "LeadLeg", anim = { archetype = "cartwheel_kick", side = "Lead", height = "Mid" },
+		intent = "Hands go to the floor in a sideways cartwheel (head drops low = high crush) and the lead leg comes over the top into the chest; lands back on her feet. On a counter hit the heel scoops up under the chin and pops the opponent into the air (launch)." },
 	{ key = "FlipKick", name = "Backflip Kick", input = "df+RK", notation = "df+4", startup = 16, active = 3, recovery = 26, damage = 13, height = "Mid", range = 3.1, width = 1.2, advance = 0.9, push = 0.6, props = { lowCrush = { 6, 15 } }, onBlock = -15, onHit = "LAUNCH", tier = "Launch", limb = "RearLeg", anim = { archetype = "flip_kick", side = "Rear", height = "Mid", hop = 1.2 },
 		intent = "Standing backflip: the rear foot kicks up under the chin as she flips backwards, feet leave the floor (low crush), lands crouched slightly behind her start." },
 	{ key = "SlideKick", name = "Slide Kick", input = "d+RK", notation = "d+4", startup = 18, active = 4, recovery = 24, damage = 13, height = "Low", range = 3.4, width = 1.6, track = 1, advance = 1.8, crouching = true, push = 0.3, props = { highCrush = { 5, 20 } }, onBlock = -16, onHit = "KND", tier = "Heavy", limb = "RearLeg", anim = { archetype = "slide_kick", side = "Rear", height = "Low", crouch = true, lunge = 1.6 },
@@ -462,8 +492,8 @@ define({
 		intent = "Two quick running steps and a jumping lead knee to the body (both feet off the floor: hops over lows), arms pumping back, lands on the knee leg." },
 	{ key = "Aerial", name = "Aerial", input = "LK+RK", notation = "3+4", toStance = "Aerial", noHit = true, startup = 10, active = 1, recovery = 1, damage = 0, height = "Mid", range = 2.6, width = 1.2, push = 0, onBlock = 0, onHit = 0, tier = "Light", limb = "Body", anim = { archetype = "parry", side = "Lead", height = "Mid", stance = true },
 		intent = "SIGNATURE (no strike): a forward no-hands cartwheel (gymnastics aerial). She steps in, throws both arms down and swings the legs over in a wide arc, body sideways and horizontal at the top, traveling about 2.2 studs toward the opponent and landing on the lead foot (see the stance: she is airborne, over lows, from frame 3 to 18)." },
-	{ key = "AerialSplit", name = "Aerial Split Kick", input = "AER+LK", notation = "AER+3", stance = "Aerial", startup = 12, active = 3, recovery = 18, damage = 12, height = "Mid", range = 3.6, width = 1.8, track = 2, advance = 0.4, push = 0.8, tumble = true, props = { lowCrush = { 1, 10 } }, onBlock = -8, onHit = 4, tier = "Medium", limb = "LeadLeg", anim = { archetype = "jumping_kick", side = "Lead", height = "Mid", hop = 0.8 },
-		intent = "Out of the cartwheel, still in the air, she opens the legs into a split and snaps the lead foot into the chest, landing on the rear foot. TUMBLE: on an airborne opponent the split kick flips the body over (one more juggle hit connects)." },
+	{ key = "AerialSplit", name = "Aerial Split Kick", input = "AER+LK", notation = "AER+3", stance = "Aerial", startup = 12, active = 3, recovery = 18, damage = 12, height = "Mid", range = 3.6, width = 1.8, track = 2, advance = 0.4, push = 0.8, props = { lowCrush = { 1, 10 } }, onBlock = -8, onHit = 4, tier = "Medium", limb = "LeadLeg", anim = { archetype = "jumping_kick", side = "Lead", height = "Mid", hop = 0.8 },
+		intent = "Out of the cartwheel, still in the air, she opens the legs into a split and snaps the lead foot into the chest (low crush while airborne), landing on the rear foot." },
 	{ key = "AerialHeel", name = "Aerial Rising Heel", input = "AER+RK", notation = "AER+4", stance = "Aerial", startup = 13, active = 3, recovery = 24, damage = 12, height = "Mid", range = 3.4, width = 1.2, advance = 0.4, push = 0.6, props = { lowCrush = { 1, 8 } }, onBlock = -14, onHit = "LAUNCH", tier = "Launch", limb = "RearLeg", anim = { archetype = "rising_kick", side = "Rear", height = "Mid", hop = 0.4 },
 		intent = "She lands out of the cartwheel on the lead foot and the rear heel keeps the wheel's momentum, swinging straight up under the opponent's chin (rising heel kick) and lifting it into a juggle (launcher, very unsafe on block)." },
 	{ key = "AerialSweep", name = "Aerial Drop Sweep", input = "AER+d+LK", notation = "AER+d+3", stance = "Aerial", startup = 12, active = 3, recovery = 26, damage = 13, height = "Low", range = 3.9, width = 2.4, track = 2, push = 0.3, crouching = true, onBlock = -16, onHit = "KND", tier = "Heavy", limb = "LeadLeg", anim = { archetype = "sweep", side = "Lead", height = "Low", crouch = true, spin = 0.5 },
@@ -485,6 +515,13 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Skyline': an armored running jump kick opens it; on hit the cinematic plays the beats in movesets.md (heel kick, cartwheel kick, wall-run flip off the chest, scissor kick, drop sweep, falling heel)." }),
 }, {
+	combos = {
+		{ name = "Flip And Spin", kind = "launch", notation = "df+4, 2, 1,4, 4", damage = 34, difficulty = 3, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
+		{ name = "Aerial Launch", kind = "stance", notation = "3+4, AER+4, 2, 1,4, 4", damage = 33, difficulty = 4, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "AER+4" }, { wait = 41, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
+		{ name = "Cartwheel Counter", kind = "counter", notation = "CH b+3, 2, 1,4, 4", damage = 40, difficulty = 3, counter = true, steps = { { wait = 0, input = "b+3" }, { wait = 34, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
+		{ name = "Crescent Flight", kind = "max", notation = "df+4, 2, 3,4,4", damage = 35, difficulty = 3, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "2" }, { wait = 30, input = "3" }, { wait = 8, input = "4" }, { wait = 14, input = "4" } } },
+		{ name = "Skyline Finish", kind = "ultimate", notation = "df+4, 1+2", damage = 35, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "1+2" } } },
+	},
 	signature = { kind = "stance", key = "Aerial", name = "Aerial", summary = "3+4: a forward no-hands cartwheel, airborne over lows from frame 3 to 18, traveling 2.2 studs. AER+3 split kick (tumbles in juggles), AER+4 rising heel launcher, AER+d+3 drop sweep; lands on its own at frame 26. Cancel d+3 into it." },
 	stances = {
 		{ key = "Aerial", name = "Aerial", tag = "AER", entryFrames = 4, cancelFrom = 10, maxFrames = 26, travel = 2.2, travelFrames = 18, counterHit = true, props = { lowCrush = { 3, 18 } },
@@ -565,6 +602,12 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Last Kata': an armored gliding reverse punch opens it; on hit the cinematic plays the beats in movesets.md (knife-hand, front kick, rising elbow, a long still breath, one decisive reverse punch)." }),
 }, {
+	combos = {
+		{ name = "Knee And Backfist", kind = "launch", notation = "df+3, 2, b+2, 1", damage = 31, difficulty = 2, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Still Water Answer", kind = "stance", notation = "3+4, STW+2, 2, b+2, 1", damage = 32, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "STW+2" }, { wait = 40, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Counter Knee", kind = "max", notation = "CH df+3, 2, b+2, 1", damage = 34, difficulty = 3, counter = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Last Kata Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 38, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "1+2" } } },
+	},
 	signature = { kind = "stance", key = "StillWater", name = "Still Water", summary = "3+4: a still counter stance. From frame 8 every high or mid strike that touches him is parried (26-frame stagger, he is free at once). Lows and throws beat it. STW+1 fast mid punch, STW+2 rising reverse punch launcher. Cancel d+1 / d+4 into it; hold back to leave. Plus parries on b+1 (high/mid) and db+1 (low)." },
 	stances = {
 		{ key = "StillWater", name = "Still Water", tag = "STW", entryFrames = 8, cancelFrom = 8, backExit = 10, maxFrames = 60, counterHit = true, props = { parry = { window = { 8, 60 }, heights = { "High", "Mid" }, stagger = 26 } },
@@ -603,10 +646,10 @@ define({
 		intent = "Lead front kick rising from the low stance: knee up, toes pointed, snaps to the stomach and back, rear palm forward. TUMBLE: on an airborne opponent the rising kick flips the body over in the air." },
 	{ key = "HighKick", name = "Whip Kick", input = "RK", notation = "4", stanceCancel = "Coil", startup = 13, active = 3, recovery = 18, damage = 12, height = "High", range = 4.55, width = 2.2, track = 3, advance = 0.65, push = 0.8, onBlock = -7, onHit = 5, tier = "Medium", limb = "RearLeg", anim = { archetype = "roundhouse", side = "Rear", height = "High" },
 		intent = "Whipping rear roundhouse to the head, light and fast: the knee leads, the lower leg whips at the end, arms circle for balance." },
-	{ key = "LowSpin", name = "Low Spin Kick", input = "d+LK", notation = "d+3", startup = 13, active = 2, recovery = 18, damage = 8, height = "Low", range = 4.0, width = 1.4, track = 1, crouching = true, push = 0.3, onBlock = -11, onHit = 2, tier = "Light", limb = "LeadLeg", anim = { archetype = "sweep", side = "Lead", height = "Low", crouch = true, spin = 0.25 },
+	{ key = "LowSpin", name = "Low Spin Kick", input = "d+LK", notation = "d+3", startup = 13, active = 2, recovery = 18, damage = 8, height = "Low", range = 4.0, width = 1.4, track = 1, crouching = true, push = 0.3, onBlock = -11, onHit = 4, tier = "Light", limb = "LeadLeg", anim = { archetype = "sweep", side = "Lead", height = "Low", crouch = true, spin = 0.25 },
 		intent = "Sinks into a low crouch and the lead leg sweeps a short quick arc into the shin, hands near the floor, stays crouched." },
-	{ key = "RisingTornado", name = "Rising Whirlwind", input = "d+LK, RK", notation = "d+3,4", chainFrom = "LowSpin", startup = 22, active = 3, recovery = 24, damage = 12, height = "Mid", range = 3.1, width = 1.4, track = 1.5, advance = 1.5, push = 0.6, onBlock = -15, onHit = "LAUNCH", tier = "Launch", limb = "RearLeg", anim = { archetype = "rising_kick", side = "Rear", height = "Mid", spin = 1.0 },
-		intent = "From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body corkscrews up onto the toes (the gap before it can be blocked)." },
+	{ key = "RisingTornado", name = "Rising Whirlwind", input = "d+LK, RK", notation = "d+3,4", chainFrom = "LowSpin", startup = 20, active = 3, recovery = 24, damage = 12, height = "Mid", range = 3.1, width = 1.4, track = 1.5, advance = 1.5, push = 0.6, onBlock = -15, onHit = "LAUNCH", tier = "Launch", limb = "RearLeg", anim = { archetype = "rising_kick", side = "Rear", height = "Mid", spin = 1.0 },
+		intent = "From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body corkscrews up onto the toes. Combos from the low spin on hit (a low-starter launcher); on block there is a gap to interrupt it." },
 	{ key = "RisingPalm", name = "Rising Palm Uppercut", input = "db+RP", notation = "db+2", startup = 15, active = 3, recovery = 22, damage = 13, height = "Mid", range = 3.2, width = 1.2, advance = 0.9, push = 0.6, props = { highCrush = { 1, 7 } }, onBlock = -14, onHit = "LAUNCH", tier = "Launch", limb = "RearArm", anim = { archetype = "uppercut", side = "Rear", height = "Mid", crouch = true },
 		intent = "From a crouch, the rear palm drives straight up under the chin while the legs extend, lead hand pulls down, she rises onto the toes." },
 	{ key = "ButterflyKick", name = "Butterfly Kick", input = "f+RK", notation = "f+4", startup = 18, active = 4, recovery = 22, damage = 16, height = "Mid", range = 3.85, width = 1.6, track = 1.5, advance = 1.15, push = 1.4, props = { lowCrush = { 6, 16 } }, onBlock = -10, onHit = "KND", tier = "Heavy", limb = "RearLeg", anim = { archetype = "butterfly_kick", side = "Rear", height = "Mid", hop = 1.0, spin = 1.0 },
@@ -644,6 +687,12 @@ define({
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Monsoon': an armored spinning palm strike opens it; on hit the cinematic plays the beats in movesets.md (double palm, spinning chop, sweep, spiral kick, mid-air whirl, two-palm push)." }),
 }, {
+	combos = {
+		{ name = "Palm Lift Flurry", kind = "launch", notation = "db+2, 1, 3, 2,3", damage = 31, difficulty = 3, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "1" }, { wait = 23, input = "3" }, { wait = 29, input = "2" }, { wait = 8, input = "3" } } },
+		{ name = "Coil Whirl", kind = "stance", notation = "db+2, 4, 3+4, COIL+4,4", damage = 32, difficulty = 4, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
+		{ name = "Whirlwind Rise", kind = "low", notation = "d+3,4, 4, 3+4, COIL+4,4", damage = 39, difficulty = 4, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
+		{ name = "Monsoon Finish", kind = "ultimate", notation = "d+3,4, 1+2", damage = 44, difficulty = 3, surge = true, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "1+2" } } },
+	},
 	signature = { kind = "stance", key = "Coil", name = "Coil", summary = "3+4: wind the body like a spring. COIL+4 starts the whirl: three spinning kicks (COIL+4,4,4: mid, high, mid knockdown) whose 2nd and 3rd hits can be delayed; COIL+d+4 floor sweep. Cancel 4 / 2,3 / b+2 into it; hold back to leave." },
 	stances = {
 		{ key = "Coil", name = "Coil", tag = "COIL", entryFrames = 6, cancelFrom = 6, backExit = 8, maxFrames = 50, counterHit = true,

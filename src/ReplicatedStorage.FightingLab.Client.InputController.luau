@@ -7,7 +7,8 @@
 --   W tap        one sidestep into the screen (a Move z=+1 pulse)
 --   S            press = crouch (crouch guard, instant); a quick tap with nothing else pressed = one sidestep toward
 --                the camera (a Move z=-1 pulse on release)
---   U I J K      buttons 1 2 3 4;  O = throw (1+3)
+--   U I J K      buttons 1 2 3 4;  O = throw (1+3);  L = the Ultimate (1+2, also U+I together; only in Surge)
+--   J+K          the fighter's 3+4 signature (stance or catch) and, in a stance, its follow-ups on the buttons
 --   G            controls guide (HudController.toggleGuide)
 --   practice     R reset, Y dummy behaviour, P / Start pause (T, 1/2/3 and Backspace belong to LobbyUI)
 local UserInputService = game:GetService("UserInputService")
@@ -58,7 +59,7 @@ end
 M.MoveKeys = MOVE_KEYS
 M.ButtonKeys = BUTTON_KEYS
 M.PracticeKeys = PRACTICE_KEYS
-local NOTATION: { [string]: string } = { LeadPunch = "1", RearPunch = "2", LeadKick = "3", RearKick = "4", Throw = "1+3" }
+local NOTATION: { [string]: string } = { LeadPunch = "1", RearPunch = "2", LeadKick = "3", RearKick = "4", Throw = "1+3", Ultimate = "1+2" }
 local MENU_KEYS: { [Enum.KeyCode]: string } = {
 	[Enum.KeyCode.Left] = "Left", [Enum.KeyCode.Right] = "Right", [Enum.KeyCode.Up] = "Up", [Enum.KeyCode.Down] = "Down",
 	[Enum.KeyCode.DPadLeft] = "Left", [Enum.KeyCode.DPadRight] = "Right", [Enum.KeyCode.DPadUp] = "Up", [Enum.KeyCode.DPadDown] = "Down",
@@ -229,9 +230,9 @@ local function initTouch(gui: ScreenGui)
 	touchHold(button(p, "Forward", "→", 1, moveColor, false), function(input, down) setHold("fwd", input, down) end)
 	touchHold(button(p, "StepIn", "↑ step", 2, moveColor, false), function(_input, down) if down then interruptTap(); sidestep(1) end end)
 	touchHold(button(p, "Down", "↓ crouch / tap step", 3, moveColor, false), function(input, down) setDown(input, down) end)
-	local attacks = { { "LeadPunch", "1" }, { "RearPunch", "2" }, { "LeadKick", "3" }, { "RearKick", "4" }, { "Throw", "THROW" } }
+	local attacks = { { "LeadPunch", "1" }, { "RearPunch", "2" }, { "LeadKick", "3" }, { "RearKick", "4" }, { "Throw", "THROW" }, { "Ultimate", "ULT" } }
 	for n, item in attacks do
-		button(p, item[1], item[2], n - 1, if item[1] == "Throw" then Color3.fromRGB(160,80,70) else Color3.fromRGB(80,96,126), true).Activated:Connect(function()
+		button(p, item[1], item[2], n - 1, if item[1] == "Throw" then Color3.fromRGB(160,80,70) elseif item[1] == "Ultimate" then Color3.fromRGB(196,120,40) else Color3.fromRGB(80,96,126), true).Activated:Connect(function()
 			if gameplayEnabled then pressButton(item[1]) end
 		end)
 	end

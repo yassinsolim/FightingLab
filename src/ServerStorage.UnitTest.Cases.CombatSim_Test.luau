@@ -124,10 +124,10 @@ return function(t)
 
 	test("buttons and directions select Kael roster moves", function()
 		local f = Sim.newMatch().fighters[1]
-		local standing = { LeadPunch = "Jab", RearPunch = "Cross", LeadKick = "FrontKick", RearKick = "Roundhouse", Throw = "Throw", Throw2 = "ThrowB" }
+		local standing = { LeadPunch = "Jab", RearPunch = "Cross", LeadKick = "FrontKick", RearKick = "Roundhouse", Throw = "Throw", Throw2 = "ThrowB", Ultimate = "Ultimate", Kicks = "Pocket" }
 		for _, button in Config.Buttons do expect.equal(Sim.selectMove(f, button), standing[button], button) end
 		f.input.crouch = true
-		local crouching = { LeadPunch = "Jab", RearPunch = "BodyBlow", LeadKick = "ShinKick", RearKick = "LegKick", Throw = "Throw", Throw2 = "ThrowB" }
+		local crouching = { LeadPunch = "Jab", RearPunch = "BodyBlow", LeadKick = "ShinKick", RearKick = "LegKick", Throw = "Throw", Throw2 = "ThrowB", Ultimate = "Ultimate", Kicks = "Pocket" }
 		for _, button in Config.Buttons do expect.equal(Sim.selectMove(f, button), crouching[button], "d+" .. button) end
 		f.input.moveX = 1
 		expect.equal(Sim.selectMove(f, "RearPunch"), "RisingUppercut")
