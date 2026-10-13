@@ -19,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local LobbyUI = require(script.Parent.LobbyUI)
+local LobbyCamera = require(script.Parent.LobbyCamera)
 local UIHelpers = require(script.Parent.UIHelpers)
 local Roster = require(script.Parent.Parent.Roster)
 
@@ -27,6 +28,7 @@ local M = {}
 local ctx: Ctx? = nil
 local started = false
 local mock: any = nil
+local returnCamera: LobbyCamera.Tracker? = nil -- frames the lobby camera after a fight, a practice or a quick travel
 
 --------------------------------------------------------------------------------------------------------------------
 -- Dev mock (Studio only)
@@ -711,6 +713,13 @@ function M.start()
 	started = true
 	local cx = c()
 	LobbyUI.start(cx)
+	local tracker = LobbyCamera.new()
+	returnCamera = tracker
+	local fightSession = cx.modules and cx.modules.FightSession
+	local teleport = fightSession and fightSession.Teleport
+	if typeof(teleport) == "RBXScriptSignal" then
+		teleport:Connect(function(payload: any) tracker.onTeleport(payload, os.clock()) end)
+	end
 	if RunService:IsStudio() then
 		local function sync()
 			local want = cx.gui:GetAttribute("LobbyDevMock") == true
@@ -736,6 +745,10 @@ end
 function M.update(frame: any)
 	LobbyUI.update(frame)
 	if mock then mock.update(frame) end
+	local tracker = returnCamera
+	if tracker and not mock and typeof(frame) == "table" and typeof(frame.session) == "string" then
+		tracker.step(frame.session, os.clock())
+	end
 end
 
 function M.init(newCtx: Ctx)

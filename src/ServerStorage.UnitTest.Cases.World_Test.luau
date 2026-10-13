@@ -356,6 +356,51 @@ return function(t)
 		end
 	end)
 
+	t.test("the camera view from every return point is clear: nothing between the framed camera and the player", function()
+		-- after a fight, a practice or a quick travel the client (Client.LobbyCamera) looks over the player's shoulder
+		-- at the arena from the plaza side; a lamp post or a sign on that line used to fill the middle of the view
+		local LobbyCamera = require(ReplicatedStorage.FightingLab.Client.LobbyCamera)
+		local parts = {}
+		for _, p in allParts() do
+			if p.Transparency < 0.5 then table.insert(parts, p) end
+		end
+		local function boxDistance(part: BasePart, point: Vector3): number
+			local l = part.CFrame:PointToObjectSpace(point)
+			local h = part.Size / 2
+			local c = Vector3.new(math.clamp(l.X, -h.X, h.X), math.clamp(l.Y, -h.Y, h.Y), math.clamp(l.Z, -h.Z, h.Z))
+			return (l - c).Magnitude
+		end
+		local list = {}
+		for _, def in Layout.ARENAS do
+			local model = arenaModel(def.id) :: Model
+			local points: { BasePart } = {}
+			for _, name in exitNames(def) do table.insert(points, model:FindFirstChild(name) :: BasePart) end
+			table.insert(points, model:FindFirstChild("Arrival") :: BasePart)
+			for _, q in points do
+				local root = q.Position + Vector3.new(0, 3, 0)
+				local eye = LobbyCamera.frameBehind(CFrame.lookAt(root, root + q.CFrame.LookVector)).Position
+				local head = root + Vector3.new(0, 1.6, 0)
+				local mid, half = (eye + head) / 2, (head - eye).Magnitude / 2
+				local seen: { [BasePart]: boolean } = {}
+				for _, p in parts do
+					if not seen[p] and (p.Position - mid).Magnitude <= half + p.Size.Magnitude / 2 + 1.5 then
+						local samples = math.ceil(half * 4)
+						for k = 0, samples do
+							local point = eye:Lerp(head, k / samples)
+							-- the floor under the player and the step of a pad are not view blockers
+							if boxDistance(p, point) < (if k == 0 then 1 else 0.9) and topY(p) > q.Position.Y + 1.2 then
+								seen[p] = true
+								table.insert(list, string.format("%s.%s: %s", def.id, q.Name, p:GetFullName()))
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+		expect.equal(#list, 0, "pieces between the return camera and the player: " .. table.concat(list, "; "))
+	end)
+
 	t.test("every arena has an Arrival marker on the floor outside the ring, facing it, clear and reachable", function()
 		local barriers: { Instance } = {}
 		for _, def in Layout.ARENAS do
