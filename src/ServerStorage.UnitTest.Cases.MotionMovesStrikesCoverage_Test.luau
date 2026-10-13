@@ -23,6 +23,8 @@ end
 -- A string clip belongs to the category of its own last button: punches are LP / RP.
 local function isStrike(move: any): boolean
 	if move.height == "Throw" then return false end
+	-- The Ultimate (1+2) plays its cinematic clips (Moves.Ultimates, MotionUltimate_Test).
+	if move.cinematic ~= nil then return false end
 	local token = string.match(move.input, "[^,]+$") or move.input
 	token = string.gsub(token, "^%s+", "")
 	local button = string.match(token, "([LR][PK])$")
@@ -55,7 +57,7 @@ return function(t)
 		t.expect.truthy(folder ~= nil, "Motion.Clips.Moves.Strikes exists")
 		local index = ClipLibrary.index()
 		local moves = strikeMoves()
-		t.expect.equal(#moves, 38, "38 punch-type moves across the roster")
+		t.expect.equal(#moves, 49, "49 punch-type moves across the roster (round 6: + enders, stance follow-ups, the low parry)")
 		for _, m in moves do
 			local si = if m.move.chainFrom then 2 else nil
 			local clip = ClipLibrary.forMove(m.id, m.key, si)
@@ -147,6 +149,6 @@ return function(t)
 				t.expect.truthy(ok and isStrike(move), name .. " binds punch-type move " .. tostring(raw.move))
 			end
 		end
-		t.expect.equal(count, 38, "one clip per punch-type move")
+		t.expect.equal(count, 49, "one clip per punch-type move")
 	end)
 end

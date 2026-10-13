@@ -822,3 +822,106 @@ Other known issues:
   reverted).
 - Cost: the floor and thrown-defender clearance makes a lying or thrown frame dearer (the move-clip ground sweeps run
   ~1.5x longer); standing frames are unchanged.
+
+## 15. Round 6: Ultimates, signature stances, tumble, the new movesets
+
+The user asked for different movesets and combos per fighter and a low-health Ultimate. Combat (r6-combat) redesigned
+the movesets (`movesets.md`) and added Surge and the Ultimates to the sim (Contract A); motion makes them look right.
+
+### 15.1 Ultimates
+
+Six two-person cinematics, one per fighter, on the roster timelines (impacts exactly on the roster frames), plus the
+move's own start clip. Format, runtime (`Client.Motion.Cinematic`), camera, effects and authoring:
+**`ultimates.md`**. Clips: `Motion.Clips.Moves.Ultimates.<Fighter>_Ultimate` (FLThrow1) and `<Fighter>_UltimateStart`
+(FLClip1); source specs `tools/mocap/cine/ult_<fighter>.py`, builder `cinebuild.py`.
+
+### 15.2 Signature stances (state `"Stance"`)
+
+The sim enters a stance directly on 3+4 (`view.state = "Stance"`, `view.stance` = the key, `view.stanceFrame` from 1;
+no Startup state). `Motion.States.stanceRequest`:
+
+| phase | clip | time |
+|---|---|---|
+| entry, stanceFrame ≤ `entryFrames` | `Kick_<Fighter>_<Stance>` (the clip bound to the 3+4 entry move, Moves.Kicks) | progress over entryFrames |
+| held | `<Fighter>_<Stance>` (Core, loop) | elapsed since the entry |
+| a travelling stance (Lumi's Aerial) | `<Fighter>_<Stance>` (Core, one-shot) whole | stanceFrame / maxFrames |
+| leaving into the guard | `<Fighter>_<Stance>Exit` (Core) when installed, else the idle crossfade | 10 frames |
+
+Keys `SigEnter:<key>`, `Sig:<key>`, `SigExit:<key>`. The stance's own clips show its crush (Kael's Pocket ducks, the
+Aerial is in the air), so `view.crush` does not swap them for the crouch. Stance follow-ups (PocketShovel,
+SouthpawHeadKick, AerialSplit, StillStrike, CoilWhirl, …) are ordinary move clips whose first frame is the stance pose.
+Southpaw follow-ups are the orthodox kicks mirrored (the roster `limb` names the physical leg: RearLeg = right) and end
+on the orthodox stance with a hop-switch (the sim leaves the stance with the move).
+
+| Fighter | stance | entry | loop | exit |
+|---|---|---|---|---|
+| Kael | Pocket (PKT) | knees bend, head drops under the line (6 f) | low bob-and-roll, U shape, 40 f | rises to the guard |
+| Sierra | Southpaw (SPW) | hop-switch (5 f) | the mirrored bouncing stance | hop-switch back |
+| Lumi | Aerial (AER) | one 26-frame clip: dip, no-hands cartwheel (airborne 3-18), landing | | |
+| Rhys | StillWater (STW) | lead foot back, open hand forward (8 f) | still, a slow breath, 60 f | foot back to the front stance |
+| Nia | Coil (COIL) | shoulders turn away, palms to the hip (6 f) | palms circling, 48 f | unwinds |
+
+Goran's 3+4 is the Bear Trap (a catch move, `Kick_Goran_BearTrap`: hips down, arms wide 4-24); a catch plays his
+ThrowB.
+
+### 15.3 Tumble
+
+A tumble hit (`Hit.tumble`, view flag `tumble` while the body is still in the air) plays `Core.AirTumble`: the juggled
+body rolls once about its long axis and holds the falling juggle pose until it lands; a new air hit rolls it again.
+
+### 15.4 New and changed move clips (`tools/mocap/cine/movebuild.py`, specs `movespecs.py`)
+
+39 new move clips (23 kick-type in Moves.Kicks, 11 punch-type in Moves.Strikes, the 5 stance entries) plus 8 stance
+loop/exit/whole clips and AirTumble in Core, hand-keyed on poses sampled from the game's own clips (credits follow
+them; kicks credit `original:motionkicks`, strikes `original:motionstrikes`):
+- `standard(ctx, src, start, lead, a, ...)` retimes a source clip onto the move: start pose on frame 0, the source's
+  [a .. contact] onto [lead .. startup + 1] (contact snap), [contact .. recover] onto the active frames, the rest onto
+  the recovery, ending on the displayed stance on the move's last frame (60 fps, `contact = (startup + 1) / total`,
+  `recover = (startup + active + 1) / total`: the warp is the identity).
+- String enders start on the previous hit's pose: punch-type on its recover mark (where the sim starts the follow-up),
+  kick-type on its last active frame (`kick_chain`); a follow-up of a NEW move starts on that clip's solved pose
+  (`built_pose`).
+- Spins and flips keep the source's own path (dense keys every 2 frames); `C.rotated`/`C.rotated_axis` turn whole
+  poses (limbs follow).
+- Build: `python tools\mocap\cine\movebuild.py --roster <roster.json> [--only Kael] [--no-write] [--sheets <dir>]`;
+  the sheets show every clip at start, wind-up, contact (red), recover and end.
+
+- Dense samples interpolate linearly (`seg`): a smoothstep per 2-3 frame segment stopped the motion at every key, a
+  stop-and-go MotionQA read as speed pops. The source recovery plays at its own speed (compressing it sped the
+  retraction up into pops).
+- A move combat re-times keeps its round-5 clip as a reference copy (`tools/mocap/cine/refclips`, never installed):
+  SnapKick is that clip with a small hop; RisingTornado (impact 22 -> 20) plays its busy frames (the hand swing, the
+  arm swing, the jump and the kick) at the round-5 speed while the calm frames absorb the two frames (weights from a
+  rig probe of the round-5 move, `R5_RISING_BUSY`). A uniform retime sped the whole startup up 10 % into speed pops.
+- SlashElbow keeps the glove a glove's depth in front of the face all the way (it used to pass over the head: the
+  CharacterLook glove check). RibRoller's follow-through is hand-keyed: the hook source squeezed contact-to-recover
+  into the three active frames and flipped the lead elbow in one frame; now the fist rolls up through the target, the
+  arm folds back in front of the chest with the elbow turning down into the guard and the body rises out of the dip.
+
+Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 punch-type moves, one clip each
+(`MotionMovesKicksCoverage_Test`, `MotionMovesStrikesCoverage_Test`; the Ultimate is covered by
+`MotionUltimate_Test`, the 3+4 signatures by the Body-limb branch: the body stays with the sim root).
+
+### 15.5 Tests and QA
+
+- `MotionUltimate_Test`: every fighter's Ultimate clip and start clip on the roster timeline (impacts exactly on their
+  frames, contact on startup + 1), the presentation time map, both roles finite on every frame, the defender lying on
+  its spot at the end and the knockdown continuing without a jump, missing fields never erroring, stance entry/loop/
+  exit requests, the tumble request.
+- `MotionGround_Test` sweeps the Ultimates on their real timelines (attacker; Goran and Nia as defenders) instead of
+  as 46-frame throws.
+- MotionQA: `QA.ultimateCases(id)` (move, cinematic, Landing and getup) and `QA.stanceCases(id)` (each stance held to
+  its end and into each follow-up); `tools/mocap/motionqa_report.luau` runs them as parts `ultimates` and `stances`.
+- MotionQA r6 vs main (all six fighters, real rigs, the cases both runs share): no category worse for any fighter
+  against main's runtime run with r6's `CombatConfig`. Against main as it is, three categories are +1 (Lumi pop.rot,
+  Rhys and Nia pop.speed), all on the launch frame of the state case `launch>juggle>landing>getup>idle`, which takes
+  its launch from `CombatConfig.LaunchVelocity` (combat raised it 16 -> 19); main's runtime shows the same defects
+  with the new constant. Report: `OV6/handoff/motion-shots/round6/motionqa-r6-vs-main.md`.
+
+### 15.6 Presentation fixes asked by the other agents
+
+- Hit flash (`CharacterPresenter`): a white fill of at most 30 % for 4 frames (was 55 % for 6), so still frames do
+  not look washed out; Surge and UltStart flash the body for 5 frames, the UltStart screen flash lasts 0.16 s.
+- Boxing gloves (`Motion.BodyShape.isGlove`): the boolean attribute `FightingLabGlove`, else a `FightingLabRole` of
+  `Glove`/`BoxingGlove`, decides; the old "*glove*" name rule only applies without either.
+- The Ultimate camera frames both fighters whole (`CameraDirector._fitShot`, see `ultimates.md` section 4).

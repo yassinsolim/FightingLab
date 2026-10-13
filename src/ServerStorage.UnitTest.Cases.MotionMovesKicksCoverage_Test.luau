@@ -71,7 +71,7 @@ return function(t)
 		t.expect.truthy(folder ~= nil, "Motion.Clips.Moves.Kicks exists")
 		local index = ClipLibrary.index()
 		local moves = kickMoves()
-		t.expect.equal(#moves, 49, "49 kick-type moves across the roster")
+		t.expect.equal(#moves, 77, "77 kick-type moves across the roster (round 6: + string enders, stance entries and follow-ups, the catch)")
 		for _, m in moves do
 			local si = if m.move.chainFrom then 2 else nil
 			local name = m.id .. "." .. m.key
@@ -134,6 +134,11 @@ return function(t)
 			local pose = MotionPlayer.sample(Config, view :: any, { now = 0, hitstop = 0 }, 43)
 			local clip = ClipLibrary.forMove(id, key) :: any
 			local limb = (clip.tags and clip.tags.limb) or LIMB[m.move.limb]
+			if m.move.limb == "Body" then
+				-- 3+4 signatures (stance entries, the catch): no striking leg; the body stays with the sim root.
+				t.expect.truthy(pose.rootOffset.Z > -0.5, id .. "." .. key .. " body stays with the sim root")
+				continue
+			end
 			t.expect.truthy(limb ~= nil, id .. "." .. key .. " has a striking leg")
 			local target = pose.targets[limb]
 			t.expect.truthy(target ~= nil, id .. "." .. key .. " pose has the " .. tostring(limb) .. " target")
@@ -171,7 +176,7 @@ return function(t)
 				end
 			end
 		end
-		t.expect.equal(count, 9, "nine kick string follow-ups")
+		t.expect.equal(count, 24, "24 kick string follow-ups")
 	end)
 
 	t.test("every clip in Moves.Kicks binds a roster kick-type move", function()
@@ -186,6 +191,6 @@ return function(t)
 				t.expect.truthy(ok and isKick(move), name .. " binds kick-type move " .. tostring(raw.move))
 			end
 		end
-		t.expect.equal(count, 49, "one clip per kick-type move")
+		t.expect.equal(count, 77, "one clip per kick-type move")
 	end)
 end

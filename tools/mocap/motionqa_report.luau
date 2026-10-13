@@ -1,5 +1,6 @@
 -- MotionQA report runner (Studio, Play, Server DataModel; paste into execute_luau or the command bar).
--- Plays every QA case (states, moves at max and close range, transitions, strings, throws, a recorded CPU fight) for
+-- Plays every QA case (states, moves at max and close range, transitions, strings, throws, the Ultimate cinematic and
+-- the signature stances (round 6), a recorded CPU fight) for
 -- the fighters in _G.MotionQAFighters (default: all six) on the real rigs and POSTs the defects as JSON to the report
 -- sink (_G.MotionQASink, default http://127.0.0.1:35301/report/<tag>-<Fighter>.json; tools/mocap/motionqa_report.py
 -- turns them into the ranked markdown report). Returns a one-line summary per fighter.
@@ -11,7 +12,7 @@ local Roster = QA.Roster
 local fighters = _G.MotionQAFighters or Roster.order
 local tag = _G.MotionQATag or "report"
 local sink = _G.MotionQASink or "http://127.0.0.1:35301/report/"
-local parts = _G.MotionQAParts or { "states", "moves", "transitions", "throws" }
+local parts = _G.MotionQAParts or { "states", "moves", "transitions", "throws", "ultimates", "stances" }
 local want = {}
 for _, p in parts do want[p] = true end
 local rigs = QA.stage(nil)
@@ -23,6 +24,9 @@ for _, id in fighters do
 	if want.transitions then for _, c in QA.transitionCases(id) do table.insert(cases, c) end end
 	if want.throws then for _, c in QA.throwCases(id) do table.insert(cases, c) end end
 	if want.hits then for _, c in QA.hitCases(id) do table.insert(cases, c) end end
+	-- Round 6 (the harness may be newer than the runtime under test: a baseline without them has no such cases).
+	if want.ultimates and QA.ultimateCases then for _, c in QA.ultimateCases(id) do table.insert(cases, c) end end
+	if want.stances and QA.stanceCases then for _, c in QA.stanceCases(id) do table.insert(cases, c) end end
 	local all, summaries = {}, {}
 	local frames, t0 = 0, os.clock()
 	for _, case in cases do

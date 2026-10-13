@@ -1,5 +1,6 @@
 --!strict
 local CollectionService = game:GetService("CollectionService")
+local Cinematic = require(script.Parent:WaitForChild("Motion"):WaitForChild("Cinematic"))
 
 type Ctx = any
 type RenderFrame = any
@@ -51,6 +52,29 @@ local FIGHTER_HEIGHT = 6.0
 -- A fighter moving further than this in one frame was put back on its mark (= MotionPlayer.TeleportDistance).
 M.TeleportDistance = 3
 
+-- Ultimate presentation (round 6, docs/design/ultimates.md). On UltStart the camera holds still for UltFreeze seconds
+-- (the screen flash plays over it), then pushes in on the attacker for UltPushIn seconds and eases back if no cinematic
+-- follows. While both fighters are in the cinematic (Motion.Cinematic) the clip's camera keys drive the shot (cuts are
+-- hard cuts), kept out of every body part (BodyMargin) and every wall; the final impact's slow motion narrows the lens.
+-- After the cinematic the camera glides back to the fight camera over CineReturn seconds.
+M.UltFreeze = 0.14
+M.UltPushIn = 0.7
+M.CineReturn = 0.8
+M.BodyMargin = 0.75
+local ultStart: { t: number, attacker: number }? = nil
+local cineWeight = 0
+local cineShot: { pos: Vector3, look: Vector3, fov: number, roll: number }? = nil
+local cineShotIndex: number? = nil
+local cineExitAt: number? = nil
+local cineSlow = false
+local cineCuts = 0
+local slowShown = 0
+local fightFov = BASE_FOV
+local function smoothstep(x: number): number local t = math.clamp(x, 0, 1); return t * t * (3 - 2 * t) end
+local BODY_PARTS = { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand",
+	"LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local bodyCache: { [Model]: { BasePart } } = setmetatable({} :: any, { __mode = "k" })
+
 function M.setMode(mode: string)
 	assert(VALID[mode] == true, "Unknown camera mode: " .. mode)
 	requestedMode = mode
@@ -64,6 +88,9 @@ end
 
 local function tierImpactScale(e: CombatEvent): number
 	if e.kind == "KO" then return 1.45 end
+	if e.kind == "UltHit" then return if e.knockdown == true then 1.45 else 0.95 end
+	if e.kind == "UltStart" then return 0 end
+	if e.kind == "Surge" then return 0.3 end
 	if e.launch == true or e.tier == "Launch" then return 1.15 end
 	if e.counter == true then return 1.0 end
 	if e.tier == "Heavy" then return 0.82 end
@@ -72,6 +99,10 @@ local function tierImpactScale(e: CombatEvent): number
 end
 
 function M.onEvent(e: CombatEvent)
+	if e.kind == "UltStart" then
+		ultStart = { t = os.clock(), attacker = if e.attacker == 2 then 2 else 1 }
+		return
+	end
 	local scale = tierImpactScale(e)
 	if e.kind == "Whiff" or e.kind == "Crush" then scale *= 0.25 end
 	impactPush = math.max(impactPush, 0.18 + scale * 0.88)
@@ -115,7 +146,8 @@ end
 local function hasThrow(f: RenderFrame): boolean
 	for i = 1, 2 do
 		local r = f.fighters[i]
-		if r and (r :: any).throw ~= nil then return true end
+		-- (The Ultimate's cinematic has its own camera; the fight camera keeps its normal plan underneath it.)
+		if r and (r :: any).throw ~= nil and not Cinematic.isUltimate((r :: any).throw) then return true end
 	end
 	return false
 end
@@ -316,6 +348,121 @@ local function clippedPosition(desiredFocus: Vector3, desiredPosition: Vector3):
 	return desiredPosition
 end
 
+-- Pushes a camera position out of the given body parts: every part's box grown by `margin` (BodyMargin). Pure (tests
+-- pass posed rigs' parts).
+function M._clearOfBodies(pos: Vector3, parts: { BasePart }, margin: number?): Vector3
+	local m = margin or M.BodyMargin
+	local p = pos
+	for _ = 1, 4 do
+		local moved = false
+		for _, part in parts do
+			local cf = part.CFrame
+			local half = part.Size * 0.5
+			local l = cf:PointToObjectSpace(p)
+			local c = Vector3.new(math.clamp(l.X, -half.X, half.X), math.clamp(l.Y, -half.Y, half.Y), math.clamp(l.Z, -half.Z, half.Z))
+			local d = l - c
+			local dist = d.Magnitude
+			if dist < m then
+				local dir = if dist > 1e-4 then d / dist elseif l.Magnitude > 1e-4 then l.Unit else Vector3.zAxis
+				p += cf:VectorToWorldSpace(dir) * (m - dist + 1e-3)
+				moved = true
+			end
+		end
+		if not moved then break end
+	end
+	return p
+end
+
+local function bodyParts(): { BasePart }
+	local out: { BasePart } = {}
+	local c = ctx
+	if not c then return out end
+	for i = 1, 2 do
+		local model = c.modules.Characters.getModel and c.modules.Characters.getModel(i)
+		if model then
+			local list = bodyCache[model]
+			if not list then
+				list = {}
+				for _, name in BODY_PARTS do
+					local part = model:FindFirstChild(name, true)
+					if part and part:IsA("BasePart") then table.insert(list, part) end
+				end
+				bodyCache[model] = list
+			end
+			for _, part in list do table.insert(out, part) end
+		end
+	end
+	return out
+end
+
+-- A cinematic camera position that is in no body and behind no wall: out of the bodies, clipped by the walls (from the
+-- look point), and out of the bodies again (a wall can push the lens back in front of a fighter).
+local function safeShot(look: Vector3, pos: Vector3): Vector3
+	local parts = bodyParts()
+	local p = M._clearOfBodies(pos, parts)
+	p = clippedPosition(look, p)
+	return M._clearOfBodies(p, parts)
+end
+
+-- Framing of a cinematic shot: both fighters whole in the frame (heads and feet, CineFitMargin of headroom). The lens
+-- widens up to CineFitMaxFov, then the camera backs off along its look line. Pure (tests pass points).
+M.CineFitMaxFov = 50
+M.CineFitMargin = 1.12
+function M._fitShot(pos: Vector3, look: Vector3, fov: number, points: { Vector3 }, aspect: number?): (Vector3, number)
+	if #points == 0 then return pos, fov end
+	local delta = look - pos
+	if delta.Magnitude < 1e-3 then return pos, fov end
+	local dir = delta.Unit
+	local right = dir:Cross(Vector3.yAxis)
+	right = if right.Magnitude < 1e-3 then Vector3.xAxis else right.Unit
+	local up = right:Cross(dir)
+	local asp = aspect or (16 / 9)
+	local function need(back: number): number
+		local eye = pos - dir * back
+		local worst = 0
+		for _, p in points do
+			local v = p - eye
+			local z = math.max(v:Dot(dir), 0.3)
+			worst = math.max(worst, math.abs(v:Dot(up)) * M.CineFitMargin / z, math.abs(v:Dot(right)) * M.CineFitMargin / (z * asp))
+		end
+		return worst
+	end
+	local tanNow = math.tan(math.rad(fov) * 0.5)
+	local tanNeed = need(0)
+	if tanNeed <= tanNow then return pos, fov end
+	local tanMax = math.tan(math.rad(math.max(fov, M.CineFitMaxFov)) * 0.5)
+	if tanNeed <= tanMax then return pos, 2 * math.deg(math.atan(tanNeed)) end
+	local back = 0
+	for _ = 1, 30 do
+		back += 0.5
+		if need(back) <= tanMax then break end
+	end
+	return pos - dir * back, 2 * math.deg(math.atan(tanMax))
+end
+
+-- Heads and feet of both fighters (posed rigs; else the views: feet on the root, head 6.3 studs up).
+local function framingPoints(f: RenderFrame): { Vector3 }
+	local out: { Vector3 } = {}
+	for _, part in bodyParts() do
+		local n = part.Name
+		if n == "Head" then
+			table.insert(out, part.Position + Vector3.new(0, part.Size.Y * 0.6, 0))
+		elseif n == "LeftFoot" or n == "RightFoot" then
+			table.insert(out, part.Position - Vector3.new(0, part.Size.Y * 0.6, 0))
+		end
+	end
+	if #out > 0 then return out end
+	for i = 1, 2 do
+		local v = f.fighters and f.fighters[i]
+		if type(v) == "table" and typeof(v.pos) == "Vector3" then
+			local base = origin + Vector3.new(v.pos.X, math.max(v.pos.Y, 0), v.pos.Z)
+			table.insert(out, base)
+			table.insert(out, base + Vector3.new(0, 6.3, 0))
+		end
+	end
+	return out
+end
+
 -- Slot 1 watches from the side where P1 is on the left; slot 2 from the opposite side (its fighter on the left).
 local function initialSide(slot: number): Vector3
 	return if slot == 2 then Vector3.new(0, 0, 1) else Vector3.new(0, 0, -1)
@@ -330,8 +477,10 @@ function M.beginFight(newOrigin: Vector3, slot: number?)
 	shakeShown, pushShown, tiltShown, hitLean = 0, 0, 0, 0
 	camVel, lookVel = Vector3.zero, Vector3.zero
 	lastPhase, lastPlan = nil, nil
+	ultStart, cineWeight, cineShot, cineShotIndex, cineExitAt, cineSlow, slowShown = nil, 0, nil, nil, nil, false, 0
 	table.clear(lastPos)
 	local cam = workspace.CurrentCamera
+	if cam then fightFov = cam.FieldOfView end
 	if cam then
 		camera = cam
 		if not active then savedFov = cam.FieldOfView end
@@ -368,8 +517,9 @@ function M.getViewSlot(): number
 end
 
 -- Test hook: the camera's smoothed state, the latest plan and how many reset cuts happened.
-function M._state(): { camPos: Vector3, camLook: Vector3, focus: Vector3, side: Vector3, plan: CameraPlan?, snaps: number }
-	return { camPos = camPos, camLook = camLook, focus = focus, side = side, plan = lastPlan, snaps = snapCount }
+function M._state(): { camPos: Vector3, camLook: Vector3, focus: Vector3, side: Vector3, plan: CameraPlan?, snaps: number, cinematic: { weight: number, shot: number?, cuts: number, slow: boolean, pushing: boolean } }
+	return { camPos = camPos, camLook = camLook, focus = focus, side = side, plan = lastPlan, snaps = snapCount,
+		cinematic = { weight = cineWeight, shot = cineShotIndex, cuts = cineCuts, slow = cineSlow, pushing = ultStart ~= nil } }
 end
 
 function M.update(f: RenderFrame)
@@ -424,29 +574,102 @@ function M.update(f: RenderFrame)
 	end
 	plan.position += side * pushShown
 	plan.position = clippedPosition(plan.focus, plan.position)
+	-- Ultimate activation: the camera holds still for UltFreeze (the flash plays over it), then pushes in on the attacker
+	-- and eases back when no cinematic takes over (a blocked or whiffed Ultimate).
+	local frozen = false
+	local us = ultStart
+	if us then
+		local el = now - us.t
+		if el > M.UltFreeze + M.UltPushIn + 0.6 or effectiveMode ~= "Fight" then
+			ultStart = nil
+		else
+			frozen = el < M.UltFreeze
+			local w = smoothstep((el - M.UltFreeze) / 0.22) * (1 - smoothstep((el - M.UltFreeze - M.UltPushIn) / 0.6))
+			if w > 0 then
+				local head = (if us.attacker == 1 then p1 else p2) + origin + Vector3.new(0, 4.2, 0)
+				local away = plan.position - head
+				plan.focus = plan.focus:Lerp(head, 0.5 * w)
+				plan.position = clippedPosition(plan.focus, plan.position:Lerp(head + (if away.Magnitude > 0.01 then away.Unit else -side) * 10.5, 0.5 * w))
+				plan.fov -= 6 * w
+			end
+		end
+	end
 	if reset then
 		-- Hard cut, the same frame the bodies cut: the camera starts the new round on its shot instead of gliding across.
 		focus, camPos, camLook = plan.focus, plan.position, plan.focus
 		camVel, lookVel = Vector3.zero, Vector3.zero
 		cam.FieldOfView = plan.fov
+		fightFov = plan.fov
 		snapCount += 1
+	elseif frozen then
+		camVel, lookVel = Vector3.zero, Vector3.zero
 	else
 		focus = smooth(focus, plan.focus, f.dt, 8.5)
 		camPos, camVel = follow(camPos, camVel, smooth(camPos, plan.position, f.dt, if effectiveMode == "Fight" then 9.8 else 4.2), f.dt)
 		camLook, lookVel = follow(camLook, lookVel, smooth(camLook, plan.focus, f.dt, 10.5), f.dt)
 	end
 	lastPlan = plan
+	-- The Ultimate's cinematic: the clip's camera keys (Motion.Cinematic) on top of the fight camera, which keeps
+	-- following its own plan underneath so the return after the cinematic glides onto a live shot.
+	local aSlot, aId, cineFrame, aView = Cinematic.active(f)
+	if aSlot and aView and effectiveMode == "Fight" and typeof(aView.pos) == "Vector3" and typeof(aView.facing) == "Vector3" then
+		local tl = Cinematic.timeline(aId, aView.throw)
+		local shot = Cinematic.cameraShot(Cinematic.clip(aId), tl, cineFrame :: number, origin + Vector3.new(aView.pos.X, 0, aView.pos.Z), aView.facing, aSlot ~= viewSlot)
+		local pos = safeShot(shot.look, shot.pos)
+		-- Both fighters whole in the frame (a designed close-up never crops a head or the feet).
+		local vp = cam.ViewportSize
+		local fitPos, fitFov = M._fitShot(pos, shot.look, shot.fov, framingPoints(f), if vp.Y > 1 then vp.X / vp.Y else nil)
+		if (fitPos - pos).Magnitude > 1e-3 then fitPos = safeShot(shot.look, fitPos) end
+		pos = fitPos
+		shot.fov = fitFov
+		local current = cineShot
+		if current == nil or cineWeight < 1 or shot.shot ~= cineShotIndex then
+			if current ~= nil and cineWeight >= 1 then cineCuts += 1 end
+			cineShot = { pos = pos, look = shot.look, fov = shot.fov, roll = shot.roll }
+		else
+			-- The keyed path is smooth already; the light filter only absorbs the body/wall corrections.
+			local k = 1 - math.exp(-f.dt * 30)
+			current.pos, current.look = current.pos:Lerp(pos, k), current.look:Lerp(shot.look, k)
+			current.fov += (shot.fov - current.fov) * k
+			current.roll += (shot.roll - current.roll) * k
+		end
+		cineShotIndex = shot.shot
+		cineSlow = Cinematic.slowMotion(tl, cineFrame :: number)
+		cineWeight, cineExitAt, ultStart = 1, nil, nil
+	else
+		cineSlow = false
+		if cineWeight > 0 then
+			cineExitAt = cineExitAt or now
+			cineWeight = 1 - smoothstep((now - (cineExitAt :: number)) / M.CineReturn)
+			if cineWeight <= 1e-3 then cineWeight, cineShot, cineShotIndex, cineExitAt = 0, nil, nil, nil end
+		end
+	end
 	shake = math.max(0, shake - f.dt * 1.55)
 	impactPush = math.max(0, impactPush - f.dt * 4.2)
 	impactTilt *= math.exp(-f.dt * 8)
 	-- Shake at 5-7 Hz (a 14 Hz shake sampled at 60 fps read as jitter), easing in over two frames.
 	shakeShown += (shake - shakeShown) * (1 - math.exp(-f.dt * 30))
 	local s = Vector3.new(math.sin(f.now * 41), math.cos(f.now * 33), math.sin(f.now * 29) * 0.4) * shakeShown
-	cam.FieldOfView += (plan.fov - cam.FieldOfView) * (1 - math.exp(-f.dt * 5.5))
-	cam.CFrame = CFrame.lookAt(camPos + s, camLook + s * 0.35) * CFrame.Angles(0, 0, tiltShown)
+	if not frozen then fightFov += (plan.fov - fightFov) * (1 - math.exp(-f.dt * 5.5)) end
+	slowShown += ((if cineSlow then 1 else 0) - slowShown) * (1 - math.exp(-f.dt * 12))
+	local outPos, outLook, outFov, outRoll = camPos, camLook, fightFov, tiltShown
+	local cs = cineShot
+	if cs and cineWeight > 0 then
+		local w = cineWeight
+		outPos, outLook = camPos:Lerp(cs.pos, w), camLook:Lerp(cs.look, w)
+		outFov, outRoll = fightFov + (cs.fov - fightFov) * w, tiltShown + (cs.roll - tiltShown) * w
+		-- The glide back from the last cinematic shot never passes through a fighter.
+		if w < 1 then outPos = M._clearOfBodies(outPos, bodyParts()) end
+	end
+	-- The final hit's slow motion: the lens narrows a little.
+	outFov -= 4 * slowShown
+	cam.FieldOfView = outFov
+	cam.CFrame = CFrame.lookAt(outPos + s, outLook + s * 0.35) * CFrame.Angles(0, 0, outRoll)
 	local c = ctx
 	if c then
 		c.gui:SetAttribute("CameraMode", effectiveMode)
+		c.gui:SetAttribute("CameraCinematic", cineWeight > 0)
+		c.gui:SetAttribute("CameraCinematicShot", cineShotIndex or 0)
 		c.gui:SetAttribute("CameraScreenHeightNeutral", M._screenHeightFraction(M._distanceForSeparation(7), 6.0, BASE_FOV))
 		c.gui:SetAttribute("CameraScreenHeightClose", M._screenHeightFraction(M._distanceForSeparation(3.2), 6.0, BASE_FOV))
 		c.gui:SetAttribute("CameraScreenHeightMax", M._screenHeightFraction(M._distanceForSeparation(14), 6.0, BASE_FOV))

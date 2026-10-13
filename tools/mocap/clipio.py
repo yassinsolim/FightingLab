@@ -5,6 +5,8 @@ Values are quantised to 12 bits per channel (2 base64 digits). Channel ranges: r
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -244,8 +246,47 @@ def throw_module(name: str, attacker: tuple[np.ndarray, dict], defender: tuple[n
     if meta.get("grips"):
         duration = (attacker[0].shape[1] - 1) / float(attacker[1]["fps"])
         text += grip_fields(meta["grips"], duration)
+    text += cinematic_fields(meta)
     text += "}\n"
     return text, clipped
+
+
+def _lua_value(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return f"{float(v):.4f}".rstrip("0").rstrip(".") if float(v) != int(float(v)) else str(int(float(v)))
+    if isinstance(v, str):
+        return f'"{v}"'
+    if isinstance(v, (list, tuple)):
+        return "{ " + ", ".join(_lua_value(x) for x in v) + " }"
+    if isinstance(v, dict):
+        return "{ " + ", ".join(f"{k} = {_lua_value(x)}" for k, x in v.items()) + " }"
+    raise TypeError(f"cannot write {v!r} to Luau")
+
+
+def cinematic_fields(meta: dict) -> str:
+    """Round-6 Ultimate cinematic fields of an FLThrow1 (Motion.Cinematic): impacts (normalised times), hits (striking limb
+    per impact), camera keys (t, pos, look, fov, cut, ease, roll; studs in the attacker's frame), release, endKind."""
+    out = ""
+    if meta.get("impacts"):
+        out += "\timpacts = " + _lua_value([round(float(u), 4) for u in meta["impacts"]]) + ",\n"
+    if meta.get("hits"):
+        out += "\thits = {\n" + "".join("\t\t" + _lua_value(h) + ",\n" for h in meta["hits"]) + "\t},\n"
+    if meta.get("camera"):
+        rows = []
+        for k in meta["camera"]:
+            row = {"t": round(float(k["t"]), 4), "pos": [round(float(x), 3) for x in k["pos"]], "look": [round(float(x), 3) for x in k["look"]]}
+            for opt in ("fov", "cut", "ease", "roll"):
+                if opt in k and k[opt] is not None:
+                    row[opt] = k[opt]
+            rows.append(row)
+        out += "\tcamera = {\n" + "".join("\t\t" + _lua_value(r) + ",\n" for r in rows) + "\t},\n"
+    if meta.get("release") is not None:
+        out += f"\trelease = {float(meta['release']):.4f},\n"
+    if meta.get("endKind"):
+        out += f'\tendKind = "{meta["endKind"]}",\n'
+    return out
 
 
 # Reading clip modules back (offline verification) ------------------------------------------------------------------
@@ -253,7 +294,8 @@ def throw_module(name: str, attacker: tuple[np.ndarray, dict], defender: tuple[n
 def parse_lua_table(text: str):
     """Parses the `return { ... }` literal of a generated clip module (strings, numbers, booleans, nested tables;
     keyed fields and positional items). Comments are skipped."""
-    i = text.index("return")
+    m = re.search(r"^return\b", text, re.M)
+    i = m.start() if m else text.index("return")
     s = text[i + 6:]
     pos = 0
 

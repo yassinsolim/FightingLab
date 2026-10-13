@@ -2,6 +2,7 @@
 local Roster = require(script.Parent.Parent.Parent.Roster)
 local Library = require(script.Parent.Parent.MotionLibrary)
 local ClipPlayer = require(script.Parent.ClipPlayer)
+local ClipLibrary = require(script.Parent.ClipLibrary)
 export type Keyframe = Library.Keyframe
 
 local States = {}
@@ -217,7 +218,7 @@ States.CLIPS = {
 	Blockstun = "Blockstun", CrouchBlockstun = "CrouchBlockstun",
 	Airborne = "Juggle", KnockdownFaceUp = "FallBack", KnockdownFaceDown = "FallFront", KnockdownFaceDownAir = "FallFrontAir", GetupFaceUp = "GetupBack", GetupFaceDown = "GetupFront",
 	BackRoll = "BackRoll", SideRoll = "SideRoll", KOFaceUp = "KOBack", KOFaceDown = "KOFront", Intro = "Intro", Victory = "Victory", Defeat = "Defeat",
-	Stagger = "Stagger", ThrowBreak = "ThrowBreak", ProneTurnOver = "ProneTurnOver",
+	Stagger = "Stagger", ThrowBreak = "ThrowBreak", ProneTurnOver = "ProneTurnOver", AirTumble = "AirTumble",
 }
 
 -- Knockdown timing (sim: Landing 34 f on the floor, then Getup 26 f, rolls +10): a grounded knockdown reaches the floor
@@ -247,8 +248,9 @@ function States.floorImpact(tracker: any, view: any, config: any, now: number): 
 	local state = view.state
 	local y = if typeof(view.pos) == "Vector3" then view.pos.Y else 0
 	if state ~= tracker.state then
-		-- A thrown body already hit the floor at the throw impact (ThrowHit presents it): no second impact.
-		local thrown = tracker.state == "Throw"
+		-- A thrown body already hit the floor at the throw impact (ThrowHit presents it), and a body knocked down by the
+		-- Ultimate landed inside the cinematic (Effects/Audio present it from the clip): no second impact.
+		local thrown = tracker.state == "Throw" or tracker.state == "Ultimate"
 		tracker.fromAir = tracker.state == "Airborne" or y > 0.05
 		tracker.state = state
 		tracker.fired = thrown
@@ -444,6 +446,41 @@ local function hitStamp(hit: any): string
 	return tostring(hit.frame) .. ":" .. tostring(hit.move)
 end
 
+-- Round 6 signature stances (sim state "Stance", view.stance = the stance key, view.stanceFrame from 1): the entry
+-- clip Kick_<Fighter>_<Stance> (the clip bound to the stance's 3+4 entry move) over the stance's entryFrames, then the
+-- loop clip <Fighter>_<Stance> (Motion.Clips.Core). A stance that travels (Lumi's Aerial) plays its clip
+-- <Fighter>_<Stance> whole over maxFrames. Leaving the stance into the guard plays <Fighter>_<Stance>Exit (when
+-- installed) over STANCE_EXIT_FRAMES; the stance follow-ups are ordinary move clips that start on the stance pose.
+States.STANCE_EXIT_FRAMES = 10
+
+local function stanceFallback(characterId: string, view: any, scale: number, now: number): Keyframe
+	return States.pose(characterId, if view.crush == "High" then "HighCrush" else "Guard", scale, now)
+end
+
+function States.stanceRequest(view: any, characterId: string, scale: number, now: number, elapsedFrames: number): MotionRequest?
+	local key = view.stance
+	if type(key) ~= "string" then return nil end
+	local def = Roster.stance(characterId, key)
+	local sf = if type(view.stanceFrame) == "number" then view.stanceFrame else elapsedFrames
+	local base = characterId .. "_" .. key
+	local fallback = stanceFallback(characterId, view, scale, now)
+	if def and (def.travel or 0) > 0 and ClipLibrary.has(base) then
+		return { key = "Sig:" .. key, clip = base, timeMode = "progress", progress = sf / math.max(def.maxFrames or 1, 1), styled = false, fade = 0.05, keyframe = fallback }
+	end
+	local entry = if def then math.max(def.entryFrames or 1, 1) else 6
+	local entryClip = "Kick_" .. characterId .. "_" .. key
+	if sf <= entry and ClipLibrary.has(entryClip) then
+		return { key = "SigEnter:" .. key, clip = entryClip, timeMode = "progress", progress = sf / entry, styled = false, fade = 0.04, keyframe = fallback }
+	end
+	return { key = "Sig:" .. key, clip = base, timeMode = "elapsed", seconds = math.max(sf - entry, 0) / 60, styled = false, fade = 0.08, keyframe = fallback }
+end
+
+-- The stance a request key belongs to ("Sig:<key>" / "SigEnter:<key>"), and the exit in progress ("SigExit:<key>").
+local function stanceOfKey(key: string?): (string?, string?)
+	if type(key) ~= "string" then return nil, nil end
+	return string.match(key, "^Sig:(.+)$") or string.match(key, "^SigEnter:(.+)$"), string.match(key, "^SigExit:(.+)$")
+end
+
 -- Request key of the reaction a view is in (nil outside hit/block/stagger reactions); MotionPlayer uses it to snap
 -- to a new reaction's impact pose during hitstop.
 function States.reactionKey(view: any): string?
@@ -468,6 +505,11 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	-- own hands (pushed back, dropped to the body, flung open) must read.
 	local reactArms = styleAdjust(st, scale, legLength, st.w * 0.3, ctx.clock, "stance")
 	local crouchReactArms = styleAdjust(st, scale, legLength, st.w * 0.3, ctx.clock, "crouch")
+	-- A signature stance's own clips already show its crush (Kael's Pocket ducks, Lumi's Aerial is in the air).
+	if view.state == "Stance" then
+		local sreq = States.stanceRequest(view, characterId, scale, now, (ctx.clock - ctx.keyStarted) * 60)
+		if sreq then return sreq end
+	end
 	if view.crush == "High" then return { key = "HighCrush", clip = States.CLIPS.Crouch, keyframe = States.pose(characterId, "HighCrush", scale, now), fade = 0.06, adjust = moveArms } end
 	if view.crush == "Low" then return { key = "LowCrush", keyframe = States.pose(characterId, "LowCrush", scale, now), fade = 0.06 } end
 	local state = view.state
@@ -521,6 +563,12 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	end
 	if state == "Airborne" or (state == "KO" and (view.pos and view.pos.Y or 0) > 0.05) then
 		local vy = if type(view.velocityY) == "number" then view.velocityY else 0
+		if state == "Airborne" and view.tumble == true and ClipLibrary.has(States.CLIPS.AirTumble) then
+			-- Tumble extender (round 6): the body rolls over once in the air and falls on (AirTumble holds its falling pose
+			-- until the landing); a new air hit rolls it again.
+			return { key = "Airborne:Tumble:" .. hitStamp(hit), clip = States.CLIPS.AirTumble, timeMode = "elapsed", styled = false,
+				keyframe = States.launch(scale, view.velocityY, view.airFrames, view.airHits, hitSide), fade = 0.06, ground = 0 }
+		end
 		if view.knockdown == "FaceDown" then
 			-- Falling out of a juggle into a face-down knockdown: the face-down fall clip reaches its floor contact
 			-- exactly when the body lands (time to the floor from height, velocity and gravity), so Landing continues
@@ -540,8 +588,9 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		return { key = "Airborne:" .. hitStamp(hit), clip = States.CLIPS.Airborne, timeMode = "progress", progress = progress,
 			keyframe = States.launch(scale, view.velocityY, view.airFrames, view.airHits, hitSide), fade = 0.05, styled = false, ground = 0 }
 	end
-	-- A body that already fell (out of a juggle) or was thrown down continues the knockdown clip from its floor contact.
-	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or string.find(ctx.key, ":Air", 1, true) ~= nil)
+	-- A body that already fell (out of a juggle) or was thrown down (a throw or the Ultimate cinematic, whose defender track
+	-- ends on the knockdown clip's floor contact) continues the knockdown clip from its floor contact.
+	local fromAirKey = type(ctx.key) == "string" and (string.sub(ctx.key, 1, 8) == "Airborne" or ctx.key == "Throw" or ctx.key == "Ultimate" or string.find(ctx.key, ":Air", 1, true) ~= nil)
 	-- The pose actually shown decides for a body that is already lying when the knockdown starts (a throw's defender
 	-- track, whatever the sim's knockdown side): face down with the head away it continues like a juggle's face-down
 	-- landing below.
@@ -633,6 +682,14 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 		local back = state == "Backwalk" or (state ~= "Walk" and (view.moveX or 0) < 0)
 		return { key = if back then "Backwalk" else "Walk", clip = if back then States.CLIPS.Backwalk else States.CLIPS.Walk, timeMode = "travel",
 			keyframe = States.pose(characterId, if back then "Backwalk" else "Walk", scale, view.walkPhase), fade = 0.14, restart = true, adjust = walkArms }
+	end
+	-- Out of a signature stance into the guard: its exit clip when installed (else the usual crossfade into the idle).
+	local fromStance, exiting = stanceOfKey(ctx.key)
+	local exitStance = fromStance or (if exiting and elapsedFrames < States.STANCE_EXIT_FRAMES then exiting else nil)
+	if exitStance and ClipLibrary.has(characterId .. "_" .. exitStance .. "Exit") then
+		return { key = "SigExit:" .. exitStance, clip = characterId .. "_" .. exitStance .. "Exit", timeMode = "progress",
+			progress = (if exiting then elapsedFrames else 0) / States.STANCE_EXIT_FRAMES, styled = false, fade = 0.05,
+			keyframe = States.pose(characterId, "Idle", scale, now) }
 	end
 	return { key = "Stance", clip = States.CLIPS.Stance, keyframe = States.pose(characterId, "Idle", scale, now), rate = st.rate, phase = (slot - 1) * 0.37, fade = 0.15, adjust = guardArms }
 end

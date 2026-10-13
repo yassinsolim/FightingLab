@@ -9,6 +9,7 @@ local Roster = require(Lab.Roster)
 local MotionPlayer = require(Lab.Client.MotionPlayer)
 local ClipLibrary = require(Lab.Client.Motion.ClipLibrary)
 local ClipPlayer = require(Lab.Client.Motion.ClipPlayer)
+local Cinematic = require(Lab.Client.Motion.Cinematic)
 
 local BODY = { "LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
 local FLOOR_Y = 120
@@ -177,6 +178,30 @@ local function moveClipCases(rigs: { [string]: Staged }): { any }
 			return a, d, clip, t
 		end
 	end
+	-- The Ultimate's cinematic (round 6): both roles locked endDistance apart for the roster timeline, the clip time on
+	-- the presentation time map (impacts on their roster frames, the final slow motion).
+	local function ultimateSteps(attackerId: string, defenderId: string, tc: any, role: string): (number, (number) -> (any, any, any?, number?))
+		local tl = Cinematic.timeline(attackerId, nil)
+		local duration = tl.duration
+		return LEAD + duration, function(f: number)
+			local tf = f - LEAD
+			local a = foeView(attackerId, 0)
+			a.facing = Vector3.xAxis
+			local d = foeView(defenderId, tl.endDistance)
+			local clip, t = nil, nil
+			if tf >= 1 then
+				local function info(r: string): any
+					return { role = r, move = "Ultimate", archetype = "ultimate", frame = tf, duration = duration, impactFrame = tl.frames[1] }
+				end
+				a.state, a.guard, a.throw = "Ultimate", nil, info("Attacker")
+				d.state, d.guard, d.throw = "Ultimate", nil, info("Defender")
+				clip = if role == "Defender" then tc.defender else tc.attacker
+				t = Cinematic.clipU(tc, tl, Cinematic.displayFrame(tl, tf)) * clip.duration
+			end
+			if role == "Defender" then return d, a, clip, t end
+			return a, d, clip, t
+		end
+	end
 	local cases: { any } = {}
 	local index = ClipLibrary.index()
 	for _, name in ClipLibrary.list() do
@@ -193,6 +218,16 @@ local function moveClipCases(rigs: { [string]: Staged }): { any }
 			if entry.raw.format == ClipLibrary.THROW_FORMAT then
 				local tc = ClipLibrary.forThrow(id, key)
 				if not (tc and tc.name == name) then continue end
+				if m.cinematic ~= nil then
+					-- The attacker and two defenders of different builds (both ends of the size range).
+					local n, at = ultimateSteps(id, id, tc, "Attacker")
+					table.insert(cases, { agent = agent, clipName = name, label = name .. " attacker", id = id, n = n, at = at, move = m, far = false, throw = true })
+					for _, defender in { "Goran", "Nia" } do
+						local n2, at2 = ultimateSteps(id, defender, tc, "Defender")
+						table.insert(cases, { agent = agent, clipName = name, label = name .. " defender " .. defender, id = defender, n = n2, at = at2, move = m, far = false, throw = true })
+					end
+					continue
+				end
 				local breakAt = math.max(2, math.floor((m.breakWindow or 20) / 2))
 				for _, far in { true, false } do
 					local dist = if far then math.max(m.range or 3.2, SEP + 0.05) else SEP

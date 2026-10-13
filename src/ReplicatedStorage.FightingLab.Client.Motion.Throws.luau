@@ -50,6 +50,9 @@ local function common(name: string, duration: number?, impactFrame: number?): Th
 	return { attacker = attacker, defender = defender, duration = d, impactFrame = impact }
 end
 for _, name in { "clinch_strike", "clinch_knees", "bear_hug_toss", "slam", "flip_toss", "hip_toss", "arm_toss" } do Throws[name] = function(duration: number?, impactFrame: number?): ThrowTrack return common(name, duration, impactFrame) end end
+-- The Ultimate (round 6) is posed by Motion.Cinematic; this keyframe pair only keeps any older caller of the throw
+-- archetypes from failing on its "ultimate" snapshot archetype.
+Throws.ultimate = function(duration: number?, impactFrame: number?): ThrowTrack return common("slam", duration, impactFrame) end
 function Throws.whiff(): { Keyframe } return { k(0, Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero, nil, both), k(0.35, v(0,-0.05,0.34), a(8,0,0), a(20,0,0), nil, hands(1.22,1.28), both, "out"), k(3, Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero, nil, both, "out") } end
 function Throws.throwBreak(role: string): { Keyframe } local dir = if role == "Attacker" then -1 else 1; return { k(0, Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero, nil, both), k(1, v(0,0,dir*-0.70), a(-8,0,0), a(-12,0,0), nil, nil, both, "out"), k(3, Vector3.zero, Vector3.zero, Vector3.zero, Vector3.zero, nil, both, "out") } end
 return Throws

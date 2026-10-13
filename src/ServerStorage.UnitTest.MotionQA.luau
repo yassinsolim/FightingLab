@@ -1359,6 +1359,112 @@ function QA.throwCases(id: string, defender: string?): { Case }
 	return cases
 end
 
+-- Ultimate cases (round 6): the Ultimate move connects, both fighters lock into state "Ultimate" endDistance apart for the
+-- attacker's roster timeline (Contract A: throw.archetype "ultimate"), then the defender lies (Landing with endKind) and
+-- gets up while the attacker idles. Both fighters are measured (throw = true: the partner overlap check is off, as for
+-- throws; the cinematic choreography is checked offline by tools/mocap/cine).
+function QA.ultimateCases(id: string, defender: string?): { Case }
+	local d = defender or partnerOf(id)
+	local m = Roster.get(id).moves.Ultimate
+	if not m or type(m.cinematic) ~= "table" then return {} end
+	local cin = m.cinematic
+	local duration = cin.duration
+	local impactFrame = if type(cin.impacts) == "table" and cin.impacts[1] then cin.impacts[1].frame else 30
+	local endKind = if cin.endKind == "FaceDown" then "FaceDown" else "FaceUp"
+	local dist = if type(cin.endDistance) == "number" then cin.endDistance else 4.4
+	local L = (Config :: any).LandingFrames or 34
+	local G = (Config :: any).GetupFrames or 26
+	local LEAD, HIT = 20, m.startup + 1
+	local c: Case = {
+		label = string.format("ultimate:%s.Ultimate", id), kind = "ultimate", ids = { id, d }, n = LEAD + HIT + duration + L + G + 30, subjects = { 1, 2 }, throw = true,
+		at = function(f: number)
+			local a = baseView("Idle", { guard = "Stand", pos = Vector3.zero, facing = Vector3.xAxis })
+			local b = baseView("Idle", { guard = "Stand", pos = Vector3.new(dist, 0, 0), facing = -Vector3.xAxis })
+			if f > LEAD and f <= LEAD + HIT then
+				local k = f - LEAD
+				a.state, a.guard, a.move, a.moveFrame, a.stringIndex = if k <= m.startup then "Startup" else "Active", nil, "Ultimate", k, 1
+				b.pos = Vector3.new(math.min(dist, 3.4), 0, 0)
+			elseif f > LEAD + HIT and f <= LEAD + HIT + duration then
+				local tf = f - LEAD - HIT
+				local function info(role: string): any
+					return { role = role, move = "Ultimate", archetype = "ultimate", frame = tf, duration = duration, impactFrame = impactFrame }
+				end
+				a.state, a.guard, a.throw = "Ultimate", nil, info("Attacker")
+				b.state, b.guard, b.throw = "Ultimate", nil, info("Defender")
+				b.lastHit = { kind = "Hit", height = m.height, tier = m.tier, counter = false, frame = 9000, move = "Ultimate", limb = m.limb, side = 0 }
+			elseif f > LEAD + HIT + duration then
+				local after = f - LEAD - HIT - duration
+				b.lastHit = { kind = "Hit", height = m.height, tier = m.tier, counter = false, frame = 9000, move = "Ultimate", limb = m.limb, side = 0 }
+				if after <= L then
+					b.state, b.guard, b.knockdown, b.stun = "Landing", nil, endKind, L - after
+				elseif after <= L + G then
+					b.state, b.guard, b.knockdown, b.stun, b.getupKind = "Getup", nil, endKind, G - (after - L) + 1, "Stand"
+				end
+			end
+			return { views = { a, b }, hitstop = 0 }
+		end,
+	}
+	return { c }
+end
+
+-- Signature stance cases (round 6): idle, the 3+4 entry, the stance held to its natural end (or back out of it), idle;
+-- and the entry straight into each stance follow-up (on the stance's first cancel frame), then idle.
+function QA.stanceCases(id: string): { Case }
+	local def = Roster.get(id)
+	local cases: { Case } = {}
+	local stances = (def :: any).stances or {}
+	local keys = {}
+	for key in stances do table.insert(keys, key) end
+	table.sort(keys)
+	for _, key in keys do
+		local st = stances[key]
+		local hold = math.min(st.maxFrames, 120)
+		local LEAD, TAIL = 20, 30
+		table.insert(cases, {
+			label = string.format("stance:%s.%s", id, key), kind = "stance", ids = { id, partnerOf(id) }, n = LEAD + hold + TAIL, subjects = { 1 },
+			at = function(f: number)
+				local a = baseView("Idle", { guard = "Stand", pos = Vector3.zero, facing = Vector3.xAxis })
+				local b = baseView("Idle", { guard = "Stand", pos = Vector3.new(3.6, 0, 0), facing = -Vector3.xAxis })
+				if f > LEAD and f <= LEAD + hold then
+					a.state, a.guard, a.stance, a.stanceFrame = "Stance", st.guard, key, f - LEAD
+					if (st.travel or 0) > 0 then a.pos = Vector3.new(st.travel * math.clamp((f - LEAD) / math.max(st.travelFrames, 1), 0, 1), 0, 0) end
+				elseif f > LEAD + hold and (st.travel or 0) > 0 then
+					a.pos = Vector3.new(st.travel, 0, 0)
+				end
+				return { views = { a, b }, hitstop = 0 }
+			end,
+		})
+		for mk, m in def.moves do
+			if m.stance ~= key then continue end
+			local from = math.max(st.cancelFrom or 1, 1)
+			local total = m.startup + m.active + m.recovery
+			local LEAD2 = 20
+			table.insert(cases, {
+				label = string.format("stance:%s.%s>%s", id, key, mk), kind = "stance", ids = { id, partnerOf(id) }, n = LEAD2 + from + total + 30, subjects = { 1 },
+				at = function(f: number)
+					local a = baseView("Idle", { guard = "Stand", pos = Vector3.zero, facing = Vector3.xAxis })
+					local b = baseView("Idle", { guard = "Stand", pos = Vector3.new(3.6, 0, 0), facing = -Vector3.xAxis })
+					local travel = if (st.travel or 0) > 0 then st.travel * math.clamp(from / math.max(st.travelFrames, 1), 0, 1) else 0
+					if f > LEAD2 and f <= LEAD2 + from then
+						local sf = f - LEAD2
+						a.state, a.guard, a.stance, a.stanceFrame = "Stance", st.guard, key, sf
+						if travel > 0 then a.pos = Vector3.new(st.travel * math.clamp(sf / math.max(st.travelFrames, 1), 0, 1), 0, 0) end
+					elseif f > LEAD2 + from and f <= LEAD2 + from + total then
+						local k = f - LEAD2 - from
+						a.state = if k <= m.startup then "Startup" elseif k <= m.startup + m.active then "Active" else "Recovery"
+						a.guard, a.move, a.moveFrame, a.stringIndex, a.crouched = nil, mk, k, 1, m.crouching == true
+						a.pos = Vector3.new(travel, 0, 0)
+					else
+						a.pos = Vector3.new(if f > LEAD2 then travel else 0, 0, 0)
+					end
+					return { views = { a, b }, hitstop = 0 }
+				end,
+			})
+		end
+	end
+	return cases
+end
+
 -- Hit cases: the move connects at max range on its first active frame, as CombatSim plays it: the hit frame and the
 -- hitstop freeze (Config.Hitstop[tier] (+2 counter), Block 3) repeat the same snapshot, the defender is pushed back
 -- push x 0.75 (x 0.35 blocked) in one frame and takes the reaction: Blockstun, Hitstun (+N), Landing (KND: lies 34 f,

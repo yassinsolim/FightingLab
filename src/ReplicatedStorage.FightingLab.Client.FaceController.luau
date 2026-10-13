@@ -123,12 +123,19 @@ function M.expressionFor(view: any, context: any?): (string, number)
 	end
 	if s == "KO" then return "KO", 1 end
 	if s == "Hitstun" or s == "Stagger" or s == "Airborne" or s == "Landing" then return "Pain", 1 end
+	-- The Ultimate's cinematic (round 6): the attacker roars through it, the defender takes it.
+	if s == "Ultimate" or (type(view.throw) == "table" and view.throw.archetype == "ultimate") then
+		if type(view.throw) == "table" and view.throw.role == "Defender" then return "Pain", 1 end
+		return "Shout", 1
+	end
 	if s == "Throw" then
 		if view.throw and view.throw.role == "Defender" then return "Pain", 1 end
 		return "Shout", 0.85
 	end
 	if s == "Startup" or s == "Active" then return "Shout", 0.9 end
 	if s == "Block" or s == "Blockstun" or s == "Getup" or s == "Recovery" then return "Grit", 0.85 end
+	-- Surge (low health, round 6): gritted teeth instead of calm focus.
+	if view and view.surge == true then return "Grit", 0.9 end
 	return "Focused", 1
 end
 
