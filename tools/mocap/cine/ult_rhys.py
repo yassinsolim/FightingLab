@@ -74,7 +74,8 @@ def build(tl: dict) -> dict:
         r(i2 - 6, "HitMidHeavy@0.5", zc - 0.01, rot_plus=[3, 0, -2]),
         # the front kick doubles it over
         r(i2, "HitMidHeavy@0.0", zc - 0.01, "snap", rot_plus=[2, 0, 0], waist_plus=[-2, 0, 0]),
-        r(i2 + 10, "HitMidHeavy@0.15", zc - 0.05, rot_plus=[-18, 0, 0], waist_plus=[-12, 0, 0]),
+        r(i2 + 4, "HitMidHeavy@0.05", zc - 0.10, rot_plus=[-4, 0, 0], waist_plus=[-4, 0, 0]),
+        r(i2 + 10, "HitMidHeavy@0.15", zc - 0.12, rot_plus=[-18, 0, 0], waist_plus=[-12, 0, 0]),
         r(i3 - 6, "HitMidHeavy@0.4", zc - 0.03, rot_plus=[-4, 0, 0], waist_plus=[-4, 0, 0], neck_plus=[-6, 0, 0]),
         # the rising elbow: head snaps up, it sways dazed
         r(i3, "HitHighHeavy@0.0", zc - 0.03, "snap", neck_plus=[34, 0, 0], waist_plus=[10, 0, 0]),
@@ -105,7 +106,7 @@ def build(tl: dict) -> dict:
     # the rising elbow: the right forearm folds up by the ear and the point of the elbow rises under the chin
     elbow_contact = edited(C.pose_at(C.at(STRAIGHT, "contact")), RightHand={"at": [0.28, 1.80, 0.24], "pole": [0.15, -0.5, 1.0]})
     elbow_windup = edited(C.pose_at(C.at(STRAIGHT, "windup")), RightHand={"at": [0.24, 1.10, 0.06], "pole": [0.3, -0.6, 0.8]})
-    dz3 = C.reach_dz(elbow_contact, "RightHand", C.chin(), dtrack, i3, 0.03, clear=-0.05, arm_tol=-0.3, dx=-0.12, joint="elbowR")
+    dz3 = C.reach_dz(elbow_contact, "RightHand", C.chin(), dtrack, i3, 0.03, clear=-0.01, arm_tol=-0.3, dx=-0.12, joint="elbowR")
     elbow_contact, elbow_windup = C.pose_at(elbow_contact, 0.0, -0.12), C.pose_at(elbow_windup, 0.0, -0.12)
     A += [
         pk(i3 - 16, C.pose_at(stance, dz3), lift=(0.05, 0.05)),
