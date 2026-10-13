@@ -12,12 +12,13 @@ export type FighterState = {
 	lastHit: LastHitState?, velocityY: number, airFrames: number, airHits: number, knockdown: string?, dashDirection: number,
 	guard: string?, stepDir: number, stepFrame: number, dashFrame: number, dashTotal: number, stringIndex: number,
 	crouchFrames: number, getupKind: string?, rollDir: number,
+	surge: boolean, ultUsed: boolean, tumble: boolean, stance: string?, stanceFrame: number,
 }
 export type SnapEvent = {
 	kind: string, attacker: number, target: number, move: string?, damage: number,
 	advantage: number, combo: number, air: boolean, point: Vector3?, frame: number,
 	counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?,
-	height: string?, limb: string?, evaded: boolean?,
+	height: string?, limb: string?, evaded: boolean?, tumble: boolean?,
 }
 export type Entry = {
 	frame: number, epoch: number, serverTime: number, phase: string, mode: string, sparring: boolean,
@@ -35,7 +36,7 @@ export type Options = { period: number?, delay: number?, capacity: number?, adap
 export type EventQueue = { pending: { { time: number, event: SnapEvent } }, seen: { [string]: boolean }, order: { string } }
 
 local RenderBuffer = {}
-local LOCKED: { [string]: boolean } = { Startup = true, Active = true, Recovery = true, Hitstun = true, Blockstun = true, Airborne = true, Landing = true, Getup = true, Dash = true, Backdash = true, Sidestep = true, KO = true, Throw = true, Stagger = true }
+local LOCKED: { [string]: boolean } = { Startup = true, Active = true, Recovery = true, Hitstun = true, Blockstun = true, Airborne = true, Landing = true, Getup = true, Dash = true, Backdash = true, Sidestep = true, KO = true, Throw = true, Stagger = true, Stance = true, Ultimate = true }
 RenderBuffer.TeleportDistance = 6
 
 -- Default: the legacy every-third-frame stream with a fixed delay. Server duels stream every 60 Hz step and pass
@@ -105,6 +106,10 @@ local function parseFighter(raw: unknown, fallbackId: string): FighterState?
 		stringIndex = num(raw.stringIndex) or 0, crouchFrames = num(raw.crouchFrames) or 0,
 		getupKind = if raw.getupKind == "Stand" or raw.getupKind == "BackRoll" or raw.getupKind == "SideRoll" then raw.getupKind else nil,
 		rollDir = num(raw.rollDir) or 0,
+		-- Round 6: Surge / Ultimate (contract A), signature stance, tumble.
+		surge = raw.surge == true, ultUsed = raw.ultUsed == true, tumble = raw.tumble == true,
+		stance = if typeof(raw.stance) == "string" and Roster.stance(characterId, raw.stance) ~= nil then raw.stance else nil,
+		stanceFrame = num(raw.stanceFrame) or 0,
 	}
 end
 local function parseEvent(raw: unknown): SnapEvent?
@@ -126,6 +131,7 @@ local function parseEvent(raw: unknown): SnapEvent?
 		height = if typeof(raw.height) == "string" then raw.height else nil,
 		limb = if typeof(raw.limb) == "string" then raw.limb else nil,
 		evaded = if raw.evaded == true then true else nil,
+		tumble = if raw.tumble == true then true else nil,
 	}
 end
 function RenderBuffer.parse(raw: unknown): Entry?

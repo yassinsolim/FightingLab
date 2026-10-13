@@ -472,7 +472,8 @@ local function candidates(me: Sim.Fighter, role: string, dist: number, foeCrouch
 	local list = {}
 	for _, key in me.character.moveOrder do
 		local def = me.character.moves[key]
-		if def.chainFrom == nil then
+		-- Stance follow-ups, stance entries and the Ultimate are chosen by their own decisions, never as neutral picks.
+		if def.chainFrom == nil and def.stance == nil and def.toStance == nil and def.cinematic == nil then
 			local prefix = prefixOf(def)
 			local fits = false
 			if role == "dashAttack" then fits = prefix == "dash"
@@ -616,7 +617,7 @@ local function bestPunisher(me: Sim.Fighter, frames: number, dist: number, p: Pa
 	for _, key in me.character.moveOrder do
 		local def = me.character.moves[key]
 		local prefix = prefixOf(def)
-		if def.chainFrom == nil and def.damage > 0 and def.height ~= "Throw" and prefix ~= "dash" and prefix ~= "ss" and impactOf(def) <= frames and dist <= threatOf(def) - 0.1
+		if def.chainFrom == nil and def.stance == nil and def.toStance == nil and def.cinematic == nil and def.damage > 0 and def.height ~= "Throw" and prefix ~= "dash" and prefix ~= "ss" and impactOf(def) <= frames and dist <= threatOf(def) - 0.1
 			and not (foeCrouched and def.height == "High") then
 			local score = def.damage
 			if def.onHit == "LAUNCH" then score += if p.punishLauncher then 20 else -100 end
@@ -771,7 +772,7 @@ local function juggle(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: nu
 	for _, key in me.character.moveOrder do
 		local def = me.character.moves[key]
 		local prefix = prefixOf(def)
-		if def.chainFrom == nil and def.height ~= "Low" and def.height ~= "Throw" and def.damage > 0 and prefix ~= "dash" and prefix ~= "ss" and impactOf(def) <= 18 then
+		if def.chainFrom == nil and def.stance == nil and def.toStance == nil and def.cinematic == nil and def.height ~= "Low" and def.height ~= "Throw" and def.damage > 0 and prefix ~= "dash" and prefix ~= "ss" and impactOf(def) <= 18 then
 			local y = predictY(foe, impactOf(def))
 			if y > 0.35 and y < Config.AirHitCeiling - 0.2 and dist <= threatOf(def) - 0.1 then
 				local finisher = foe.airHits + 1 >= p.juggleHits

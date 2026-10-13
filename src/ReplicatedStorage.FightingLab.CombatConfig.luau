@@ -19,6 +19,9 @@ local Config = {
 	-- Two buttons pressed within ChordFrames form a chord (1+3 / 2+4 throws); a move already started by the first
 	-- button is upgraded in place while it is no older than ChordFrames.
 	ChordFrames = 3,
+	-- Tighter windows for the round-6 chords: 1+2 (the Ultimate) needs both presses on the same or the next frame and
+	-- 3+4 (the signature) within 2 frames, so quickly typed 1,2 and 3,4 strings stay strings.
+	ChordWindow = { Ultimate = 1, Kicks = 2 },
 	-- After a successful throw break both fighters stay locked this many frames (break animation), then neutral.
 	ThrowBreakFrames = 16,
 	LocalAuthority = true,
@@ -37,12 +40,12 @@ local Config = {
 	SidestepAttackFrame = 8, -- sidestep can be cancelled into an attack (ss moves) from this frame
 	SidestepGuardFrame = 17, -- holding back from this frame ends the sidestep into standing guard
 	CrouchSpeed = 0,         -- crouch is stationary
-	LaunchVelocity = 16,
+	LaunchVelocity = 19,
 	Gravity = 44,
-	JuggleVelocity = 7.5,
+	JuggleVelocity = 9,
 	MaxJuggleExtensions = 4,
 	MaxAirHits = 4,
-	MaxAirFrames = 86,
+	MaxAirFrames = 110,
 	AirHitCeiling = 4.5,
 	AirDamageScale = 0.7,
 	AirDamageDecay = 0.82,
@@ -60,10 +63,24 @@ local Config = {
 	WinsNeeded = 2,
 	TrainerDecisionFrames = 1,
 	TrainerAttackFrames = 9,
-	Buttons = { "LeadPunch", "RearPunch", "LeadKick", "RearKick", "Throw", "Throw2" },
-	ButtonNotation = { LeadPunch = "LP", RearPunch = "RP", LeadKick = "LK", RearKick = "RK", Throw = "LP+LK", Throw2 = "RP+RK" },
-	-- Chords: two buttons pressed together. 1+3 = throw (break with 1), 2+4 = throw (break with 2).
-	Chords = { ["LeadPunch+LeadKick"] = "Throw", ["LeadKick+LeadPunch"] = "Throw", ["RearPunch+RearKick"] = "Throw2", ["RearKick+RearPunch"] = "Throw2" },
+	Buttons = { "LeadPunch", "RearPunch", "LeadKick", "RearKick", "Throw", "Throw2", "Ultimate", "Kicks" },
+	ButtonNotation = { LeadPunch = "LP", RearPunch = "RP", LeadKick = "LK", RearKick = "RK", Throw = "LP+LK", Throw2 = "RP+RK", Ultimate = "LP+RP", Kicks = "LK+RK" },
+	-- Chords: two buttons pressed together. 1+3 = throw (break with 1), 2+4 = throw (break with 2), 1+2 = the Ultimate
+	-- (only while it is available; otherwise 1 and 2 stay two presses), 3+4 = the fighter's signature (stance / catch).
+	Chords = {
+		["LeadPunch+LeadKick"] = "Throw", ["LeadKick+LeadPunch"] = "Throw", ["RearPunch+RearKick"] = "Throw2", ["RearKick+RearPunch"] = "Throw2",
+		["LeadPunch+RearPunch"] = "Ultimate", ["RearPunch+LeadPunch"] = "Ultimate", ["LeadKick+RearKick"] = "Kicks", ["RearKick+LeadKick"] = "Kicks",
+	},
+	-- Round 6: Surge (low-health state) and the Ultimate (CONTRACTS-v6.md, Surge and Ultimate).
+	SurgeThreshold = 0.25,        -- a fighter at or below this fraction of its max health (and above 0) enters Surge
+	SurgeDamageMultiplier = 1.1,  -- damage a Surging fighter deals (not the Free Training permanent Surge)
+	UltComboScale = 0.7,          -- Ultimate damage when it lands on an opponent already in a combo or juggle
+	-- Tumble: a tumble move hitting an airborne opponent lifts it again (studs/s) and adds one juggle hit.
+	TumbleVelocity = 12,
+	-- Ground combo scaling: the Nth consecutive ground hit of a combo deals this fraction (natural 3-hit strings are
+	-- unscaled); later hits use ComboScaleMin.
+	ComboScale = { [4] = 0.85, [5] = 0.75, [6] = 0.65 },
+	ComboScaleMin = 0.6,
 	DummyModes = { "Stand", "Guard", "Fight" },
 	DefaultP1 = "Kael",
 	DefaultP2 = "Sierra",
