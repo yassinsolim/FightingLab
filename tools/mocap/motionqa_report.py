@@ -26,6 +26,8 @@ CATEGORIES = [
     ("opp.through", "striking hand/foot through the opponent outside contact (studs)"),
     ("opp.body", "bodies overlapping outside throws (studs)"),
     ("jitter", "idle/walk zig-zag oscillation"),
+    ("getup.spin", "knockdown -> getup -> idle: whole-body yaw/roll per frame (deg, round 5)"),
+    ("getup.whip", "knockdown -> getup -> idle: limb turn relative to the pelvis per frame (deg, round 5)"),
 ]
 FIGHTERS = ["Kael", "Sierra", "Goran", "Lumi", "Rhys", "Nia"]
 
@@ -131,6 +133,33 @@ def main():
                 cells.append(str(v))
         tot = f"{btotal} -> {total}" if tb is not None else str(total)
         lines.append(f"| {cat} ({desc}) | " + " | ".join(cells) + f" | {tot} |")
+    lines.append("")
+    # Worst value per category and fighter.
+    def worst_values(dd):
+        w = collections.defaultdict(dict)
+        for fighter, d in dd.items():
+            for x in d["defects"]:
+                c = category(x["metric"])
+                if x["value"] > w[c].get(fighter, float("-inf")):
+                    w[c][fighter] = x["value"]
+        return w
+    wv = worst_values(data)
+    wb = worst_values(base) if base else None
+    lines.append("## Worst value per category and fighter" + (" (baseline -> now; - = no defect)" if base else ""))
+    lines.append("")
+    lines.append("| category | " + " | ".join(FIGHTERS) + " |")
+    lines.append("|---|" + "---|" * len(FIGHTERS))
+    for cat, _ in CATEGORIES:
+        cells = []
+        for f in FIGHTERS:
+            now = wv[cat].get(f)
+            nows = f"{now:.2f}" if now is not None else "-"
+            if wb is not None:
+                b = wb[cat].get(f)
+                cells.append(f"{(f'{b:.2f}' if b is not None else '-')} -> {nows}")
+            else:
+                cells.append(nows)
+        lines.append(f"| {cat} | " + " | ".join(cells) + " |")
     lines.append("")
     # Hand/glove vs head per fighter.
     hh = hand_head(data)
