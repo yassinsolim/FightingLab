@@ -167,16 +167,23 @@ return function(t)
 		end)
 	end
 
-	t.test("throw tracks never teleport a body part (both roles, all six fighters)", function()
-		local cases = {}
-		for _, id in QA.Roster.order do
-			for _, c in QA.throwCases(id) do
-				if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+	-- Two tests (the throws of three fighters each, both roles) to stay well inside the runner's time limit; the second
+	-- releases the staged rigs.
+	local THROW_GROUPS = { { "Kael", "Sierra", "Goran" }, { "Lumi", "Rhys", "Nia" } }
+	for gi, group in THROW_GROUPS do
+		t.test("throw tracks never teleport a body part (both roles, the throws of " .. table.concat(group, ", ") .. ")", function()
+			local cases = {}
+			for _, id in group do
+				for _, c in QA.throwCases(id) do
+					if not string.find(c.label, ":broken", 1, true) then table.insert(cases, c) end
+				end
 			end
-		end
-		local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
-		QA.destroy(rigs)
-		rigs = nil
-		t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
-	end)
+			local bad = violations(cases, { "pop.speed" }, { ["pop.speed"] = 1.5 })
+			if gi == #THROW_GROUPS then
+				QA.destroy(rigs)
+				rigs = nil
+			end
+			t.expect.truthy(#bad == 0, "throw speed spikes over 1.5 studs/frame: " .. report(bad))
+		end)
+	end
 end

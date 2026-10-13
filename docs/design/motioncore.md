@@ -681,27 +681,30 @@ Sierra).
     13 points snapped onto the head) whose sight line to the camera no glove or hand capsule crosses;
   - `QA.guardShape`: glove top vs chin, glove centre under the eyes, elbow outside the shoulder line.
 
-`ServerStorage.UnitTest.Cases.MotionQARound5_Test` has 78 tests, each well under the runner's 5 s:
+`ServerStorage.UnitTest.Cases.MotionQARound5_Test` has 84 tests, each well under the runner's 5 s:
 - 1: knockdown continuity per fighter, source and face.
 - 3: gloves/hands vs own head (≤ 0.03) and torso (≤ 0.05), and forearm centrelines (≤ 0.05), in two settings:
   - Landing, Getup, KO and Knockdown, per fighter;
-  - every throw's defender track per defender, thrown and breaking the throw. Three cases are capped in
-    `DEFENDER_EXCEPTIONS` (14.6).
+  - every throw's defender track per defender, thrown (per defender and attacker half) and breaking the throw. Three
+    cases are capped in `DEFENDER_EXCEPTIONS` (14.6).
 - 2: every strike and kick at point-blank (Separation 2.6), mid and max range: `opp.strike` and `opp.through`
   ≤ 0.15 after the startup (active and recovery).
 - 4: face visibility ≥ 70% from the fight camera at spacings 3.5 and 7, both player slots, in idle, walk, backwalk and
   blockstun; and Kael's idle guard: glove tops at most 0.1 under the chin, centres under the eyes, elbows ≤ 0.3
   outside the shoulders.
 
-On main's runtime 70 of the 78 fail. The 8 that pass on main are guards against regressions:
+On main's runtime 70 of the 78 failed, measured before the six thrown-defender tests were split into attacker halves
+(all six failed on main; the halves were not re-run on main). The 8 that pass on main are guards against regressions:
 - max-range strikes for Kael, Sierra, Goran, Lumi and Rhys (Nia's Elbow sinks 0.24 at max range on main);
 - faces for Goran, Lumi and Nia.
 
 Test time:
 - The round-4 `MotionQA_Test` group tests and the two `MotionGround_Test` sweeps over every move clip now run per
-  fighter or per case group, with the same cases and checks.
-- So each test stays inside the runner's limit with the extra floor and thrown-defender clearance.
-- Official runner on the branch: 490/490 in one Play session, 176 s, no timeouts.
+  fighter or per case group (the throw tracks in two halves: the throws of three fighters, or the rigs of three
+  fighters), with the same cases and checks.
+- So each test stays well inside the runner's limit with the extra floor and thrown-defender clearance: in a timed
+  copy of the runner the slowest motion test takes 2.6 s (4.15 s before the throw halves).
+- Official runner on the branch: 501/501 in one Play session, 230 s, no timeouts.
 
 `tools/mocap/motionqa_report.py` reports `getup.spin` / `getup.whip` and a worst-value-per-category table.
 

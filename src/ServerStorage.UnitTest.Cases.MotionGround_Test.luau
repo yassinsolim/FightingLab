@@ -99,16 +99,25 @@ end
 -- with the defender on all six rigs; max range (the sim carries the root `advance` / startup studs per frame up to and
 -- including the first active frame) and close range (Separation: keepApart cancels the advance). LEAD frames of the
 -- held stance first.
--- Case groups of the move-clip sweeps (see the step-in and lock-release tests).
-local GROUND_GROUPS = {
-	{ label = "attacks", throw = false },
-	{ label = "throws at max range", throw = true, far = true },
-	{ label = "throws at close range", throw = true, far = false },
-}
+-- Case groups of the move-clip sweeps (see the step-in and lock-release tests). The throw groups are split by the rig
+-- that plays the track (the attacker's own rig for the attacker role, each defender's rig for the defender role).
+local RIG_HALVES: { { [string]: boolean } } = { {}, {} }
+local HALF_NAMES: { { string } } = { {}, {} }
+for i, id in Roster.order do
+	local h = if i <= math.ceil(#Roster.order / 2) then 1 else 2
+	RIG_HALVES[h][id] = true
+	table.insert(HALF_NAMES[h], id)
+end
+local GROUND_GROUPS: { any } = { { label = "attacks", throw = false } }
+for _, far in { true, false } do
+	for h = 1, 2 do
+		table.insert(GROUND_GROUPS, { label = string.format("throws at %s range, %s rigs", if far then "max" else "close", table.concat(HALF_NAMES[h], ", ")), throw = true, far = far, ids = RIG_HALVES[h] })
+	end
+end
 local function groupCases(cases: { any }, group: any): { any }
 	local out = {}
 	for _, c in cases do
-		if (c.throw == true) == group.throw and (group.far == nil or c.far == group.far) then table.insert(out, c) end
+		if (c.throw == true) == group.throw and (group.far == nil or c.far == group.far) and (group.ids == nil or group.ids[c.id]) then table.insert(out, c) end
 	end
 	return out
 end
@@ -487,9 +496,9 @@ return function(t)
 		print(string.format("[MotionGround] all other moves (information): %d planted foot-frames, %d over %.2f studs: %s", sweepPlanted, sweepOver, TOL, if #sweepList > 0 then table.concat(sweepList, ", ") else "none"))
 	end)
 
-	-- The two sweeps over every move clip run in three groups (attacks; throws at max range; throws at close range) so each
-	-- test stays inside the runner's time limit (round 5: the knockdown and thrown-defender clearance made a throw frame
-	-- dearer). Same cases, same targets.
+	-- The two sweeps over every move clip run in five groups (attacks; throws at max and at close range, each split by
+	-- the rig that plays the track) so each test stays well inside the runner's time limit (round 5: the knockdown and
+	-- thrown-defender clearance made a throw frame dearer). Same cases, same targets.
 	for _, group in GROUND_GROUPS do
 		t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range): " .. group.label, function()
 			-- Step-ins: the sim carries the attacker's root forward by `advance` over the startup (at close range keepApart

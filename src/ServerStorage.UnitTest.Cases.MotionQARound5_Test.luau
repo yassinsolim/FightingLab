@@ -17,7 +17,7 @@
 --      70% of his face landmarks (camera-side eye, nose, mouth) are not hidden by his gloves, while the gloves stay a
 --      boxing guard (chin-to-cheek height, elbows in); Sierra (gloves) and every other fighter (hands) the same.
 -- Each test stays well inside the runner's 5 s (knockdowns per fighter, source and face; strikes per fighter and range;
--- throw defenders and faces per fighter).
+-- thrown defenders per fighter and attacker half; throw breaks and faces per fighter).
 local QA = require(script.Parent.Parent:WaitForChild("MotionQA"))
 
 local rigs: { [string]: QA.Staged }? = nil
@@ -108,9 +108,9 @@ local function defenderClip(d: any): boolean
 	local cap = DEFENDER_EXCEPTIONS[d.fighter .. "|" .. d.case .. "|" .. d.metric .. "|" .. d.part]
 	return cap == nil or d.value > cap
 end
-local function defenderRuns(defender: string, broken: boolean): { any }
+local function defenderRuns(defender: string, broken: boolean, attackers: { string }?): { any }
 	local all = {}
-	for _, attacker in QA.Roster.order do
+	for _, attacker in attackers or QA.Roster.order do
 		for _, c in QA.throwCases(attacker, defender) do
 			if (string.find(c.label, ":broken", 1, true) ~= nil) == broken then
 				c.subjects = { 2 }
@@ -141,11 +141,18 @@ return function(t)
 		end)
 	end
 	-- 3: throw defender tracks (every throw of every fighter, each fighter as the defender), thrown and breaking the throw.
+	-- The thrown tracks run in two tests per defender (the attackers in two halves) to stay well inside the runner's limit.
+	local ATTACKER_HALVES: { { string } } = { {}, {} }
+	for i, id in QA.Roster.order do
+		table.insert(ATTACKER_HALVES[if i <= math.ceil(#QA.Roster.order / 2) then 1 else 2], id)
+	end
 	for _, defender in QA.Roster.order do
-		t.test("3. throw defender tracks (" .. defender .. " thrown by everyone): hands and forearms clear of the own head and torso", function()
-			local bad = worst(defenderRuns(defender, false), defenderClip)
-			t.expect.truthy(#bad == 0, "throw defender self clipping: " .. report(bad))
-		end)
+		for _, attackers in ATTACKER_HALVES do
+			t.test("3. throw defender tracks (" .. defender .. " thrown by " .. table.concat(attackers, ", ") .. "): hands and forearms clear of the own head and torso", function()
+				local bad = worst(defenderRuns(defender, false, attackers), defenderClip)
+				t.expect.truthy(#bad == 0, "throw defender self clipping: " .. report(bad))
+			end)
+		end
 		t.test("3. throw breaks (" .. defender .. " breaking everyone's throws): hands and forearms clear of the own head and torso", function()
 			local bad = worst(defenderRuns(defender, true), defenderClip)
 			t.expect.truthy(#bad == 0, "throw break self clipping: " .. report(bad))
