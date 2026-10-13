@@ -87,9 +87,20 @@ def kael_hookoverhand(ctx):
 
 @clip("Kael", "RibRoller", "Strikes")
 def kael_ribroller(ctx):
-    """b+1: a short stepping lead hook to the floating ribs that rolls up and through (tumble on an airborne body)."""
-    roll_up = nudge("LeftHand", [0.0, 0.14, 0.02], ctx.first + 4, 6)
-    return standard(ctx, "Strike_Kael_LiverHook", lead=3, a="windup", edit=chain(body([0, -0.05, 0]), roll_up))
+    """b+1: a short stepping lead hook to the floating ribs that rolls up and through (tumble on an airborne body).
+    The hook's own follow-through (Strike_Kael_LiverHook, contact to recover squeezed into the 3 active frames) flipped
+    the lead elbow in one frame; here the fist rolls up through the target, the arm folds back with the elbow turning
+    down into the guard's bend, and the body rises out of the dip into the stance."""
+    src = "Strike_Kael_LiverHook"
+    lift = body([0, -0.05, 0])
+    keys = [C.pk(0, ctx.stance)] + seg(src, "windup", "contact", 3, ctx.first, 2.0, lift)
+    keys[-1]["ease"] = "snap"
+    hit = lift(P(src, "contact"), 1.0, ctx.first)
+    through = posed(C.shifted(hit, [0, 0.03, 0]), rot_plus=[0, -10, 0], LeftHand={"at+": [0.04, 0.09, -0.02]})
+    fold = posed(C.shifted(hit, [0, 0.14, -0.08]), rot_plus=[0, -4, 0])
+    fold.limbs["LeftHand"]["at"] = np.array([0.0, 1.20, 0.85])  # in front of the chest, well ahead of the face
+    fold.limbs["LeftHand"]["pole"] = T.unit(np.asarray(hit.limbs["LeftHand"]["pole"], float) + np.asarray(ctx.stance.limbs["LeftHand"]["pole"], float))
+    return keys + [C.pk(ctx.rec + 2, through, "smooth"), C.pk(ctx.rec + 9, fold), C.pk(ctx.total, ctx.stance, "smooth")]
 
 
 @clip("Kael", "Pocket", "Kicks", tags={"aim": False})
@@ -138,12 +149,14 @@ def south(ctx) -> T.Pose:
 
 def sierra_elbow_poses(ctx):
     c = C.resolved(P("Strike_Sierra_Cross", "windup"))
-    c.limbs["RightHand"]["at"] = np.array([-0.30, 1.72, 0.32])
+    # Round 6 (CharacterLook glove check): the glove stays a glove's depth in front of her face all the way: it lifts
+    # by the right cheek with the elbow out (not behind the head) and the elbow drives across in front of the chin.
+    c.limbs["RightHand"]["at"] = np.array([-0.30, 1.66, 0.47])
     c.limbs["RightHand"]["pole"] = T.unit([0.6, 0.1, 0.8])
     c.q["root"] = T.qn(T.qmul(T.eq([0, 34, 0]), c.q["root"]))
     w = C.resolved(P("Strike_Sierra_Cross", "windup"))
-    w.limbs["RightHand"]["at"] = np.array([0.36, 1.70, 0.12])
-    w.limbs["RightHand"]["pole"] = T.unit([0.9, 0.1, -0.2])
+    w.limbs["RightHand"]["at"] = np.array([0.24, 1.60, 0.48])
+    w.limbs["RightHand"]["pole"] = T.unit([0.9, 0.25, -0.35])
     return w, c
 
 
@@ -512,4 +525,67 @@ def lumi_snapkick(ctx):
     """3 (round 6): Lumi's own fast lead front snap kick (the round-5 clip, refclips/Kick_Lumi_SnapKickR5) thrown off a
     small hop: both feet off the floor over frames 3-9 (low crush), landing on the support foot by the contact; the
     same timing marks, so its last active frame is still the crescent follow-up's first pose."""
-    return standard(ctx, "Kick_Lumi_SnapKickR5", lead=0, a="start", edit=air(0.08, 6, 7))
+    return standard(ctx, "Kick_Lumi_SnapKickR5", lead=0, a="start", edit=air(0.06, 6.5, 5.5))
+
+
+R5_RISING_STARTUP = 21  # Nia's RisingTornado sim startup in round 5 (main: impact frame 22); round 6: 19 (i20).
+# The busiest joint's turn (deg per sim frame, upper/lower arms and thighs) through the round-5 startup on the real rig
+# (MotionQA probe of main, frames 1..23); calm frames absorb the two frames, busy ones keep their round-5 speed.
+R5_RISING_BUSY = [15.0, 10.3, 8.9, 9.2, 7.9, 5.7, 7.4, 10.6, 15.3, 22.7, 19.7, 13.4, 11.9, 8.8, 22.3, 43.8, 16.7, 12.5,
+                  23.4, 20.9, 58.0, 18.0, 14.6]
+
+
+@clip("Nia", "RisingTornado", "Kicks", tags={"aimWeight": 0.3})
+def nia_risingtornado(ctx):
+    """d+3,4 (round 6: impact frame 22 -> 20): the round-5 clip (refclips/Kick_Nia_RisingTornadoR5) at its round-5 speed
+    where it moves fast (the hand swing, the arm swing, the jump and the kick) while its calm frames play faster to
+    absorb the two frames (a uniform retime sped the whole startup up by 10 % into speed pops). Active and recovery
+    are the round-5 frames."""
+    src = "Kick_Nia_RisingTornadoR5"
+    _, _, dur, c, r = C.clip_info(src)
+    timing5 = {"startup": R5_RISING_STARTUP, "active": ctx.active, "recovery": ctx.recovery}
+
+    def t5(f: float) -> float:
+        """Round-5 ClipPlayer.moveTime (seconds into the source) at sim frame f."""
+        first, end = timing5["startup"] + 1, timing5["startup"] + timing5["active"]
+        total = end + timing5["recovery"]
+        if f <= first:
+            return c * min(max(f / first, 0.0), 1.0)
+        if f <= end + 1:
+            return c + (r - c) * min(max((f - first) / max(end + 1 - first, 1), 0.0), 1.0)
+        return r + (dur - r) * min(max((f - end - 1) / max(total - end - 1, 1), 0.0), 1.0)
+
+    first5 = R5_RISING_STARTUP + 1
+    base = c * 60.0 / first5  # source frames per sim frame through the round-5 startup
+    # calm weight per round-5 frame (0 at >= 14 deg/frame), at the source time that frame showed
+    us = [c * 60.0 * (i + 0.5) / first5 for i in range(len(R5_RISING_BUSY))]
+    # (the first five frames keep their speed too: the move starts out of a crossfade or the low spin, whose sweeping
+    # foot comes back under the body there)
+    ws = [0.0 if i < 5 else min(max((14.0 - b) / 14.0, 0.0), 1.0) for i, b in enumerate(R5_RISING_BUSY)]
+
+    def calm(u: float) -> float:
+        return float(np.interp(u, us, ws))
+
+    def run(A: float, upto: int) -> list:
+        u, out, sub = 0.0, [0.0], 50
+        for _ in range(upto):
+            for _ in range(sub):
+                u += base * (1.0 + A * calm(u)) / sub
+            out.append(u)
+        return out
+
+    goal = c * 60.0
+    lo, hi = 0.0, 4.0
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if run(mid, ctx.first)[-1] < goal:
+            lo = mid
+        else:
+            hi = mid
+    tau = run(hi, ctx.first)
+    tau[-1] = goal
+    keys = []
+    for k in range(0, ctx.total + 1):
+        t = tau[k] / 60.0 if k <= ctx.first else t5(k + (R5_RISING_STARTUP - ctx.startup))
+        keys.append(C.pk(k, C.pose_at(f"{src}@{min(t, dur):.4f}"), None if k == 0 else "linear"))
+    return keys

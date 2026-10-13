@@ -99,7 +99,9 @@ def seg(name: str, a, b, f0: float, f1: float, every: float = 2.0, edit=None, ea
         p = C.pose_at(f"{name}@{ta + (tb - ta) * u:.4f}")
         if edit:
             p = edit(p, u, f)
-        out.append(C.pk(f, p, ease if (ease and i == n) else None))
+        # Dense samples interpolate linearly (a smoothstep per 2-3 frame segment stopped the motion at every key: a
+        # stop-and-go that MotionQA reads as speed pops); the first sample eases in from whatever came before.
+        out.append(C.pk(f, p, ease if (ease and i == n) else (None if i == 0 else "linear")))
     return out
 
 
