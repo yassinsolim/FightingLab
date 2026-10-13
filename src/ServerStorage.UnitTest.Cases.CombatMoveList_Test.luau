@@ -70,6 +70,9 @@ return function(t)
 			local rows = MoveList.fillList(scroll, def, nil, { rowHeight = 54 })
 			expect.equal(rows, #def.moveOrder, id .. " move rows")
 			expect.equal(count(scroll, "Move_"), #def.moveOrder, id .. " Move_ rows")
+			local frames = 0
+			for _, child in scroll:GetChildren() do if child:IsA("Frame") then frames += 1 end end
+			expect.equal(frames, #def.moveOrder, id .. " only move rows are Frames (the lobby counts them)")
 			expect.equal(count(scroll, "Combo_"), #def.combos, id .. " combo rows")
 			expect.truthy(scroll:FindFirstChild("Group_Signature") ~= nil and scroll:FindFirstChild("Group_Ultimate") ~= nil and scroll:FindFirstChild("Group_Combos") ~= nil, id .. " headers")
 			local ult = scroll:FindFirstChild("Move_Ultimate") :: Frame
