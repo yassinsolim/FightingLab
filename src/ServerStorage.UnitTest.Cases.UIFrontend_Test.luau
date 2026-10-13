@@ -57,6 +57,53 @@ return function(t)
 		end
 	end)
 
+	-- Round 6: the select bars follow each fighter's design. Only real attacks count (the 3+4 stance entries, Rhys's
+	-- parries and Goran's catch start in 3-10 frames and used to read as the "fastest startup", so Goran outran Kael).
+	t.test("select bars follow the design: utility moves are not attacks, Goran slow and strong, Sierra long, Rhys defensive", function()
+		local kael, goran, rhys = Roster.get("Kael"), Roster.get("Goran"), Roster.get("Rhys")
+		t.expect.truthy(UIHelpers.isAttack(kael.moves.Jab), "a jab is an attack")
+		t.expect.truthy(UIHelpers.isAttack(kael.moves.PocketShovel), "a stance follow-up is an attack")
+		t.expect.falsy(UIHelpers.isAttack(kael.moves.Pocket), "a stance entry is not an attack")
+		t.expect.falsy(UIHelpers.isAttack(goran.moves.BearTrap), "the catch is not an attack")
+		t.expect.falsy(UIHelpers.isAttack(rhys.moves.Deflect), "a parry is not an attack")
+		t.expect.falsy(UIHelpers.isAttack(goran.moves.Throw), "throws are not strikes")
+		t.expect.falsy(UIHelpers.isAttack(goran.moves.Ultimate), "the Ultimate is not part of the everyday kit")
+		local bars: { [string]: { [string]: number } } = {}
+		for _, id in Roster.order do
+			local v = {}
+			for _, a in UIHelpers.attributes(Roster.get(id), Roster) do v[a.name] = a.value end
+			bars[id] = v
+		end
+		-- 1 = the highest bar of the cast
+		local function rank(name: string, id: string): number
+			local r = 1
+			for _, other in Roster.order do if bars[other][name] > bars[id][name] + 1e-9 then r += 1 end end
+			return r
+		end
+		local n = #Roster.order
+		local function shown(id: string, name: string): number return math.clamp(math.floor(bars[id][name] * 10 + 0.5), 1, 10) end
+		t.expect.equal(rank("POWER", "Goran"), 1, "Goran hits hardest")
+		t.expect.truthy(rank("SPEED", "Goran") >= n - 1, "Goran is the slowest or second slowest (rank " .. rank("SPEED", "Goran") .. ")")
+		t.expect.truthy(shown("Goran", "SPEED") < shown("Kael", "SPEED"), "Goran's SPEED reads below Kael's")
+		t.expect.equal(rank("DEFENSE", "Goran"), 1, "armor, the catch and the most health")
+		t.expect.equal(rank("REACH", "Sierra"), 1, "Sierra has the longest reach")
+		t.expect.equal(rank("DEFENSE", "Rhys"), 2, "Rhys, the parrying counter-striker, is the next most defensive")
+		t.expect.equal(rank("SPEED", "Lumi"), 1, "Lumi, the freerunner, is the fastest")
+		for _, id in { "Lumi", "Nia", "Kael" } do
+			t.expect.truthy(bars[id].SPEED > bars.Rhys.SPEED and bars[id].SPEED > bars.Goran.SPEED, id .. " is quicker than Rhys and Goran")
+		end
+		-- a zero-damage utility move (a 2-frame parry) never changes POWER or SPEED
+		local fake = table.clone(kael) :: any
+		fake.moves = table.clone(kael.moves)
+		fake.moveOrder = table.clone(kael.moveOrder)
+		fake.moves.TestParry = { key = "TestParry", height = "Mid", damage = 0, startup = 2, noHit = true, props = { parry = { window = { 1, 12 }, heights = { "High", "Mid" }, stagger = 20 } } }
+		table.insert(fake.moveOrder, "TestParry")
+		local before, after = UIHelpers.attributes(kael, Roster), UIHelpers.attributes(fake, Roster)
+		t.expect.equal(after[1].value, before[1].value, "POWER unchanged by a utility move")
+		t.expect.equal(after[2].value, before[2].value, "SPEED unchanged by a utility move")
+		t.expect.truthy(after[4].value > before[4].value, "a parry is a defensive tool")
+	end)
+
 	-- Viewport framing faces avatars toward the UI camera and gives full-body previews enough vertical room.
 	t.test("viewport framing faces the camera and fits full-body previews", function()
 		local minBound = Vector3.new(-1, 0, -0.5)

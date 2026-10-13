@@ -154,6 +154,24 @@ return function(t)
 		parent:Destroy()
 	end)
 
+	t.test("fighter select: the ROSTER label reads on any studio light (white on its own dark plate)", function()
+		local ctl, parent = mountSelect("Kael")
+		ctl.open()
+		local label = (ctl.gui :: any).Stage.Body:FindFirstChild("RosterTitle") :: TextLabel
+		t.expect.truthy(label ~= nil and label:IsA("TextLabel"), "roster label")
+		t.expect.equal(label.Text, "ROSTER")
+		t.expect.truthy(label.BackgroundTransparency <= 0.1, "an opaque plate behind the text, not the 3D studio")
+		local function lum(c: Color3): number
+			local function ch(v: number): number return if v <= 0.03928 then v / 12.92 else ((v + 0.055) / 1.055) ^ 2.4 end
+			return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B)
+		end
+		local a, b = lum(label.TextColor3), lum(label.BackgroundColor3)
+		local ratio = (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05)
+		t.expect.truthy(ratio >= 7, string.format("text / plate contrast %.1f:1", ratio))
+		ctl.destroy()
+		parent:Destroy()
+	end)
+
 	t.test("fighter select transitions: the selection lifts its card, shows its corner and updates the counter", function()
 		local ctl, parent, confirmed = mountSelect("Kael")
 		ctl.open()
