@@ -10,8 +10,8 @@
 --                   Result | ResultLoss | PracticeTraining | PracticeCpu | PickerTraining | PickerVersus | Practice |
 --                   PracticeVsCpu | Lesson | Lesson:<step> | Toasts | Rejected | Boards | Menu | MenuFighters |
 --                   MenuHowTo | MenuControls | MenuMoves | MenuCredits | MenuSettings | Select | Select:<FighterId> |
---                   SelectConfirm | Board:<State> | Hud:<Fight|Combo|Counter|Launch|Escape|KO|Round|Win|Lose|Guide|Low> |
---                   HudOff
+--                   SelectConfirm | Board:<State> | Hud:<Fight|Combo|Counter|Launch|Escape|KO|Round|Win|Lose|Guide|Low|
+--                   Surge|UltBanner|UltHits|Perfect|Time|DoubleKO|Punish|Intro|Final|Stance> | HudOff
 --   LobbyDevHideHud = true hides the lobby HUD (board/leaderboard captures)
 --   LobbyDevView  = "" (leave the camera alone) | Plaza | Leaderboard | Board:<ArenaId> | Pads:<ArenaId>
 local Players = game:GetService("Players")
@@ -349,8 +349,12 @@ function DevMock.start(cx: Ctx): any
 	end
 
 	-- Fight HUD demo (Studio captures): drives HudController with a fabricated frame so every call-out can be shot.
+	-- Round 6 variants: Surge (molten bar + SURGE + ULTIMATE ready), UltBanner (UltStart title card + letterbox),
+	-- UltHits (the cinematic's impacts on the combo counter), Perfect, Time, DoubleKO, Punish, Intro, Final, Stance.
+	-- In the real world the camera frames the Midnight Rooftop ring like a fight camera so the HUD reads over a stage.
 	local hudDemo: string? = nil
 	local hudFrame: { [string]: any } = {}
+	local hudCamera = false
 	local function hudScene(variant: string)
 		local Hud = cx.modules and cx.modules.Hud
 		if not Hud then return end
@@ -367,35 +371,86 @@ function DevMock.start(cx: Ctx): any
 		Hud.setFighterInfo(2, { displayName = d2.displayName, color = d2.accentColor, characterId = oppId, maxHealth = d2.stats.maxHealth, playerName = "", tag = "CPU · HARD" })
 		Hud.setVisible(true)
 		local h1, h2 = 0.72, 0.46
-		if variant == "Low" then h1, h2 = 0.18, 0.64 elseif variant == "KO" then h1, h2 = 0.41, 0 end
-		Hud.onSnapshot({ p2Human = false, fighters = { { characterId = myId, health = d1.stats.maxHealth * h1, maxHealth = d1.stats.maxHealth }, { characterId = oppId, health = d2.stats.maxHealth * h2, maxHealth = d2.stats.maxHealth } } })
-		hudFrame = { dt = 1 / 60, mode = "Match", timer = 47 * 60, config = cx.config, scores = { 1, 0 }, phase = "Fight", round = 2, ko = false, session = "Fight", authority = "Server", paused = false, renderFrame = 0 }
+		if variant == "Low" then h1, h2 = 0.18, 0.64
+		elseif variant == "KO" or variant == "Perfect" then h1, h2 = if variant == "Perfect" then 1 else 0.41, 0
+		elseif variant == "Surge" or variant == "UltBanner" or variant == "UltHits" then h1, h2 = 0.19, 0.58
+		elseif variant == "Time" then h1, h2 = 0.55, 0.31
+		elseif variant == "DoubleKO" then h1, h2 = 0, 0 end
+		local m1, m2 = d1.stats.maxHealth, d2.stats.maxHealth
+		local function snap(frame: number, s1: string?, s2: string?, extra1: { [string]: any }?, extra2: { [string]: any }?)
+			local f1: { [string]: any } = { characterId = myId, health = m1 * h1, maxHealth = m1, state = s1 or "Idle" }
+			local f2: { [string]: any } = { characterId = oppId, health = m2 * h2, maxHealth = m2, state = s2 or "Idle" }
+			for k, v in extra1 or {} do f1[k] = v end
+			for k, v in extra2 or {} do f2[k] = v end
+			local entry = { p2Human = false, frame = frame, fighters = { f1, f2 } }
+			Hud.onSnapshot(entry)
+			return entry
+		end
+		local surgeFields = if variant == "Surge" or variant == "UltBanner" or variant == "UltHits" then { surge = variant == "Surge", ultUsed = variant ~= "Surge" } else nil
+		local entry = snap(100, nil, nil, surgeFields, if surgeFields then { surge = false, ultUsed = false } else nil)
+		hudFrame = { dt = 1 / 60, mode = "Match", timer = 47 * 60, config = cx.config, scores = { 1, 0 }, phase = "Fight", round = 2, ko = false, session = "Fight", authority = "Server", paused = false, renderFrame = 0, winner = 0, reason = "", entry = entry }
 		if variant == "Combo" then
 			for i = 1, 5 do task.delay(0.12 * i, function() Hud.onEvent({ kind = "Hit", attacker = 1, target = 2, combo = i, damage = 7 + i, frame = i }) end) end
 		elseif variant == "Counter" then
 			Hud.onEvent({ kind = "Hit", attacker = 1, target = 2, combo = 1, damage = 18, counter = true, frame = 1 })
+		elseif variant == "Punish" then
+			snap(101, nil, "Recovery")
+			Hud.onEvent({ kind = "Hit", attacker = 1, target = 2, combo = 1, damage = 16, frame = 102 })
 		elseif variant == "Launch" then
 			Hud.onEvent({ kind = "Hit", attacker = 1, target = 2, combo = 1, damage = 14, launch = true, tier = "Launch", frame = 1 })
 		elseif variant == "Escape" then
 			Hud.onEvent({ kind = "ThrowBreak", attacker = 2, target = 1, combo = 0, damage = 0, frame = 1 })
+		elseif variant == "Surge" then
+			Hud.onEvent({ kind = "Surge", attacker = 1, target = 1, combo = 0, damage = 0, frame = 100 })
+		elseif variant == "UltBanner" or variant == "UltHits" then
+			local ult = { archetype = "ultimate", move = "Ultimate", frame = 1, duration = 210, impactFrame = 36 }
+			Hud.onEvent({ kind = "UltStart", attacker = 1, target = 2, move = "Ultimate", combo = 0, damage = 0, frame = 101 })
+			snap(102, "Ultimate", "Ultimate", { surge = false, ultUsed = true, throw = ult }, { surge = false, ultUsed = false, throw = ult })
+			if variant == "UltHits" then
+				for i, share in { 0.12, 0.12, 0.16, 0.2, 0.4 } do
+					task.delay(0.25 * i, function() Hud.onEvent({ kind = "UltHit", attacker = 1, target = 2, move = "Ultimate", combo = i, damage = math.floor(33 * share + 0.5), knockdown = i == 5, frame = 102 + i }) end)
+				end
+			end
+		elseif variant == "Stance" then
+			snap(101, "Stance", nil, { stance = "Pocket", stanceFrame = 12 })
 		elseif variant == "KO" then
-			hudFrame.ko = true; hudFrame.phase = "RoundOver"
-		elseif variant == "Round" then
+			hudFrame.ko = true; hudFrame.phase = "RoundOver"; hudFrame.reason = "KO"; hudFrame.winner = 1
+		elseif variant == "Perfect" then
+			hudFrame.ko = true; hudFrame.phase = "RoundOver"; hudFrame.reason = "KO"; hudFrame.winner = 1
+		elseif variant == "DoubleKO" then
+			hudFrame.ko = true; hudFrame.phase = "RoundOver"; hudFrame.reason = "KO"; hudFrame.winner = 0
+		elseif variant == "Time" then
+			hudFrame.timer = 0; hudFrame.phase = "RoundOver"; hudFrame.reason = "TIME"; hudFrame.winner = 1
+		elseif variant == "Round" or variant == "Intro" or variant == "Final" then
 			hudFrame.phase = "Ready"
-			task.delay(1.4, function() if hudDemo == "Round" then hudFrame.phase = "Fight" end end)
+			if variant == "Intro" then hudFrame.round = 1; hudFrame.scores = { 0, 0 } end
+			if variant == "Final" then hudFrame.round = 3; hudFrame.scores = { 1, 1 } end
+			task.delay(1.3, function() if hudDemo == variant then hudFrame.phase = "Fight" end end)
 		elseif variant == "Win" then
-			hudFrame.phase = "MatchOver"; hudFrame.scores = { 2, 1 }
+			hudFrame.phase = "MatchOver"; hudFrame.scores = { 2, 1 }; hudFrame.winner = 1; hudFrame.reason = "KO"
 		elseif variant == "Lose" then
-			hudFrame.phase = "MatchOver"; hudFrame.scores = { 0, 2 }
+			hudFrame.phase = "MatchOver"; hudFrame.scores = { 0, 2 }; hudFrame.winner = 2; hudFrame.reason = "KO"
 		end
 		-- The guide shows for the first fight (and on demand); the call-out shots leave it closed.
 		if Hud.setGuide then Hud.setGuide(variant == "Guide" or variant == "Fight") end
+		-- A fight-camera view of the rooftop ring behind the HUD (real world only; held every frame in update).
+		local w = workspace:FindFirstChild("FightingLabWorld")
+		local arenas = w and w:FindFirstChild("Arenas")
+		local arena = arenas and arenas:FindFirstChild("Arena_MidnightRooftop")
+		hudCamera = arena ~= nil and arena:FindFirstChild("FightOrigin") ~= nil
 	end
 	local function hudOff()
 		local Hud = cx.modules and cx.modules.Hud
 		if hudDemo and Hud then Hud.setVisible(false); if Hud.setGuide then Hud.setGuide(false) end end
 		if hudDemo then UIHelpers.holdPlayerList(false) end
 		hudDemo = nil
+		if hudCamera then
+			hudCamera = false
+			local cam = workspace.CurrentCamera
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if cam then cam.CameraType = Enum.CameraType.Custom; cam.FieldOfView = 70; if humanoid then cam.CameraSubject = humanoid end end
+		end
 		lobby.setSuppressed(gui:GetAttribute("LobbyDevHideHud") == true)
 	end
 
@@ -539,6 +594,16 @@ function DevMock.start(cx: Ctx): any
 		if hudDemo then
 			local Hud = cx.modules and cx.modules.Hud
 			if Hud then hudFrame.dt = dt; pcall(Hud.update, hudFrame) end
+			local w = workspace:FindFirstChild("FightingLabWorld")
+			local arenas = w and w:FindFirstChild("Arenas")
+			local arena = arenas and arenas:FindFirstChild("Arena_MidnightRooftop")
+			local origin = arena and arena:FindFirstChild("FightOrigin")
+			local cam = workspace.CurrentCamera
+			if hudCamera and origin and origin:IsA("BasePart") and cam then
+				cam.CameraType = Enum.CameraType.Scriptable
+				cam.FieldOfView = 46
+				cam.CFrame = CFrame.lookAt(origin.Position + Vector3.new(0, 4.2, 14), origin.Position + Vector3.new(0, 3, 0))
+			end
 		end
 		local now = workspace:GetServerTimeNow()
 		-- Countdown scenes: keep cycling 3-2-1 or hold one digit so captures can catch it.

@@ -13,10 +13,11 @@ local TerrainSetup = require(script.Parent.TerrainSetup)
 local Lobby = require(script.Parent.Lobby)
 local Walkways = require(script.Parent.Walkways)
 local Seascape = require(script.Parent.Seascape)
+local FightSets = require(script.Parent.FightSets)
 
 local Builder = {}
 
-Builder.VERSION = "ov6-world-5"
+Builder.VERSION = "ov6-world-6"
 Builder.WORLD_NAME = "FightingLabWorld"
 
 export type Report = {
@@ -121,6 +122,14 @@ function Builder.build(): Report
 	world:SetAttribute("BuildSeconds", report.seconds)
 	world:SetAttribute("BuildBusySeconds", report.busySeconds)
 	Builder.lastReport = report
+
+	-- fight-only scenery (ReplicatedStorage.FightingLab.FightSets; shown to the fighting client only)
+	local setStarted = os.clock()
+	local sets = FightSets.build()
+	local setParts = 0
+	for _, r in sets do setParts = math.max(setParts, r.parts) end
+	world:SetAttribute("FightSetMaxParts", setParts)
+	world:SetAttribute("FightSetSeconds", os.clock() - setStarted)
 
 	local ready = Instance.new("BoolValue")
 	ready.Name = "WorldReady"

@@ -159,7 +159,7 @@ function Arena.build(def: Layout.ArenaDef): Model
 	end)
 	ArenaKit.contractPieces(model, def)
 	ArenaKit.gate(model, def, M.Wood, C.lacquer, Color3.fromRGB(255, 240, 210))
-	ArenaKit.paintFloor(model, def, {
+	local paint = ArenaKit.paintFloor(model, def, {
 		lineColor = C.ink,
 		rings = { { 9, 0.5, 0.2 } },
 		ringColor = C.ink,
@@ -169,6 +169,9 @@ function Arena.build(def: Layout.ArenaDef): Model
 		emblemTransparency = 0.5,
 		lightInfluence = 1,
 	})
+	-- round 6: an open brush-circle crest with a red seal, and a dial of ticks round the tatami
+	ArenaKit.paintCrest(paint, "enso", C.ink, C.red, 0.25)
+	ArenaKit.paintTicks(paint, 19.6, C.ink, 0.55)
 	-- deck dressing: dummies at the back, stone lanterns at the back corners, cherry trees behind the pier's sides
 	local dressing = Kit.model(model, "Dressing")
 	for _, a in { 146, -146 } do

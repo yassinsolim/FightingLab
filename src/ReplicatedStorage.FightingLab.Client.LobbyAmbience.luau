@@ -177,10 +177,12 @@ local function step(now: number)
 	for _, b in blinks do
 		local on = ((now / b.period + b.phase) % 1) < 0.5
 		local inst = b.inst
+		-- a LocalTransparencyModifier of exactly 1 means StageController hid this piece for a local fight: leave it
 		if inst:IsA("BasePart") then
-			inst.LocalTransparencyModifier = if on then 0 else 0.85
+			if inst.LocalTransparencyModifier < 1 then inst.LocalTransparencyModifier = if on then 0 else 0.85 end
 		elseif inst:IsA("Light") then
-			inst.Enabled = on
+			local holder = inst.Parent
+			if not (holder and holder:IsA("BasePart") and holder.LocalTransparencyModifier >= 1) then inst.Enabled = on end
 		end
 	end
 	for _, f in flickers do

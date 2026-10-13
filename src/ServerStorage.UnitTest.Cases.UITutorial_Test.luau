@@ -76,7 +76,14 @@ local function playLessonInSim(fighterId: string): { string }
 		local a, b = e.fighters[1].pos, e.fighters[2].pos
 		return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
 	end
+	-- A knockdown from the fighting dummy (guard steps) leaves the player in Landing / Getup for a while: wait until
+	-- the fighter is back on its feet before the next press, like a player would.
+	local function settle()
+		local n = 0
+		while n < 300 and e.fighters[1].state ~= "Idle" do frame(); n += 1 end
+	end
 	local function approach(target: number)
+		settle()
 		local n = 0
 		move(1, 0)
 		while dist() > target and n < 300 do frame(); n += 1 end
@@ -114,8 +121,15 @@ local function playLessonInSim(fighterId: string): { string }
 	local stringKey = next(lesson.strings)
 	if stringKey then approach(3.3); perform(def.moves[stringKey].input) end
 	nextStep(7)
+	-- The stand-alone launcher the lesson names (round 6 adds stance launchers such as AER+4, which need the stance).
 	local launcherKey: string? = nil
-	for key in lesson.launchers do if def.moves[key].chainFrom == nil then launcherKey = key end end
+	local keys = {}
+	for key in lesson.launchers do table.insert(keys, key) end
+	table.sort(keys)
+	for _, key in keys do
+		local mv = def.moves[key]
+		if not launcherKey and mv.chainFrom == nil and mv.stance == nil then launcherKey = key end
+	end
 	if launcherKey then approach(3.2); perform(def.moves[launcherKey].input) end
 	nextStep(8)
 	approach(2.0); Sim.press(match, 1, "Throw"); run(80); nextStep(9)

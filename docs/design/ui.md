@@ -210,3 +210,140 @@ Baseline modules only: `[SUMMARY] 247 run, 247 passed, 0 failed`.
    ring) where quick travel lands; today every arena uses the fallback 6 studs behind `PadP1` / `PadTraining`.
 7. all (round 5) — `Client.LobbyUI` is ~191 KB, close to the 200,000-character `Source` limit that plugins, MCP edits and
    live syncs hit: put new lobby UI in its own module.
+
+## Round 6 (look): premium fight HUD, Surge and the Ultimate (Contract A), fighter select, one theme
+
+Round 6 adds two modules and rewrites the HUD controller:
+
+| file | what |
+|---|---|
+| `Client.HudKit` (new) | angled shapes: slanted caps, slabs, chips; the health bar (fill, recoverable-damage trail, halo, glow, sheen, low-health pulse, ticks); `stepTrail`; `fillColors` |
+| `Client.HudBanners` (new) | round intro / end texts, the centre banner, flash, cinematic letterbox, Ultimate title card, winner card |
+| `Client.HudController` | rewritten on top of the two modules; same public API plus `ultimateKey`, `statusFor`, `stanceName` |
+
+### Fight HUD
+
+**Health bars**
+- Angled bars, 500 px each so they fit a phone. Each bar has slanted caps, ticks every 10 %, a sheen and a
+  low-health pulse.
+- Recoverable-damage trail: the lost health stays white for a beat, then drains (`HudKit.stepTrail`).
+
+**Fighter cards**
+- A slanted portrait card in the fighter's colour.
+- The name, the YOU / CPU / DUMMY tag and the player name.
+- Diamond round markers.
+
+**Timer plate:** the clock with ROUND n under it.
+
+**Combo counter:** hits, damage and the kind of combo (COMBO, ULTIMATE, ...).
+
+**Call-outs:** COUNTER HIT, PUNISH, LAUNCH, THROW, THROW ESCAPE, PARRY, ARMOR, CRUSH, EVADE, KNOCKDOWN.
+- PUNISH fires on the first hit (combo ? 1) against a target that was in Recovery in the last snapshot before the
+  hit's frame. The HUD keeps a history of 40 snapshots for this. An event field `punish` also works.
+
+**Round flow**
+- ROUND n, or FINAL ROUND, holds through the whole Ready phase. FIGHT replaces it. It is a state, not only an edge:
+  if anything clears the centre during Ready (the first Ready runs while the fight is set up), it comes back.
+- Round end: K.O., DOUBLE K.O., TIME or DRAW. A winner at full health gets PERFECT after the K.O.
+- Winner card: VICTORY, DEFEAT, `<NAME> WINS` or DRAW, over the fighter, the player and the score.
+
+**Readability:** checked at 1920 x 1080 and in an 844 x 390 viewport, the size of an iPhone 14 in landscape (Studio window, keyboard device).
+
+**Contract A.** The HUD reads `entry.fighters[i].surge / ultUsed / state / throw / stance` and the `Surge`, `UltStart`
+and `UltHit` events. When the fields are absent, nothing extra shows and nothing errors (tested).
+- **Surge:** the bar turns red with a pulsing halo and a SURGE chip.
+- **Ultimate ready** (in Surge and `ultUsed` false): an ULTIMATE chip with its key from Controls.
+  - keyboard L, gamepad RT;
+  - the notation "1+2" when Controls has no binding;
+  - no key on touch.
+- **UltStart** shows a title card:
+  - the fighter's name, and the Ultimate's name from `Roster.get(id).moves.Ultimate.name` in upper case;
+  - "ULTIMATE" when the roster has no name;
+  - a tab in the fighter's colour with the monogram, an accent streak and glow across the screen, and a small
+    ULTIMATE tag (hidden when the name already falls back to ULTIMATE).
+- **Letterbox:** black bars while a fighter is in state `"Ultimate"`. The HUD bars stay above them, and the controls
+  guide steps aside.
+- **UltHit:** the impacts count on the attacker's combo counter with their damage, kind ULTIMATE.
+- **Stance chip:** POCKET, SOUTHPAW, AERIAL, STILL WATER or COIL while a fighter is in state `"Stance"`.
+
+**Checked with real data** (r6-combat merged, Free Training, Kael):
+1. The HUD shows SURGE and [L] ULTIMATE.
+2. L starts the FINAL BELL card and the letterbox.
+3. The counter reads 1 ? 3 ? 4 ? 5 HITS, 3 ? 32 DAMAGE, ULTIMATE.
+4. Sierra goes down; Surge and the Ultimate come back (Free Training refills them).
+
+A real CPU fight with the `forceKo` hook showed FIGHT, K.O., PERFECT, ROUND 2 and VICTORY "KAEL WINS 2 ? 0".
+
+**Controls guide and How to Play**
+- The HUD guide is driven by the legend, so it shows the new `stance` (J+K) and `ultimate` (L) rows.
+- How to Play's ATTACK card adds a line for each of those rows, only when Controls lists them.
+
+### Fighter select (`FighterSelect`, `SelectScene`)
+
+**Layout**
+- A SELECT YOUR FIGHTER header over a slanted ember rule, with the roster position ("03 / 06").
+- A big name.
+- The fighting style on a slanted chip in the fighter's colour, then the tagline.
+- An optional look note: the template's `Signature` attribute (`FighterSelect.signatureOf`), hidden when the attribute
+  is missing.
+- Four slanted stat bars with their 1-10 values, and the signature moves.
+- On the right, a roster grid of portrait cards, two columns. The selected card lifts out with an accent corner.
+- The info column and the grid slide in as the camera settles.
+
+**Studio**
+- The camera is closer (14 studs, FOV 29) and the fighter stands at 0.6 of the screen width.
+- The camera fits the shown fighter's measured height (head, hair and hats). Goran is no longer cropped, and a push
+  ends on the head and chest.
+- Two accent light pillars and a glossy marble floor frame the fighter.
+
+**Unchanged:** navigation, the preview gate, the light cuts and the confirm flow.
+
+**Live FlashDetector** over a full browse (slow and fast, close and reopen warm): 1,303 frames, 7,403 visible
+model-frames, **0 bare frames, 0 pose pops**.
+
+### One lobby theme ("Ember & Steel", `UIHelpers`)
+
+The fight HUD's angled language now runs through every lobby panel, menu, picker and prompt built with the kit.
+LobbyUI's own code is unchanged, apart from How to Play.
+- **Buttons:**
+  - crisp 3 px corners;
+  - a slanted accent notch in the top-right corner (primary, selected or focused buttons; hidden when disabled);
+  - a diagonal light sweep across primary buttons.
+- **Panels:** a 4 px radius. The hairline turns ember round one corner. It is a gradient on the stroke, not an extra
+  frame, so the callers' list layouts are untouched.
+- **Segment bars:** slanted blocks.
+- `UIHelpers.slantCap`: a corner triangle cut by a pixel-space UIGradient.
+
+LobbyUI is 192,105 characters. Everything new went into new modules (HudKit, HudBanners) or into UIHelpers.
+
+### Tests (round 6)
+
+| test | result | covers |
+|---|---|---|
+| HudController_Test | 13 | HUD states, Contract A with and without the fields, the Ultimate card and letterbox, the guide during cinematics, the round flow, the stance chip |
+| UITheme_Test (new) | 7 | the theme, the select layout and transitions, the camera fit for fighters 4.6 to 7.6 studs tall, the look note |
+| LobbyUI_Test | 27 | |
+| UIControls_Test | 9 | every legend key, including L |
+| UITutorial_Test | 12 | |
+| FlashDetector_Test | 6 | |
+| SelectScene_Test | 3 | |
+| UIFrontend_Test | 7 | |
+| UIPrompts_Test | 3 | |
+| CreditsScreen_Test | 4 | |
+| ClientModules_Test | 3 | |
+
+Full suite on `r6-look` with `r6-combat` merged (2cf7518): `[SUMMARY] 579 run, 563 passed, 16 failed`. All 16 are
+motion and characters tests that the new movesets break until the motion clips land:
+- MotionMovesKicksCoverage 4, MotionMovesStrikesCoverage 3;
+- MotionQA 5, MotionQARound5 2;
+- MotionGround 1;
+- CharacterLook 1 (Sierra's SlashElbow glove).
+
+**Evidence:** `OV6\handoff\look-shots\round6\`.
+
+### Known issues
+
+- The phone check used a keyboard device in an 844 x 390 Studio viewport, not a real touch device. At that size the
+  combo counter's damage line is small (about 7 px).
+- During the Ultimate, the camera and the poses come from the motion branch. With r6-combat alone, the fallback
+  camera is very close.

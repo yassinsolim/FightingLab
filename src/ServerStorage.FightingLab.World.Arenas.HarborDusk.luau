@@ -133,7 +133,7 @@ function Arena.build(def: Layout.ArenaDef): Model
 	})
 	ArenaKit.contractPieces(model, def)
 	ArenaKit.gate(model, def, M.WoodPlanks, Color3.fromRGB(96, 72, 52), Color3.fromRGB(255, 232, 200))
-	ArenaKit.paintFloor(model, def, {
+	local paint = ArenaKit.paintFloor(model, def, {
 		lineColor = C.navy,
 		rings = { { 9, 0.3, 0.25 }, { 19.6, 0.5, 0.15 } },
 		ringColor = C.navy,
@@ -143,6 +143,16 @@ function Arena.build(def: Layout.ArenaDef): Model
 		emblemTransparency = 0.45,
 		lightInfluence = 1,
 	})
+	-- round 6: a compass rose crest, a dial of ticks and two pier banners at the back of the ring
+	ArenaKit.paintCrest(paint, "compass", C.navy, C.orange, 0.3)
+	ArenaKit.paintTicks(paint, 18.6, C.navy, 0.45)
+	for i, s in { { 168, "PIER 9" }, { -168, "DUSK" } } do
+		local d = Layout.around(def, s[1] :: number)
+		local p = def.origin + d * 26.3
+		local foot = Vector3.new(p.X, def.floorY - Layout.APRON_DROP, p.Z)
+		Kit.cylinder(model, foot + Vector3.new(0, 6.4, 0), 12.8, 0.34, M.Wood, C.piling, { Name = "BannerPole" .. i })
+		Props.banner(model, foot + Vector3.new(0, 12.2, 0) + def.inward * 0.42, def.inward, 2.2, 8, C.navy, s[2] :: string, C.orange)
+	end
 	pierDressing(model, def, rng)
 	local lights = Kit.model(model, "StageLights")
 	for _, a in { 122, 154, -154, -122 } do

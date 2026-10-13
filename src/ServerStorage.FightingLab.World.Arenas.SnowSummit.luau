@@ -167,7 +167,7 @@ function Arena.build(def: Layout.ArenaDef): Model
 	})
 	ArenaKit.contractPieces(model, def)
 	ArenaKit.gate(model, def, M.Slate, Color3.fromRGB(72, 78, 90), Color3.fromRGB(230, 244, 255))
-	ArenaKit.paintFloor(model, def, {
+	local paint = ArenaKit.paintFloor(model, def, {
 		lineColor = Color3.fromRGB(90, 150, 210),
 		rings = { { 9.5, 0.26, 0.2 }, { 12, 0.08, 0.5 } },
 		emblem = "SUMMIT",
@@ -176,6 +176,18 @@ function Arena.build(def: Layout.ArenaDef): Model
 		emblemTransparency = 0.62,
 		lightInfluence = 1,
 	})
+	-- round 6: a frost-star crest, a dial of ticks, polished marble and two banners at the back of the ring
+	ArenaKit.paintCrest(paint, "flake", Color3.fromRGB(90, 150, 210), Color3.fromRGB(160, 210, 255), 0.3)
+	ArenaKit.paintTicks(paint, 19.8, Color3.fromRGB(90, 150, 210), 0.5)
+	local deck = model:FindFirstChild("Stage") and (model :: any).Stage:FindFirstChild("FightFloor")
+	if deck and deck:IsA("BasePart") then deck.Reflectance = 0.04 end
+	for i, s in { { 168, "SUMMIT" }, { -168, "PEAK" } } do
+		local d = Layout.around(def, s[1] :: number)
+		local p = def.origin + d * 26.3
+		local foot = Vector3.new(p.X, def.floorY - Layout.APRON_DROP, p.Z)
+		Kit.cylinder(model, foot + Vector3.new(0, 6.6, 0), 13.2, 0.3, M.Metal, C.steelDark, { Name = "BannerPole" .. i })
+		Props.banner(model, foot + Vector3.new(0, 12.6, 0) + def.inward * 0.4, def.inward, 2.2, 8.6, Color3.fromRGB(34, 52, 86), s[2] :: string, Color3.fromRGB(200, 230, 255))
+	end
 	outcrop(model, def, rng)
 	prayerFlags(model, def)
 	local lights = Kit.model(model, "StageLights")

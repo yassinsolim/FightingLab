@@ -249,6 +249,14 @@ function Arena.build(def: Layout.ArenaDef): Model
 	hubStroke.Transparency = 0.3
 	hubStroke.Parent = hub
 	hub.Parent = gui
+	ArenaKit.paintTicks(paint, 19.8, C.terracotta, 0.45)
+	for i, s in { { 168, "SUN" }, { -168, "GATE" } } do
+		local d = Layout.around(def, s[1] :: number)
+		local p = def.origin + d * 26.3
+		local foot = Vector3.new(p.X, def.floorY - Layout.APRON_DROP, p.Z)
+		Kit.cylinder(model, foot + Vector3.new(0, 6.4, 0), 12.8, 0.34, M.Wood, Color3.fromRGB(96, 74, 52), { Name = "BannerPole" .. i })
+		Props.banner(model, foot + Vector3.new(0, 12.2, 0) + def.inward * 0.42, def.inward, 2.2, 8, Color3.fromRGB(58, 84, 46), s[2] :: string, Color3.fromRGB(236, 200, 120))
+	end
 	temple(model, def, rng)
 	local fires = Kit.model(model, "Braziers")
 	for _, a in { 118, 150, -150, -118 } do

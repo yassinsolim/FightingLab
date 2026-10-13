@@ -5,7 +5,12 @@ return function(t)
 	local expected = {
 		ClientTypes = {},
 		InputController = { "init", "setGameplayEnabled", "isGameplayEnabled", "releaseAll", "setTouchControlsVisible", "bindMenu", "practice", "bindPractice" },
-		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode" },
+		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode", "ultimateKey", "statusFor", "stanceName" },
+		-- Round 6 (look): the HUD's drawing kit and its big moments (round intro, K.O., winner, Ultimate card).
+		HudKit = { "capGradient", "cap", "slab", "paintSlab", "chip", "healthBar", "stepTrail", "fillColors" },
+		HudBanners = { "roundIntroText", "roundEndText", "isPerfect", "ultimateName", "build", "show", "flash", "setCinematic", "showUltimate", "showWinner", "hideAll" },
+		-- Round 6 (look): per-arena moods for the fighting client.
+		LightingProfile = { "apply", "clearStaleLighting", "neutraliseStagePresets", "profileFor", "applyArena", "restore", "activeArena", "setFocus", "rigFor" },
 		CameraDirector = { "init", "setMode", "impulse", "update", "getFocus", "beginFight", "endFight" },
 		-- getModel/getRoot/getLimbPart return nil while no fight is running (lobby mode).
 		CharacterPresenter = { "init", "listCharacters", "setCharacters", "update", "getModel", "getRoot", "getLimbPart", "setFlash", "prewarm", "acquirePreview", "releasePreview", "endFight", "setOrigin", "posePreview" },
@@ -17,7 +22,7 @@ return function(t)
 		["Motion.ClipPlayer"] = { "sample", "moveTime", "progressTime" },
 		EffectsController = { "init", "onEvent", "onPhase", "update" },
 		AudioController = { "init", "play", "playMusic", "onEvent", "onPhase" },
-		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena" },
+		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena", "occluderRelevant", "rigFrames" },
 		SelectScene = { "init", "showCharacter", "showStage", "showVS", "hide", "update", "isActive", "debugInstanceCount" },
 		CreditsScreen = { "render", "scroll", "hasData" },
 		FrontEnd = { "init", "start", "onSnapshot", "update" },

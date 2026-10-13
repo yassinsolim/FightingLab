@@ -1356,7 +1356,18 @@ function LobbyUI.mount(env: Env): Controller
 			end
 			local how = text(attack, "How", "Move notation uses these numbers: <b>1,2</b> = press 1 then 2 (a string); <b>" .. UIHelpers.ARROWS.df .. "+2</b> = hold down-forward and press 2.", T.medium, 14, T.muted, { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, RichText = true, LayoutOrder = 2 })
 			how.TextYAlignment = Enum.TextYAlignment.Top
-			line(attack, keysFor("fight", { "guide" }, dev), "Show / hide the on-screen controls guide in fights", dev, 3)
+			-- Round 6: the 3+4 signature and the Ultimate, only when Controls.legend lists them (keys from Controls).
+			local extra = 3
+			for _, row in UIHelpers.legend("fight", dev) do
+				if (row.action == "stance" or row.action == "ultimate") and row.keys ~= "" then
+					local keys = string.split(row.keys, "+")
+					local name = string.gsub(string.gsub(row.text, "&", "&amp;"), "<", "&lt;")
+					local caption = "<b>" .. name .. "</b>: " .. (if row.action == "ultimate" then "in <b>Surge</b> (25% health or less), once per round" else "each fighter's own stance or special")
+					line(attack, keys, caption, dev, extra, if #keys > 1 then "+" else nil)
+					extra += 1
+				end
+			end
+			line(attack, keysFor("fight", { "guide" }, dev), "Show / hide the on-screen controls guide in fights", dev, extra)
 			-- Practice keys straight from Controls.legend("practice"): keys and texts, in the legend's order. Rows that
 			-- share a first word ("CPU Easy", "CPU Normal", "CPU Hard") collapse into one line.
 			local practice = card(right, "Practice", "PRACTICE DOJO", 2)
