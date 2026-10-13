@@ -112,6 +112,9 @@ def build(tl: dict) -> dict:
     # the cartwheel kick over the top onto its right shoulder
     _, b2 = C.strike_beat(dtrack, i2, WHEEL, "LeftFoot", C.shoulder_top(+1), stance, start_off=14, windup_off=7, recover_off=9, guard_after=6,
                           clear=0.0, arm_tol=-0.1)
+    # the cartwheel's hands-down start and wind-up a little further out (the head dips toward its chest)
+    for k in (1, 2):
+        b2[k]["from"] = C.shifted(b2[k]["from"], [0.0, 0.0, -0.12])
     A += b2
     H.add(i2, "LeftFoot", "High", C.shoulder_top(+1))
     # runs up its thigh and chest and kicks off: the feet on its body, the body rising, then the push-off
@@ -119,12 +122,12 @@ def build(tl: dict) -> dict:
     run = C.pose_at(stance, dz3 - 0.25)
     A += [
         pk(i3 - 18, run, lift=(0.05, 0.05)),
-        pk(i3 - 12, C.pose_at(stance, dz3 - 0.10), RightFoot={"grip": C.thigh(+1, frac=0.45), "w": 1.0, "pole": [0.2, 0.2, 1.0]},
+        pk(i3 - 12, C.pose_at(stance, dz3 - 0.18), RightFoot={"grip": C.thigh(+1, frac=0.45), "w": 1.0, "pole": [0.2, 0.2, 1.0]},
            rot_plus=[-12, 0, 0], contact={"RightFoot": 0.0}),
-        pk(i3 - 6, C.raised(C.pose_at(stance, dz3 - 0.05), 0.30), LeftFoot={"grip": C.belly(), "w": 1.0, "pole": [-0.2, 0.3, 1.0]},
+        pk(i3 - 6, C.raised(C.pose_at(stance, dz3 - 0.14), 0.30), LeftFoot={"grip": C.belly(), "w": 1.0, "pole": [-0.2, 0.3, 1.0]},
            RightFoot={"grip": C.thigh(+1, frac=0.45), "w": 1.0}, rot_plus=[-6, 0, 0], contact={"LeftFoot": 0.0, "RightFoot": 0.0}),
-        pk(i3, C.rotated(C.raised(C.pose_at(stance, dz3), 0.48), [22, 0, 0]), "snap", RightFoot={"grip": C.chest(), "w": 1.0, "pole": [0.2, 0.5, 1.0]},
-           LeftFoot={"at": [-0.2, 0.55, dz3 + 0.30], "pole": [-0.2, 0.5, 1.0]}, contact={"LeftFoot": 0.0, "RightFoot": 0.0}),
+        pk(i3, C.rotated(C.raised(C.pose_at(stance, dz3 - 0.08), 0.48), [22, 0, 0]), "snap", RightFoot={"grip": C.chest(), "w": 1.0, "pole": [0.2, 0.5, 1.0]},
+           LeftFoot={"at": [-0.2, 0.50, dz3 - 0.22], "pole": [-0.2, 0.5, 1.0]}, contact={"LeftFoot": 0.0, "RightFoot": 0.0}),
         # the back-flip off the body (a full turn back in the air), coming out high for the scissor kick
         pk(i3 + 8, C.rotated(C.raised(C.pose_at(C.at(FLIP, "contact"), dz3 - 0.25), 0.60), [110, 0, 0]), contact={"LeftFoot": 0.0, "RightFoot": 0.0}),
         pk(i3 + 16, C.rotated(C.raised(C.pose_at(C.at(FLIP, "contact"), dz3 - 0.35), 0.62), [230, 0, 0])),
@@ -142,7 +145,7 @@ def build(tl: dict) -> dict:
     ]
     H.add(i4, "RightFoot", "High", C.temple(+1))
     # lands low and the drop sweep
-    low = C.lowered(C.pose_at(C.at(LOW, "contact")), 0.12)
+    low = C.lowered(C.pose_at(C.at(LOW, "contact")), 0.20)
     dz5 = C.reach_dz(low, "LeftFoot", C.ankle(+1), dtrack, i5, 0.03, clear=0.0, arm_tol=-0.2)
     A += [
         pk(i5 - 10, C.lowered(C.pose_at(C.at(LOW, "start"), dz5), 0.14)),
@@ -153,12 +156,12 @@ def build(tl: dict) -> dict:
     H.add(i5, "LeftFoot", "Low", C.ankle(+1))
     # springs into a front flip and the falling heel onto the floating body, lands crouched on one hand
     heel = C.pose_at(C.at(CRESCENT, "contact"))
-    dz6 = C.reach_dz(C.raised(heel, 0.62), "RightFoot", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.3)
+    dz6 = C.reach_dz(C.raised(heel, 0.40), "RightFoot", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.3)
     A += [
         pk(i6 - 24, C.lowered(C.pose_at(stance, dz6 - 0.1), 0.18), lift=(0.04, 0.04)),
         pk(i6 - 16, C.rotated(C.raised(C.pose_at(stance, dz6 - 0.05), 0.50), [-120, 0, 0]), contact={"LeftFoot": 0.0, "RightFoot": 0.0}),
         pk(i6 - 8, C.rotated(C.raised(C.pose_at(C.at(CRESCENT, "windup"), dz6), 0.62), [-250, 0, 0])),
-        pk(i6, C.rotated(C.raised(C.pose_at(heel, dz6), 0.55), [-345, 0, 0]), "snap", RightFoot={"grip": C.belly(), "w": 1.0}),
+        pk(i6, C.rotated(C.raised(C.pose_at(heel, dz6), 0.36), [-345, 0, 0]), "snap", RightFoot={"grip": C.belly(), "w": 1.0}),
         pk(i6 + 8, C.lowered(C.pose_at(stance, dz6 * 0.6), 0.34), LeftHand={"at": [-0.30, 0.04, dz6 * 0.6 + 0.35], "pole": [-0.6, 0.3, 0.6]}),
         pk(D - 4, C.lowered(stance, 0.12), lift=(0.05, 0.05)),
         pk(D, stance),

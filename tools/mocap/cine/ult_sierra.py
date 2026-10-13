@@ -70,13 +70,13 @@ def build(tl: dict) -> dict:
         # knee 1 into the chest
         r(i2, "HitMidHeavy@0.0", zk, "snap", rot_plus=[-24, 0, 0], waist_plus=[-10, 0, 0], neck_plus=[-12, 0, 0]),
         r(i2 + 10, "HitMidHeavy@0.12", zk - 0.02, rot_plus=[-34, 0, 0], waist_plus=[-16, 0, 0], neck_plus=[-14, 0, 0]),
-        r(i3 - 6, "HitMidHeavy@0.25", zk - 0.01, rot_plus=[-44, 0, 0], waist_plus=[-20, 0, 0], neck_plus=[-12, 0, 0]),
-        # knee 2 to the chin: the head snaps back up
-        r(i3, "HitHighHeavy@0.0", zk - 0.01, "snap", rot_plus=[-30, 0, 0], neck_plus=[30, 0, 0], waist_plus=[-6, 0, 0]),
+        r(i3 - 6, "HitMidHeavy@0.25", zk - 0.01, rot_plus=[-50, 0, 0], waist_plus=[-24, 0, 0], neck_plus=[-12, 0, 0]),
+        # knee 2 to the chin (the head pulled down onto it), then the head snaps back up
+        r(i3, "HitHighHeavy@0.0", zk - 0.01, "snap", rot_plus=[-46, 0, 0], neck_plus=[16, 0, 0], waist_plus=[-22, 0, 0]),
         r(i3 + 10, "HitHighHeavy@0.12", zk - 0.04, neck_plus=[18, 0, 0]),
-        r(i4 - 6, "HitHighHeavy@0.45", zk - 0.03),
+        r(i4 - 6, "HitHighHeavy@0.45", zk - 0.03, rot_plus=[-10, 0, 0]),
         # the elbow across the brow: it staggers back, turning away
-        r(i4, "HitHighHeavy@0.0", zk - 0.03, "snap", neck_plus=[8, 26, 6], waist_plus=[0, 10, 0]),
+        r(i4, "HitHighHeavy@0.0", zk - 0.03, "snap", rot_plus=[-14, 0, 0], neck_plus=[8, 26, 6], waist_plus=[-4, 10, 0]),
         pk(i4 + 10, C.yawed(C.pose_at("HitHighHeavy@0.15", zk - 0.12), 18), lift=(0.04, 0.04)),
         pk(i4 + 26, C.yawed(C.pose_at("Stagger@0.35", zc - 0.08), 26), lift=(0.04, 0.03)),
         pk(i5 - 16, C.yawed(C.pose_at("Stagger@0.55", zc - 0.06), 14)),
@@ -111,27 +111,27 @@ def build(tl: dict) -> dict:
         pk(i2 + 9, C.pose_at(C.at(KNEE, "recover"), dzk), **clinch_hands),
         pk(i3 - 14, C.pose_at(stance, dzk2), lift=(0.03, 0.0), **clinch_hands),
         pk(i3 - 6, C.pose_at(C.at(KNEE, "windup"), dzk2), **clinch_hands),
-        pk(i3, C.pose_at(knee_pose, dzk2), "snap", **clinch_hands, **knee2),
+        pk(i3, C.raised(C.pose_at(knee_pose, dzk2), 0.08), "snap", **clinch_hands, **knee2),
         pk(i3 + 9, C.pose_at(C.at(KNEE, "recover"), dzk2), **clinch_hands),
     ]
     H.add(i2, "LeftKnee", "Mid", C.sternum(dy=-0.06), grip=False)
     H.add(i3, "LeftKnee", "High", C.chin(), grip=False)
     # the slashing elbow across the brow (the right arm folded, the point of the elbow slicing left-to-right)
     elbow_c = C.resolved(C.pose_at(C.at(CROSS, "windup")))
-    elbow_c.limbs["RightHand"]["at"] = np.array([-0.30, 1.58, 0.30])
+    elbow_c.limbs["RightHand"]["at"] = np.array([-0.30, 1.76, 0.30])
     elbow_c.limbs["RightHand"]["pole"] = T.unit([0.6, 0.1, 0.8])
     elbow_c.q["root"] = T.qn(T.qmul(T.eq([0, 34, 0]), elbow_c.q["root"]))
     elbow_w = C.resolved(C.pose_at(C.at(CROSS, "windup")))
-    elbow_w.limbs["RightHand"]["at"] = np.array([0.34, 1.58, 0.10])
+    elbow_w.limbs["RightHand"]["at"] = np.array([0.34, 1.74, 0.10])
     elbow_w.limbs["RightHand"]["pole"] = T.unit([0.9, 0.1, -0.2])
-    dze = C.reach_dz(elbow_c, "RightHand", C.face(dy=0.05), dtrack, i4, 0.03, clear=-0.04, arm_tol=-0.3, joint="elbowR")
+    dze = C.reach_dz(elbow_c, "RightHand", C.face(dy=-0.04), dtrack, i4, 0.03, clear=-0.10, arm_tol=-0.4, joint="elbowR")
     A += [
         pk(i4 - 12, C.pose_at(stance, dze), lift=(0.03, 0.03)),
         pk(i4 - 6, C.pose_at(elbow_w, dze), rot_plus=[0, -14, 0]),
         pk(i4, C.pose_at(elbow_c, dze), "snap"),
         pk(i4 + 8, C.pose_at(elbow_c, dze), rot_plus=[0, 8, 0]),
     ]
-    H.add(i4, "RightElbow", "High", C.face(dy=0.05), grip=False)
+    H.add(i4, "RightElbow", "High", C.face(dy=-0.04), grip=False)
     # two quick steps back to kicking range, the hop-switch into Southpaw and a breath
     head_contact = C.mirrored(C.pose_at(C.at(HEADKICK, "contact")))
     dzh = C.reach_dz(head_contact, "RightFoot", C.temple(+1), dtrack, i5, 0.03, clear=0.02, arm_tol=-0.1)
@@ -142,7 +142,7 @@ def build(tl: dict) -> dict:
         pk(i4 + 46, C.pose_at(south, dzh - 0.06), lift=(0.06, 0.06)),
         pk(i5 - 20, C.pose_at(south, dzh - 0.04), rot_plus=[2, 0, 0]),
         pk(i5 - 12, C.pose_at(C.mirrored(C.pose_at(C.at(HEADKICK, "start"))), dzh)),
-        pk(i5 - 6, C.pose_at(C.mirrored(C.pose_at(C.at(HEADKICK, "windup"))), dzh)),
+        pk(i5 - 6, C.pose_at(C.mirrored(C.pose_at(C.at(HEADKICK, "windup"))), dzh - 0.10)),
         pk(i5, C.pose_at(head_contact, dzh), "snap", RightFoot={"grip": C.temple(+1), "w": 1.0}),
         pk(i5 + 8, C.pose_at(C.mirrored(C.pose_at(C.at(HEADKICK, "recover"))), dzh)),
         pk(i5 + 18, C.pose_at(south, dzh * 0.5), lift=(0.05, 0.05)),

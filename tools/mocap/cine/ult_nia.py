@@ -137,13 +137,13 @@ def build(tl: dict) -> dict:
     H.add(i5, "RightFoot", "High", C.chest())
     # lands, sinks low, the two-palm push into the falling body
     low = C.lowered(stance, 0.30)
-    dz6 = C.reach_dz(C.lowered(C.pose_at(C.at(PALM, "contact")), 0.34), "RightHand", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.2)
+    dz6 = C.reach_dz(C.lowered(C.pose_at(C.at(PALM, "contact")), 0.46), "RightHand", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.2)
     A += [
         pk(i6 - 14, C.pose_at(low, dz6), lift=(0.04, 0.04)),
-        pk(i6 - 6, C.lowered(C.pose_at(C.at(PALM, "windup"), dz6), 0.32)),
-        pk(i6, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.34), "snap",
+        pk(i6 - 6, C.lowered(C.pose_at(C.at(PALM, "windup"), dz6), 0.40), rot_plus=[-12, 0, 0]),
+        pk(i6, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.46), "snap", rot_plus=[-24, 0, 0],
            RightHand={"grip": C.belly(dx=-0.06), "w": 1.0}, LeftHand={"grip": C.belly(dx=0.06), "w": 1.0}),
-        pk(i6 + 8, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.30)),
+        pk(i6 + 8, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.40), rot_plus=[-18, 0, 0]),
         # low stance, palms forward, breathing out (back onto her spot)
         pk(D - 4, C.lowered(stance, 0.08), lift=(0.04, 0.04), rot_plus=[3, 0, 0]),
         pk(D, stance),

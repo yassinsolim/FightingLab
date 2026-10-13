@@ -94,7 +94,7 @@ def build(tl: dict) -> dict:
     A = [pk(0, C.pose_at(C.at(LUNGE, "contact"))), pk(8, C.pose_at(C.at(LUNGE, "follow")))]
     # the knife-hand: the open lead hand rises high, then chops down onto the right collarbone
     _, b1 = C.strike_beat(dtrack, i1, JAB, "LeftHand", C.collar(+1), stance, start_off=12, windup_off=6, recover_off=8, guard_after=8,
-                          arm_tol=-0.06, extra={"windup": {"LeftHand": {"at": [-0.08, 1.92, 0.22], "pole": [-0.6, 0.2, -0.6]}},
+                          arm_tol=-0.14, clear=0.0, extra={"windup": {"LeftHand": {"at": [-0.08, 1.92, 0.22], "pole": [-0.6, 0.2, -0.6]}},
                                                 "limb": {"pole": [-0.75, -0.45, 0.1]}})
     A += b1
     H.add(i1, "LeftHand", "High", C.collar(+1))
@@ -103,9 +103,9 @@ def build(tl: dict) -> dict:
     A += b2
     H.add(i2, "LeftFoot", "Mid", C.belly())
     # the rising elbow: the right forearm folds up by the ear and the point of the elbow rises under the chin
-    elbow_contact = edited(C.pose_at(C.at(STRAIGHT, "contact")), RightHand={"at": [0.30, 1.66, 0.30], "pole": [0.15, -0.5, 1.0]})
+    elbow_contact = edited(C.pose_at(C.at(STRAIGHT, "contact")), RightHand={"at": [0.28, 1.80, 0.24], "pole": [0.15, -0.5, 1.0]})
     elbow_windup = edited(C.pose_at(C.at(STRAIGHT, "windup")), RightHand={"at": [0.24, 1.10, 0.06], "pole": [0.3, -0.6, 0.8]})
-    dz3 = C.reach_dz(elbow_contact, "RightHand", C.chin(), dtrack, i3, 0.03, clear=0.02, arm_tol=-0.2, dx=-0.12, joint="elbowR")
+    dz3 = C.reach_dz(elbow_contact, "RightHand", C.chin(), dtrack, i3, 0.03, clear=-0.05, arm_tol=-0.3, dx=-0.12, joint="elbowR")
     elbow_contact, elbow_windup = C.pose_at(elbow_contact, 0.0, -0.12), C.pose_at(elbow_windup, 0.0, -0.12)
     A += [
         pk(i3 - 16, C.pose_at(stance, dz3), lift=(0.05, 0.05)),
