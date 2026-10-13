@@ -4,6 +4,7 @@ local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local States = require(script.Parent.Motion.States)
+local Cinematic = require(script.Parent.Motion.Cinematic)
 
 type Ctx = any
 type CombatEvent = any
@@ -17,6 +18,7 @@ local previousStates: { [number]: string } = {}
 local impactTrackers: { [number]: any } = {}
 local lastPlayedAt: { [string]: number } = {}
 local soundCursor = 0
+local cineLast: number? = nil
 -- Positional sounds come from arena-space sim positions; they play at origin + position.
 local origin = Vector3.zero
 
@@ -78,6 +80,9 @@ end
 
 function M._soundNameForEvent(e: CombatEvent): string
 	if e.kind == "KO" then return "KO" end
+	if e.kind == "Surge" then return "Armor" end
+	if e.kind == "UltStart" then return "Parry" end
+	if e.kind == "UltHit" then return if e.knockdown == true then "KO" else "HitHeavy" end
 	if e.kind == "Block" then return "Block" end
 	if e.kind == "Whiff" then return "Whiff" end
 	if e.kind == "ThrowStart" then return "ThrowGrab" end
@@ -152,8 +157,57 @@ function M.playMusic(name: string?)
 	end
 end
 
+-- Surge and Ultimate (round 6): layered from the existing in-game sounds (no new assets), pitched down for weight.
+-- Each layer = { sound, playback speed factor, volume factor }.
+M.Layers = {
+	Surge = { { "Armor", 0.62, 1.1 }, { "Counter", 0.7, 0.75 } },
+	UltStart = { { "Parry", 0.64, 1.15 }, { "KO", 0.82, 0.55 } },
+	UltHit = { { "HitHeavy", 0.9, 1.15 }, { "Counter", 0.84, 0.6 } },
+	UltFinish = { { "KO", 0.84, 1.2 }, { "ThrowImpact", 0.78, 1.0 }, { "HitLaunch", 0.72, 0.8 } },
+	UltLand = { { "Knockdown", 0.88, 1.1 }, { "ThrowImpact", 0.9, 0.5 } },
+} :: { [string]: { { any } } }
+
+function M.playLayered(kind: string, at: Vector3?)
+	local layers = M.Layers[kind]
+	if not layers then return end
+	for _, layer in layers do
+		local name, speed, gain = layer[1] :: string, layer[2] :: number, layer[3] :: number
+		local f = audioFolder
+		local template = f and f:FindFirstChild(name)
+		if template and template:IsA("Sound") then
+			local s = template:Clone()
+			s.SoundGroup = groupFor(name)
+			s.PlaybackSpeed = math.clamp(template.PlaybackSpeed * speed, 0.4, 2)
+			s.Volume = math.clamp(template.Volume * gain, 0, 1.6)
+			if at then
+				local p = Instance.new("Part")
+				p.Name = "FightingLabOneShotAudio"
+				p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
+				p.Transparency = 1
+				p.Size = Vector3.new(0.2, 0.2, 0.2)
+				p.Position = at
+				p.Parent = workspace
+				s.RollOffMaxDistance = math.max(s.RollOffMaxDistance, 80)
+				s.RollOffMinDistance = math.max(s.RollOffMinDistance, 10)
+				s.Parent = p
+				Debris:AddItem(p, math.max(1.2, s.TimeLength / math.max(s.PlaybackSpeed, 0.1) + 0.6))
+			else
+				s.Parent = SoundService
+				Debris:AddItem(s, math.max(1.2, s.TimeLength / math.max(s.PlaybackSpeed, 0.1) + 0.6))
+			end
+			s:Play()
+		end
+	end
+	local c = ctx
+	if c then c.gui:SetAttribute("AudioLastLayered", kind) end
+end
+
 function M.onEvent(e: CombatEvent)
 	local at = if e.point then origin + e.point else nil
+	if e.kind == "Surge" or e.kind == "UltStart" or e.kind == "UltHit" then
+		M.playLayered(if e.kind == "UltHit" then (if e.knockdown == true then "UltFinish" else "UltHit") else e.kind, at)
+		return
+	end
 	local soundName = M._soundNameForEvent(e)
 	M.play(soundName, at)
 	if e.launch == true or e.tier == "Launch" then
@@ -201,8 +255,33 @@ function M.init(newCtx: Ctx)
 	newCtx.gui:SetAttribute("AudioStatus", "Ready")
 end
 
+-- The defender's body reaching the floor inside the Ultimate's cinematic (its track's floor channel crossing 0.5).
+-- Called every frame by EffectsController.update (the client bootstrap does not update this module per frame) and by
+-- M.update; a frame is processed once.
+local cineNow: number? = nil
+function M.updateCinematic(f: any)
+	if type(f) ~= "table" or f.now == cineNow then return end
+	cineNow = f.now
+	if typeof(f.origin) == "Vector3" then origin = f.origin end
+	local aSlot, aId, cineFrame, aView = Cinematic.active(f)
+	if aSlot and aView then
+		local tc = Cinematic.clip(aId)
+		if tc then
+			local g = Cinematic.defenderGround(tc, Cinematic.timeline(aId, aView.throw), cineFrame :: number)
+			if cineLast and cineLast < 0.5 and g >= 0.5 then
+				local d = f.fighters[3 - aSlot]
+				M.playLayered("UltLand", if d and typeof(d.pos) == "Vector3" then origin + Vector3.new(d.pos.X, 0.2, d.pos.Z) else nil)
+			end
+			cineLast = g
+		end
+	else
+		cineLast = nil
+	end
+end
+
 function M.update(f: any)
 	if typeof(f.origin) == "Vector3" then origin = f.origin end
+	M.updateCinematic(f)
 	for i = 1, 2 do
 		local r = f.fighters[i]
 		if r then

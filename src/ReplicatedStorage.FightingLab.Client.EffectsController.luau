@@ -2,6 +2,8 @@
 local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
 local States = require(script.Parent.Motion.States)
+local Cinematic = require(script.Parent.Motion.Cinematic)
+local Roster = require(script.Parent.Parent.Roster)
 
 type Ctx = any
 type RenderFrame = any
@@ -43,6 +45,11 @@ local SPARK_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 local FLASH_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
 local GLOW_TEXTURE = "rbxasset://textures/particles/glow_05.dds"
+-- Round 6 (Surge / Ultimate): built-in engine textures only.
+local SHOCKWAVE_TEXTURE = "rbxasset://textures/particles/explosion01_shockwave_main.dds"
+local FLAME_TEXTURE = "rbxasset://textures/particles/fire_main.dds"
+local GATHER_TEXTURE = "rbxasset://textures/particles/forcefield_glow_main.dds"
+local SURGE_GOLD = Color3.fromRGB(255, 196, 92)
 
 local TierSpec: { [string]: EffectSpec } = {
 	Light = { color = Color3.fromRGB(130, 235, 255), core = 5, sparks = 12, dust = 0, ring = 1.15, life = 0.09, flashAlpha = 0.9, shake = 0.028 },
@@ -229,6 +236,13 @@ end
 function M._specForEvent(e: CombatEvent): EffectSpec
 	local tier = tostring(e.tier or (if e.launch then "Launch" elseif (e.damage or 0) >= 15 then "Heavy" elseif (e.damage or 0) >= 10 then "Medium" else "Light"))
 	local spec = TierSpec[tier] or TierSpec.Light
+	if e.kind == "UltHit" then
+		-- Every Ultimate impact is heavier than any normal hit; the last one (knockdown) is the finish.
+		if e.knockdown == true then return { color = Color3.fromRGB(255, 236, 190), core = 24, sparks = 84, dust = 30, ring = 4.8, life = 0.28, flashAlpha = 0.22, shake = 0.095 } end
+		return { color = Color3.fromRGB(255, 214, 140), core = 15, sparks = 48, dust = 6, ring = 3.3, life = 0.21, flashAlpha = 0.62, shake = 0.066 }
+	end
+	if e.kind == "UltStart" then return { color = Color3.fromRGB(255, 244, 220), core = 0, sparks = 0, dust = 0, ring = 0, life = 0.3, flashAlpha = 0.35, shake = 0 } end
+	if e.kind == "Surge" then return { color = SURGE_GOLD, core = 0, sparks = 0, dust = 0, ring = 0, life = 0.3, flashAlpha = 0.8, shake = 0.03 } end
 	if e.kind == "Block" then return { color = Color3.fromRGB(120, 190, 255), core = 5, sparks = 18, dust = 0, ring = 1.55, life = 0.13, flashAlpha = 0.87, shake = 0.022 } end
 	if e.kind == "ThrowStart" then return { color = Color3.fromRGB(170, 245, 255), core = 4, sparks = 10, dust = 0, ring = 1.35, life = 0.12, flashAlpha = 0.92, shake = 0.018 } end
 	if e.kind == "ThrowBreak" then return { color = Color3.fromRGB(245, 250, 255), core = 10, sparks = 34, dust = 2, ring = 2.25, life = 0.18, flashAlpha = 0.68, shake = 0.056 } end
@@ -242,23 +256,318 @@ function M._specForEvent(e: CombatEvent): EffectSpec
 	return { color = eventColor(e), core = math.max(1, math.floor(spec.core * airScale)), sparks = math.max(2, math.floor(spec.sparks * airScale)), dust = spec.dust, ring = spec.ring * (0.86 + 0.14 * airScale), life = spec.life, flashAlpha = spec.flashAlpha, shake = spec.shake * airScale }
 end
 
+-- Surge and Ultimate (round 6, docs/design/ultimates.md) -------------------------------------------------------------
+-- Surge aura: a fighter with `surge = true` stands in a slowly pulsing floor ring in its own surge colour, with low
+-- flames and a few sparks rising to the waist (never past the shoulders: faces stay clear) and a warm light on the
+-- body. The Surge event adds a one-time burst; UltStart gathers energy into the attacker under a screen flash; every
+-- UltHit bursts at the striking limb, the last one with a floor shockwave and a full-screen flash; the defender's
+-- landing inside the cinematic raises dust. Everything lives in FightingLabLocalEffects (never inside the rigs).
+type Aura = { base: Part, flames: ParticleEmitter, sparks: ParticleEmitter, rings: ParticleEmitter, burstRing: ParticleEmitter,
+	burstFlames: ParticleEmitter, gather: ParticleEmitter, light: PointLight, on: boolean, color: Color3, id: string? }
+local auras: { [number]: Aura } = {}
+local lastIds: { [number]: string? } = {}
+local cineGround: { key: string, last: number }? = nil
+M.AuraRates = { flames = 20, sparks = 7, rings = 1.4 }
+M.AuraLight = { brightness = 0.9, range = 7 }
+
+local function seq(points: { { number } }): NumberSequence
+	local keys = {}
+	for _, p in points do table.insert(keys, NumberSequenceKeypoint.new(p[1], p[2])) end
+	return NumberSequence.new(keys)
+end
+
+-- A fighter's surge colour: its roster accent made bright and saturated (a grey accent becomes an icy blue-white).
+function M.surgeColor(id: string?): Color3
+	local ok, def = pcall(function() return if type(id) == "string" and Roster.has(id) then Roster.get(id) else nil end)
+	local accent = if ok and type(def) == "table" and typeof(def.accentColor) == "Color3" then def.accentColor else SURGE_GOLD
+	local h, s = accent:ToHSV()
+	if s < 0.3 then return Color3.fromRGB(165, 205, 255) end
+	return Color3.fromHSV(h, math.clamp(s, 0.6, 0.85), 1)
+end
+
+local function newAura(i: number): Aura
+	local base = Instance.new("Part")
+	base.Name = "SurgeAura" .. tostring(i)
+	base.Anchored, base.CanCollide, base.CanQuery, base.CanTouch, base.CastShadow = true, false, false, false, false
+	base.Transparency = 1
+	base.Size = Vector3.new(2.2, 0.2, 2.2)
+	base.Parent = folder()
+	local function emitter(name: string, texture: string): ParticleEmitter
+		local e = Instance.new("ParticleEmitter")
+		e.Name = name
+		e.Texture = texture
+		e.LightEmission = 1
+		e.LightInfluence = 0
+		e.Rate = 0
+		e.Enabled = true
+		e.EmissionDirection = Enum.NormalId.Top
+		e.Parent = base
+		return e
+	end
+	-- Low flames rising from the floor around the feet: ~2.5 studs at most (waist height).
+	local flames = emitter("SurgeFlames", FLAME_TEXTURE)
+	flames.Lifetime = NumberRange.new(0.42, 0.7)
+	flames.Speed = NumberRange.new(2.6, 4.2)
+	flames.SpreadAngle = Vector2.new(8, 8)
+	flames.Drag = 1.5
+	flames.Size = seq({ { 0, 0.55 }, { 0.6, 0.38 }, { 1, 0.05 } })
+	flames.Transparency = seq({ { 0, 0.5 }, { 0.25, 0.42 }, { 1, 1 } })
+	flames.RotSpeed = NumberRange.new(-40, 40)
+	flames.Rotation = NumberRange.new(0, 360)
+	local sparks = emitter("SurgeSparks", SPARK_TEXTURE)
+	sparks.Lifetime = NumberRange.new(0.3, 0.5)
+	sparks.Speed = NumberRange.new(4.5, 7)
+	sparks.Drag = 3
+	sparks.SpreadAngle = Vector2.new(18, 18)
+	sparks.Size = seq({ { 0, 0.16 }, { 1, 0.02 } })
+	-- Flat rings on the floor (a particle's plane is perpendicular to its velocity: straight up = flat).
+	local rings = emitter("SurgeRings", SHOCKWAVE_TEXTURE)
+	rings.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+	rings.Speed = NumberRange.new(0.01)
+	rings.Lifetime = NumberRange.new(0.85)
+	rings.LockedToPart = true
+	rings.Size = seq({ { 0, 1.6 }, { 1, 4.4 } })
+	rings.Transparency = seq({ { 0, 0.55 }, { 0.3, 0.6 }, { 1, 1 } })
+	local burstRing = emitter("SurgeBurstRing", SHOCKWAVE_TEXTURE)
+	burstRing.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+	burstRing.Speed = NumberRange.new(0.01)
+	burstRing.Lifetime = NumberRange.new(0.55)
+	burstRing.LockedToPart = true
+	burstRing.Size = seq({ { 0, 1.2 }, { 1, 10 } })
+	burstRing.Transparency = seq({ { 0, 0.2 }, { 1, 1 } })
+	local burstFlames = emitter("SurgeBurstFlames", FLAME_TEXTURE)
+	burstFlames.Lifetime = NumberRange.new(0.35, 0.6)
+	burstFlames.Speed = NumberRange.new(6, 10)
+	burstFlames.SpreadAngle = Vector2.new(14, 14)
+	burstFlames.Drag = 3
+	burstFlames.Size = seq({ { 0, 0.8 }, { 1, 0.1 } })
+	burstFlames.Transparency = seq({ { 0, 0.3 }, { 1, 1 } })
+	-- UltStart: energy gathering inward into the attacker (spawned on a sphere around it, moving to its centre).
+	local gather = emitter("UltGather", GATHER_TEXTURE)
+	gather.Shape = Enum.ParticleEmitterShape.Sphere
+	gather.ShapeInOut = Enum.ParticleEmitterShapeInOut.Inward
+	gather.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+	gather.Lifetime = NumberRange.new(0.22, 0.3)
+	gather.Speed = NumberRange.new(12, 16)
+	gather.Size = seq({ { 0, 0.12 }, { 0.7, 0.35 }, { 1, 0.02 } })
+	gather.Transparency = seq({ { 0, 0.6 }, { 0.5, 0.15 }, { 1, 1 } })
+	local light = Instance.new("PointLight")
+	light.Name = "SurgeLight"
+	light.Shadows = false
+	light.Enabled = false
+	light.Range = M.AuraLight.range
+	local lightAt = Instance.new("Attachment")
+	lightAt.Name = "SurgeLightAt"
+	lightAt.Position = Vector3.new(0, 2.6, 0)
+	lightAt.Parent = base
+	light.Parent = lightAt
+	return { base = base, flames = flames, sparks = sparks, rings = rings, burstRing = burstRing, burstFlames = burstFlames, gather = gather, light = light, on = false, color = SURGE_GOLD, id = nil }
+end
+
+local function auraFor(i: number): Aura?
+	if not fxFolder then return nil end
+	local a = auras[i]
+	if a and a.base.Parent then return a end
+	a = newAura(i)
+	auras[i] = a
+	return a
+end
+
+local function setAuraColor(a: Aura, id: string?)
+	if a.id == id then return end
+	a.id = id
+	local color = M.surgeColor(id)
+	a.color = color
+	local hot = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1):Lerp(color, 0.55)), ColorSequenceKeypoint.new(0.35, color), ColorSequenceKeypoint.new(1, color) })
+	for _, e in { a.flames, a.burstFlames, a.sparks, a.gather } do e.Color = hot end
+	a.rings.Color = ColorSequence.new(color)
+	a.burstRing.Color = ColorSequence.new(color)
+	a.light.Color = color
+end
+
+local function setAura(a: Aura, on: boolean)
+	if a.on == on then return end
+	a.on = on
+	a.flames.Rate = if on then M.AuraRates.flames else 0
+	a.sparks.Rate = if on then M.AuraRates.sparks else 0
+	a.rings.Rate = if on then M.AuraRates.rings else 0
+	a.light.Enabled = on
+end
+
+-- Keeps every fighter's aura under its feet; `surge` comes from the render frame.
+local function updateAuras(f: RenderFrame)
+	local c = ctx
+	if not c then return end
+	local showing = f.phase ~= "MatchOver" and f.phase ~= "Lobby"
+	for i = 1, 2 do
+		local r = f.fighters[i]
+		local on = showing and r ~= nil and (r :: any).surge == true
+		local a = auras[i]
+		if on or a then
+			a = auraFor(i)
+			if a then
+				local part = root(i)
+				setAuraColor(a, if r and type(r.characterId) == "string" then r.characterId else nil)
+				if part then a.base.CFrame = CFrame.new(Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)) end
+				setAura(a, on and part ~= nil)
+				if a.on then a.light.Brightness = M.AuraLight.brightness * (0.75 + 0.25 * math.sin(f.now * 4.2 + i)) end
+			end
+		end
+	end
+	local active = 0
+	for _, a in auras do if a.on then active += 1 end end
+	c.gui:SetAttribute("SurgeAuras", active)
+end
+
+local function limbPoint(i: number, limb: string?): Vector3?
+	local c = ctx
+	if not c or not limb then return nil end
+	local partName = ({ LeftElbow = "LeftLowerArm", RightElbow = "RightLowerArm", LeftKnee = "LeftLowerLeg", RightKnee = "RightLowerLeg",
+		LeftShoulder = "LeftUpperArm", RightShoulder = "RightUpperArm", Body = "UpperTorso" } :: { [string]: string })[limb] or limb
+	local model = c.modules.Characters.getModel and c.modules.Characters.getModel(i)
+	local part = model and model:FindFirstChild(partName, true)
+	if part and part:IsA("BasePart") then
+		-- Elbows and knees strike with the joint end of the segment.
+		if string.find(limb, "Elbow", 1, true) or string.find(limb, "Knee", 1, true) then return part.Position + part.CFrame.UpVector * part.Size.Y * 0.45 end
+		return part.Position
+	end
+	return nil
+end
+
+-- The defender's body reaching the floor inside the cinematic (its track's floor-support channel crossing 0.5).
+local function updateCinematicGround(f: RenderFrame)
+	local aSlot, aId, cineFrame, aView = Cinematic.active(f)
+	if not aSlot or not aView then cineGround = nil; return end
+	local tc = Cinematic.clip(aId)
+	if not tc then return end
+	local tl = Cinematic.timeline(aId, aView.throw)
+	local g = Cinematic.defenderGround(tc, tl, cineFrame :: number)
+	local key = tostring(aId) .. ":" .. tostring(aSlot)
+	local prev = cineGround
+	if prev and prev.key == key and prev.last < 0.5 and g >= 0.5 then
+		local d = f.fighters[3 - aSlot]
+		local part = root(3 - aSlot)
+		local at = if part then Vector3.new(part.Position.X, origin.Y + 0.1, part.Position.Z) elseif d then origin + Vector3.new(d.pos.X, 0.1, d.pos.Z) else nil
+		if at then
+			emitDust(at, 30, 1.5)
+			local c = ctx
+			if c and c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(0.05) end
+			if c then c.gui:SetAttribute("UltimateLandings", (c.gui:GetAttribute("UltimateLandings") or 0) + 1) end
+		end
+	end
+	cineGround = { key = key, last = g }
+end
+
+-- A flat shockwave ring on the floor at a world point (not attached to anyone).
+local floorFx: { part: Part, ring: ParticleEmitter }? = nil
+local function floorShockwave(at: Vector3, color: Color3, count: number)
+	if not fxFolder then return end
+	local fx = floorFx
+	if not fx or not fx.part.Parent then
+		local part = Instance.new("Part")
+		part.Name = "FloorShockwave"
+		part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch, part.CastShadow = true, false, false, false, false
+		part.Transparency = 1
+		part.Size = Vector3.new(0.2, 0.2, 0.2)
+		part.Parent = folder()
+		local ring = Instance.new("ParticleEmitter")
+		ring.Name = "ShockRing"
+		ring.Texture = SHOCKWAVE_TEXTURE
+		ring.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+		ring.EmissionDirection = Enum.NormalId.Top
+		ring.Speed = NumberRange.new(0.01)
+		ring.Lifetime = NumberRange.new(0.5, 0.65)
+		ring.LightEmission = 1
+		ring.LightInfluence = 0
+		ring.Rate = 0
+		ring.Size = seq({ { 0, 1.0 }, { 1, 12 } })
+		ring.Transparency = seq({ { 0, 0.15 }, { 1, 1 } })
+		ring.Parent = part
+		fx = { part = part, ring = ring }
+		floorFx = fx
+	end
+	local f = fx :: { part: Part, ring: ParticleEmitter }
+	f.part.CFrame = CFrame.new(at)
+	f.ring.Color = ColorSequence.new(color)
+	f.ring:Emit(count)
+end
+
+local function surgeBurst(i: number)
+	local a = auraFor(i)
+	local c = ctx
+	if not a or not c then return end
+	local part = root(i)
+	if part then a.base.CFrame = CFrame.new(Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)) end
+	a.burstRing:Emit(2)
+	a.burstFlames:Emit(36)
+	a.sparks:Emit(24)
+	flash(edgeFrame, a.color, 0.72, 0.35)
+	c.modules.Characters.setFlash(i, 10)
+end
+
+local function ultStartBurst(i: number)
+	local a = auraFor(i)
+	local c = ctx
+	if not a or not c then return end
+	local part = root(i)
+	if part then a.base.CFrame = CFrame.new(Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)) end
+	-- Gather on a sphere around the chest (the emitter's sphere is its part: resized for the burst, then restored).
+	a.base.Size = Vector3.new(7, 7, 7)
+	a.base.CFrame = a.base.CFrame + Vector3.new(0, 2.6, 0)
+	a.gather:Emit(46)
+	a.base.Size = Vector3.new(2.2, 0.2, 2.2)
+	a.base.CFrame = a.base.CFrame - Vector3.new(0, 2.6, 0)
+	a.burstRing:Emit(1)
+	if part then emitImpact(part.Position + Vector3.new(0, 0.8, 0), Vector3.yAxis, { color = a.color, core = 10, sparks = 30, dust = 4, ring = 3.0, life = 0.26, flashAlpha = 1, shake = 0 }) end
+	c.modules.Characters.setFlash(i, 12)
+end
+
 function M.onEvent(e: CombatEvent)
 	local c = ctx
 	if not c then return end
+	if e.kind == "Surge" or e.kind == "UltStart" then
+		local i = if e.attacker == 2 then 2 else 1
+		if e.kind == "Surge" then
+			surgeBurst(i)
+		else
+			ultStartBurst(i)
+			flash(flashFrame, Color3.fromRGB(255, 244, 220), 0.35, 0.32)
+		end
+		if e.kind == "Surge" and c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(0.03) end
+		if c.modules.Camera.onEvent then c.modules.Camera.onEvent(e) end
+		c.gui:SetAttribute("EffectsFired", (c.gui:GetAttribute("EffectsFired") or 0) + 1)
+		c.gui:SetAttribute("LastEffectKind", tostring(e.kind))
+		return
+	end
 	local target = root(e.target or 2)
 	local attacker = root(e.attacker or 1)
 	local anchor = target or attacker
 	if not anchor then return end
 	local dir = if attacker and target and (target.Position - attacker.Position).Magnitude > 0.01 then (target.Position - attacker.Position).Unit else Vector3.xAxis
 	local point = if e.point then origin + e.point else (anchor.Position + Vector3.new(0, if e.kind == "ThrowHit" then 0.5 else 2.3, 0))
+	if e.kind == "UltHit" and not e.point then
+		-- The Ultimate's impacts burst at the striking limb named by the clip (hits[combo]), else at the chest.
+		local info = Cinematic.hitInfo(lastIds[if e.attacker == 2 then 2 else 1], e.combo)
+		point = limbPoint(if e.attacker == 2 then 2 else 1, info and info.limb) or point
+	end
 	local spec = M._specForEvent(e)
 	if e.kind == "Whiff" or e.kind == "Crush" then
 		emitWhoosh(point, dir, spec.color, 9)
 	else
 		emitImpact(point, dir, spec)
 	end
+	if e.kind == "UltHit" and e.knockdown == true then
+		-- The finish: a second burst, a column and a floor shockwave under the defender.
+		emitImpact(point + dir * 0.4, -dir, spec)
+		emitWhoosh(point, Vector3.yAxis, spec.color, 26)
+		if target then
+			local a = auras[if e.attacker == 2 then 2 else 1]
+			floorShockwave(Vector3.new(target.Position.X, origin.Y + 0.08, target.Position.Z), if a then a.color else spec.color, 2)
+		end
+	end
 	if e.launch == true or e.tier == "Launch" then emitWhoosh(point + Vector3.new(0, 0.35, 0), Vector3.yAxis, spec.color, 18) end
-	if e.kind == "ThrowHit" or e.knockdown then emitDust(point - Vector3.new(0, 1.9, 0), 24, 1.25) end
+	if e.kind == "ThrowHit" or (e.knockdown and e.kind ~= "UltHit") then emitDust(point - Vector3.new(0, 1.9, 0), 24, 1.25) end
+	if e.kind == "UltHit" and e.knockdown == true and target then emitDust(Vector3.new(target.Position.X, origin.Y + 0.1, target.Position.Z), 28, 1.5) end
 	if e.kind == "KO" then flash(flashFrame, spec.color, spec.flashAlpha, 0.34) elseif e.counter then flash(edgeFrame, spec.color, spec.flashAlpha, 0.18) else flash(flashFrame, spec.color, spec.flashAlpha, spec.life) end
 	if e.kind ~= "Whiff" and e.kind ~= "Crush" then c.modules.Characters.setFlash(e.target, if e.kind == "Block" then 2 else 6) end
 	if c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(spec.shake) end
@@ -273,6 +582,8 @@ local function clearRoundVisuals()
 		rig.activeRingUntil = 0
 	end
 	for _, record in trails do record.trail.Enabled = false end
+	for _, a in auras do setAura(a, false) end
+	cineGround = nil
 	activeEmitters = 0
 end
 
@@ -295,6 +606,9 @@ function M.clear()
 	table.clear(trails)
 	table.clear(previousStates)
 	table.clear(impactTrackers)
+	table.clear(lastIds)
+	for _, a in auras do a.base:Destroy() end
+	table.clear(auras)
 	if flashFrame then flashFrame.BackgroundTransparency = 1 end
 	if edgeFrame then edgeFrame.BackgroundTransparency = 1 end
 end
@@ -401,6 +715,20 @@ function M.update(f: RenderFrame)
 	end
 	updateTrails(f)
 	updateHitstopJitter(f)
+	for i = 1, 2 do
+		local r = f.fighters[i]
+		lastIds[i] = if r and type(r.characterId) == "string" then r.characterId else lastIds[i]
+	end
+	updateAuras(f)
+	updateCinematicGround(f)
+	do
+		local c = ctx
+		local audio = c and c.modules and c.modules.Audio
+		if audio and audio.updateCinematic then
+			local ok, err = pcall(audio.updateCinematic, f)
+			if not ok then warn("FightingLab: Audio.updateCinematic failed: " .. tostring(err)) end
+		end
+	end
 	for i = 1, 2 do
 		local r = f.fighters[i]
 		if r then
