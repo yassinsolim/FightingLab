@@ -506,3 +506,10 @@ def air_tumble(ctx):
     J = T.full_joints(base)
     axis = np.asarray(J["head"]) - np.asarray(J["pelvis"])
     return [C.pk(f, C.rotated_axis(base, axis, -90.0 * i)) for i, f in enumerate((0, 6, 12, 18, 24))] + [C.pk(30, P("Juggle", 0.6))], 30
+
+@clip("Lumi", "SnapKick", "Kicks")
+def lumi_snapkick(ctx):
+    """3 (round 6): a fast lead front snap kick thrown off a small hop (both feet off the floor over frames 3-9: low
+    crush), landing bouncing on the supporting foot. Keyed on Rhys's front snap (not on this clip itself: a rebuild
+    must not compound the hop)."""
+    return standard(ctx, "Kick_Rhys_FrontSnap", lead=2, a=0.1, edit=air(0.12, 6, 7))
