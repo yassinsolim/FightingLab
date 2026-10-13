@@ -88,15 +88,19 @@ are dropped, never an error.
   keys interpolate with `ease` inside a shot. Every shot is checked against both bodies (`BodyMargin`) and the arena
   walls (`safeShot`): a shot that would sit inside a body or a wall is pulled back along its look line. Every shot also
   keeps both fighters whole in the frame (`_fitShot`: heads and feet with `CineFitMargin` headroom; the lens widens up
-  to `CineFitMaxFov` = 50 degrees, then the camera backs off along its look line).
+  to `CineFitMaxFov` = 50 degrees, then the camera backs off along its look line). When authoring a reverse angle
+  (the attacker's face past the defender), put the camera well to the side of the defender's shoulder (|x| >= 5 studs
+  at z >= 6): a camera close behind the defender's back fills the frame with its body. The Play captures in
+  `OV6/handoff/motion-shots/round6/ultimate-<fighter>-play.png` showed this on three first drafts (Sierra, Nia, Rhys).
 * Slow motion narrows the lens a little on the final impact; at the end the camera returns to the fight camera over
   `CineReturn` (0.8 s). Attributes `CameraCinematic` / `CameraCinematicShot` expose the state for tests.
 
 ## 5. Effects and sound (`EffectsController`, `AudioController`)
 
 * **Surge aura**: while a fighter's `surge` flag is on, a floor ring of flames, sparks and a soft glow in the fighter's
-  accent colour (grey accents use an icy blue), kept below the chest so faces stay readable; a one-time burst and a
-  layered sound on the `Surge` event.
+  accent colour (grey accents use an icy blue), kept below the waist so faces stay readable; a one-time burst and a
+  layered sound on the `Surge` event. Rates and light (`EffectsController.AuraRates` flames 26 / sparks 9 / rings 1.4
+  per second, `AuraLight` brightness 1.4, range 8) are tuned to read at the fight camera.
 * **UltStart**: an inward-gathering burst on the attacker and a rising sound; a short, light screen flash (0.16 s:
   the HUD plays its own title card and letterbox on UltStart, so the effects add no text).
 * **UltHit k**: an impact burst at the striking limb of `hits[k]` (else the midpoint), a heavier tier per impact; the
@@ -130,3 +134,8 @@ lune run tools\mocap\cine\roster_dump.luau src <roster.json>      # the roster t
 
 When combat re-times an Ultimate (a `KEYS:` commit), rebuild with a fresh roster dump: the specs place their beats
 relative to the roster impact frames, so most re-timings need no spec change.
+
+Checking it in a real Play session: start a Training practice (the player is always in Surge with the Ultimate
+ready), walk into range and press the Ultimate (or L); the burst captures in the evidence folder were taken that way
+from the fight camera, with the press injected through a LocalScript calling the practice runner's
+`command("Attack", "Ultimate")`.

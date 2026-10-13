@@ -886,6 +886,18 @@ them; kicks credit `original:motionkicks`, strikes `original:motionstrikes`):
 - Build: `python tools\mocap\cine\movebuild.py --roster <roster.json> [--only Kael] [--no-write] [--sheets <dir>]`;
   the sheets show every clip at start, wind-up, contact (red), recover and end.
 
+- Dense samples interpolate linearly (`seg`): a smoothstep per 2-3 frame segment stopped the motion at every key, a
+  stop-and-go MotionQA read as speed pops. The source recovery plays at its own speed (compressing it sped the
+  retraction up into pops).
+- A move combat re-times keeps its round-5 clip as a reference copy (`tools/mocap/cine/refclips`, never installed):
+  SnapKick is that clip with a small hop; RisingTornado (impact 22 -> 20) plays its busy frames (the hand swing, the
+  arm swing, the jump and the kick) at the round-5 speed while the calm frames absorb the two frames (weights from a
+  rig probe of the round-5 move, `R5_RISING_BUSY`). A uniform retime sped the whole startup up 10 % into speed pops.
+- SlashElbow keeps the glove a glove's depth in front of the face all the way (it used to pass over the head: the
+  CharacterLook glove check). RibRoller's follow-through is hand-keyed: the hook source squeezed contact-to-recover
+  into the three active frames and flipped the lead elbow in one frame; now the fist rolls up through the target, the
+  arm folds back in front of the chest with the elbow turning down into the guard and the body rises out of the dip.
+
 Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 punch-type moves, one clip each
 (`MotionMovesKicksCoverage_Test`, `MotionMovesStrikesCoverage_Test`; the Ultimate is covered by
 `MotionUltimate_Test`, the 3+4 signatures by the Body-limb branch: the body stays with the sim root).
@@ -900,6 +912,12 @@ Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 pu
   as 46-frame throws.
 - MotionQA: `QA.ultimateCases(id)` (move, cinematic, Landing and getup) and `QA.stanceCases(id)` (each stance held to
   its end and into each follow-up); `tools/mocap/motionqa_report.luau` runs them as parts `ultimates` and `stances`.
+- MotionQA r6 vs main (all six fighters, real rigs, the cases both runs share): no category worse for any fighter
+  against main's runtime run with r6's `CombatConfig`. Against main as it is, three categories are +1 (Lumi pop.rot,
+  Rhys and Nia pop.speed), all on the launch frame of the state case `launch>juggle>landing>getup>idle`, which takes
+  its launch from `CombatConfig.LaunchVelocity` (combat raised it 16 -> 19); main's runtime shows the same defects
+  with the new constant. Report: `OV6/handoff/motion-shots/round6/motionqa-r6-vs-main.md`.
+
 ### 15.6 Presentation fixes asked by the other agents
 
 - Hit flash (`CharacterPresenter`): a white fill of at most 30 % for 4 frames (was 55 % for 6), so still frames do
