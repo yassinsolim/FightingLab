@@ -886,6 +886,12 @@ function M.update(f: RenderFrame)
 		resultShown = false
 		lastPhase = f.phase
 	end
+	-- The round intro is a state, not only an edge: while the round is in Ready and the HUD is up, ROUND n is on screen
+	-- even if something cleared the centre after the phase began (the first Ready runs while the fight is set up).
+	if f.phase == "Ready" and f.mode ~= "Training" and b and hudVisible and not b.centre.Visible then
+		local winsNeeded = if f.config and f.config.WinsNeeded then f.config.WinsNeeded else 2
+		showBanner(HudBanners.roundIntroText(f.round, f.scores, winsNeeded), WHITE, nil, 0)
+	end
 	if f.ko and not lastKO and not roundEndShown then M.announce("KO", "K.O.") end
 	if f.ko and not lastKO then roundEndShown = roundEndShown or f.mode ~= "Training" end
 	lastKO = f.ko == true

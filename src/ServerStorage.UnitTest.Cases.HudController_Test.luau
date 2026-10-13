@@ -318,6 +318,12 @@ return function(t: Runner.T)
 			task.wait(1.3)
 			Hud.update(frame({ phase = "Ready", round = 1 }))
 			t.expect.truthy(stage.BannerHolder.Visible and stage.BannerHolder.Banner.TextTransparency < 0.5, "ROUND 1 holds through the Ready phase")
+			-- the HUD hidden and shown again during Ready (fight set-up): the intro comes back
+			Hud.setVisible(false)
+			Hud.setVisible(true)
+			Hud.update(frame({ phase = "Ready", round = 1 }))
+			t.expect.truthy(stage.BannerHolder.Visible, "ROUND 1 is back after the HUD was hidden during Ready")
+			t.expect.equal(stage.BannerHolder.Banner.Text, "ROUND 1")
 			Hud.update(frame({ phase = "Fight" }))
 			t.expect.equal(stage.BannerHolder.Banner.Text, "FIGHT")
 			local entry = { fighters = { { health = 100, maxHealth = 100 }, { health = 0, maxHealth = 100 } } }

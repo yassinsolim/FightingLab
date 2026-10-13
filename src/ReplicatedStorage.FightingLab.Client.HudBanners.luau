@@ -140,9 +140,13 @@ function M.build(stage: Frame, root: Frame): Banners
 	}
 end
 
-local function tween(inst: Instance, seconds: number, goal: { [string]: any }, style: Enum.EasingStyle?, dir: Enum.EasingDirection?)
-	TweenService:Create(inst, TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), goal):Play()
+local function tween(inst: Instance, seconds: number, goal: { [string]: any }, style: Enum.EasingStyle?, dir: Enum.EasingDirection?): Tween
+	local tw = TweenService:Create(inst, TweenInfo.new(seconds, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out), goal)
+	tw:Play()
+	return tw
 end
+-- Fades still running from the previous centre banner (a new banner cancels them, or they would finish it off).
+local centreFades: { [Banners]: { Tween } } = setmetatable({}, { __mode = "k" }) :: any
 
 function M.flash(b: Banners, strength: number?, seconds: number?)
 	b.flash.BackgroundTransparency = 1 - math.clamp(strength or 0.5, 0, 1)
@@ -153,6 +157,8 @@ end
 function M.show(b: Banners, word: string, color: Color3, sub: string?, hold: number?, punch: number?)
 	b.token += 1
 	local myToken = b.token
+	for _, tw in centreFades[b] or {} do tw:Cancel() end
+	centreFades[b] = nil
 	b.word.Text = word
 	b.word.TextColor3 = color
 	b.word.TextTransparency = 0
@@ -168,9 +174,11 @@ function M.show(b: Banners, word: string, color: Color3, sub: string?, hold: num
 	if hold and hold > 0 then
 		task.delay(hold, function()
 			if myToken ~= b.token then return end
-			tween(b.word, 0.25, { TextTransparency = 1 })
-			tween(b.sub, 0.25, { TextTransparency = 1 })
-			tween(b.band, 0.25, { BackgroundTransparency = 1 })
+			centreFades[b] = {
+				tween(b.word, 0.25, { TextTransparency = 1 }),
+				tween(b.sub, 0.25, { TextTransparency = 1 }),
+				tween(b.band, 0.25, { BackgroundTransparency = 1 }),
+			}
 			task.delay(0.27, function() if myToken == b.token then b.centre.Visible = false end end)
 		end)
 	end

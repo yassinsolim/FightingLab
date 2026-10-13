@@ -396,7 +396,7 @@ local function harbor(def: ArenaDef, set: Model)
 	local wp = atB(def, focus, 56, -0.2)
 	local wf = facingFight(def, wp)
 	local body = Kit.block(quay, wf * CFrame.new(0, 11, 0), Vector3.new(46, 22, 14), M.CorrodedMetal, rgb(92, 84, 78), { Name = "Warehouse" })
-	Props.windows(body, Enum.NormalId.Front, rng, { floorHeight = 7, bayWidth = 6, lit = 0.45, band = rgb(64, 58, 54), skipBottom = 6 })
+	Props.windows(body, Enum.NormalId.Front, rng, { floorHeight = 7, bayWidth = 6, lit = 0.45, band = rgb(64, 58, 54), skipBottom = 6, litColors = { rgb(255, 196, 120), rgb(255, 170, 92), rgb(255, 214, 150) } })
 	Kit.block(quay, wf * CFrame.new(0, 22.6, 0), Vector3.new(47, 1.2, 15), M.Metal, rgb(60, 56, 54), { Name = "WarehouseRoof" })
 	Props.neonSign(quay, wf * CFrame.new(0, 18.2, -7.4), 20, 3.4, "PIER 9 FREIGHT", rgb(255, 152, 54), Enum.Font.Oswald, false)
 	for _, x in { -14, 0, 14 } do
