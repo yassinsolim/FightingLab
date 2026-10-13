@@ -5,6 +5,8 @@ Values are quantised to 12 bits per channel (2 base64 digits). Channel ranges: r
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -292,7 +294,8 @@ def cinematic_fields(meta: dict) -> str:
 def parse_lua_table(text: str):
     """Parses the `return { ... }` literal of a generated clip module (strings, numbers, booleans, nested tables;
     keyed fields and positional items). Comments are skipped."""
-    i = text.index("return")
+    m = re.search(r"^return\b", text, re.M)
+    i = m.start() if m else text.index("return")
     s = text[i + 6:]
     pos = 0
 

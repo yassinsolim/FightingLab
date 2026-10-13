@@ -624,12 +624,11 @@ def floating(f, h: float, z: float, pitch: float = 80.0, yaw: float = 0.0, roll:
         d["ease"] = ease
     return F(f, **d)
 
-def rotated(pose: T.Pose, deg, about=None) -> T.Pose:
-    """The whole pose turned by the Euler rotation `deg` [x, y, z] (degrees, heading frame; x+ = tips back, y+ = turns
-    left, z+ = tips left) about its pelvis (or the point `about`, own-LS metres): root rotation, limb targets, poles,
-    foot rotations. Flips, cartwheels and spins keep the limbs with the body."""
+def rotated_q(pose: T.Pose, q, about=None) -> T.Pose:
+    """The whole pose turned by the clip-space quaternion q (x, y, z, w) about its pelvis (or the point `about`,
+    library metres): root rotation, limb targets, poles, foot rotations."""
     p = resolved(pose)
-    q = T.eq(list(deg))
+    q = T.qn(q)
     R = T.qm(q)
     piv = T.flip(p.pelvis if about is None else np.asarray(about, float))
 
@@ -648,3 +647,17 @@ def rotated(pose: T.Pose, deg, about=None) -> T.Pose:
         e["rot"] = T.qn(T.qmul(q, e["rot"]))
         e["shin"] = T.unit(rot_dir(e["shin"]))
     return p
+
+
+def rotated(pose: T.Pose, deg, about=None) -> T.Pose:
+    """The whole pose turned by the Euler rotation `deg` [x, y, z] (degrees, heading frame; x+ = tips back, y+ = turns
+    left, z+ = tips left) about its pelvis (or the point `about`, library metres): flips, cartwheels and spins keep the
+    limbs with the body."""
+    return rotated_q(pose, T.eq(list(deg)), about)
+
+
+def rotated_axis(pose: T.Pose, axis, deg: float, about=None) -> T.Pose:
+    """The whole pose turned `deg` degrees about a library-space axis (right-handed in clip space)."""
+    a = T.unit(T.flip(np.asarray(axis, float)))
+    h = np.radians(deg) * 0.5
+    return rotated_q(pose, np.array([a[0] * np.sin(h), a[1] * np.sin(h), a[2] * np.sin(h), np.cos(h)]), about)
