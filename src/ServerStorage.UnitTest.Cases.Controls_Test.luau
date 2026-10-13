@@ -18,9 +18,18 @@ return function(t)
 		local practice = { reset = "R", switchMode = "T", easy = "One", normal = "Two", hard = "Three", dummy = "Y", pause = "P", leave = "Backspace" }
 		for action, key in practice do expect.equal((p :: any)[action], key, "practice " .. action) end
 		expect.equal(Controls.practice.gamepad.pause, "ButtonStart")
-		for _, old in { "L", "F", "C", "M" } do
+		for _, old in { "F", "C", "M" } do
 			for action, key in k do expect.truthy(key ~= old, "old key " .. old .. " is no longer bound (" .. action .. ")") end
 		end
+		-- Round 6 (contract A): one key for the Ultimate (1+2).
+		expect.equal(k.ultimate, "L", "keyboard ultimate")
+		expect.equal(Controls.fight.gamepad.ultimate, "ButtonR2", "gamepad ultimate")
+		expect.equal(Controls.notation.ultimate, "1+2")
+		expect.equal(Controls.buttons.ultimate, "Ultimate")
+		expect.equal(Controls.actionText.ultimate, "Ultimate (1+2)")
+		expect.equal(Controls.label("fight", "ultimate"), "L")
+		expect.equal(Controls.label("fight", "ultimate", "gamepad"), "RT")
+		expect.equal(Controls.label("fight", "stance"), "J+K", "the 3+4 signature")
 		expect.truthy(Controls.tapMs >= 100 and Controls.tapMs <= 200, "S tap window stays responsive")
 	end)
 

@@ -8,10 +8,13 @@ Controls.fight = {
 	keyboard = {
 		forward = "D", back = "A", sidestepIn = "W", sidestepOut = "S", crouch = "S",
 		lp = "U", rp = "I", lk = "J", rk = "K", throw = "O", guide = "G",
+		-- Round 6: one key for the Ultimate (1+2; U+I together works too). The 3+4 signature has no own key (J+K).
+		ultimate = "L",
 	},
 	gamepad = {
 		forward = "DPadRight", back = "DPadLeft", sidestepIn = "DPadUp", sidestepOut = "DPadDown", crouch = "DPadDown",
 		lp = "ButtonX", rp = "ButtonY", lk = "ButtonA", rk = "ButtonB", throw = "ButtonR1", guide = "ButtonSelect",
+		ultimate = "ButtonR2",
 	},
 }
 Controls.practice = {
@@ -25,9 +28,9 @@ Controls.lobby = {
 	gamepad = { interact = "ButtonX", menu = "ButtonY", jump = "ButtonA", play = "ButtonR1", fighters = "ButtonL1", sprint = "ButtonL3" },
 }
 -- Genre notation: buttons 1-4 = left punch, right punch, left kick, right kick.
-Controls.notation = { lp = "1", rp = "2", lk = "3", rk = "4", throw = "1+3" }
+Controls.notation = { lp = "1", rp = "2", lk = "3", rk = "4", throw = "1+3", ultimate = "1+2", stance = "3+4" }
 -- Sim button names (Attack command payloads) per fight action.
-Controls.buttons = { lp = "LeadPunch", rp = "RearPunch", lk = "LeadKick", rk = "RearKick", throw = "Throw" }
+Controls.buttons = { lp = "LeadPunch", rp = "RearPunch", lk = "LeadKick", rk = "RearKick", throw = "Throw", ultimate = "Ultimate" }
 -- Timing: a down/S press released within tapMs (with no other fight key in between) is a sidestep, otherwise a crouch.
 -- Double taps and 1+3 / 2+4 chords are detected by the authoritative sim (CombatConfig.DashTapWindow / ChordFrames).
 Controls.tapMs = 150
@@ -40,6 +43,7 @@ Controls.actionText = {
 	sidestepIn = "Sidestep in", sidestepOut = "Sidestep out", crouch = "Crouch / low guard",
 	lp = "Left punch (1)", rp = "Right punch (2)", lk = "Left kick (3)", rk = "Right kick (4)",
 	throw = "Throw (1+3)", throw1 = "Throw (1+3)", throw2 = "Throw (2+4)", breakThrow = "Break a throw",
+	ultimate = "Ultimate (1+2)", stance = "Signature (3+4)",
 	guard = "Guard", guide = "Controls guide",
 	reset = "Reset positions", switchMode = "Training / Versus CPU", easy = "CPU Easy", normal = "CPU Normal", hard = "CPU Hard",
 	dummy = "Dummy: stand / guard / fight back", pause = "Pause", leave = "Leave practice",
@@ -86,6 +90,7 @@ function Controls.label(group: string, action: string, device: string?): string
 		if action == "backdash" then return k("back") .. " " .. k("back") end
 		if action == "throw1" then return k("lp") .. "+" .. k("lk") end
 		if action == "throw2" then return k("rp") .. "+" .. k("rk") end
+		if action == "stance" then return k("lk") .. "+" .. k("rk") end
 		if action == "breakThrow" then return k("lp") .. " / " .. k("rp") end
 		if action == "guard" then return k("back") end
 	end
@@ -109,7 +114,7 @@ end
 
 -- Ordered legend rows for guides: { action, keys, text }.
 local LEGENDS: { [string]: { string } } = {
-	fight = { "forward", "back", "dash", "backdash", "sidestepIn", "sidestepOut", "crouch", "lp", "rp", "lk", "rk", "throw", "throw1", "throw2", "breakThrow", "guide" },
+	fight = { "forward", "back", "dash", "backdash", "sidestepIn", "sidestepOut", "crouch", "lp", "rp", "lk", "rk", "throw", "throw1", "throw2", "breakThrow", "stance", "ultimate", "guide" },
 	practice = { "reset", "switchMode", "easy", "normal", "hard", "dummy", "pause", "leave" },
 	lobby = { "play", "fighters", "sprint", "interact", "menu", "jump" },
 }
