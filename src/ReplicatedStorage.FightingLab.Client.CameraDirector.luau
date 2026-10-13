@@ -404,6 +404,65 @@ local function safeShot(look: Vector3, pos: Vector3): Vector3
 	return M._clearOfBodies(p, parts)
 end
 
+-- Framing of a cinematic shot: both fighters whole in the frame (heads and feet, CineFitMargin of headroom). The lens
+-- widens up to CineFitMaxFov, then the camera backs off along its look line. Pure (tests pass points).
+M.CineFitMaxFov = 50
+M.CineFitMargin = 1.12
+function M._fitShot(pos: Vector3, look: Vector3, fov: number, points: { Vector3 }, aspect: number?): (Vector3, number)
+	if #points == 0 then return pos, fov end
+	local delta = look - pos
+	if delta.Magnitude < 1e-3 then return pos, fov end
+	local dir = delta.Unit
+	local right = dir:Cross(Vector3.yAxis)
+	right = if right.Magnitude < 1e-3 then Vector3.xAxis else right.Unit
+	local up = right:Cross(dir)
+	local asp = aspect or (16 / 9)
+	local function need(back: number): number
+		local eye = pos - dir * back
+		local worst = 0
+		for _, p in points do
+			local v = p - eye
+			local z = math.max(v:Dot(dir), 0.3)
+			worst = math.max(worst, math.abs(v:Dot(up)) * M.CineFitMargin / z, math.abs(v:Dot(right)) * M.CineFitMargin / (z * asp))
+		end
+		return worst
+	end
+	local tanNow = math.tan(math.rad(fov) * 0.5)
+	local tanNeed = need(0)
+	if tanNeed <= tanNow then return pos, fov end
+	local tanMax = math.tan(math.rad(math.max(fov, M.CineFitMaxFov)) * 0.5)
+	if tanNeed <= tanMax then return pos, 2 * math.deg(math.atan(tanNeed)) end
+	local back = 0
+	for _ = 1, 30 do
+		back += 0.5
+		if need(back) <= tanMax then break end
+	end
+	return pos - dir * back, 2 * math.deg(math.atan(tanMax))
+end
+
+-- Heads and feet of both fighters (posed rigs; else the views: feet on the root, head 6.3 studs up).
+local function framingPoints(f: RenderFrame): { Vector3 }
+	local out: { Vector3 } = {}
+	for _, part in bodyParts() do
+		local n = part.Name
+		if n == "Head" then
+			table.insert(out, part.Position + Vector3.new(0, part.Size.Y * 0.6, 0))
+		elseif n == "LeftFoot" or n == "RightFoot" then
+			table.insert(out, part.Position - Vector3.new(0, part.Size.Y * 0.6, 0))
+		end
+	end
+	if #out > 0 then return out end
+	for i = 1, 2 do
+		local v = f.fighters and f.fighters[i]
+		if type(v) == "table" and typeof(v.pos) == "Vector3" then
+			local base = origin + Vector3.new(v.pos.X, math.max(v.pos.Y, 0), v.pos.Z)
+			table.insert(out, base)
+			table.insert(out, base + Vector3.new(0, 6.3, 0))
+		end
+	end
+	return out
+end
+
 -- Slot 1 watches from the side where P1 is on the left; slot 2 from the opposite side (its fighter on the left).
 local function initialSide(slot: number): Vector3
 	return if slot == 2 then Vector3.new(0, 0, 1) else Vector3.new(0, 0, -1)
@@ -557,6 +616,12 @@ function M.update(f: RenderFrame)
 		local tl = Cinematic.timeline(aId, aView.throw)
 		local shot = Cinematic.cameraShot(Cinematic.clip(aId), tl, cineFrame :: number, origin + Vector3.new(aView.pos.X, 0, aView.pos.Z), aView.facing, aSlot ~= viewSlot)
 		local pos = safeShot(shot.look, shot.pos)
+		-- Both fighters whole in the frame (a designed close-up never crops a head or the feet).
+		local vp = cam.ViewportSize
+		local fitPos, fitFov = M._fitShot(pos, shot.look, shot.fov, framingPoints(f), if vp.Y > 1 then vp.X / vp.Y else nil)
+		if (fitPos - pos).Magnitude > 1e-3 then fitPos = safeShot(shot.look, fitPos) end
+		pos = fitPos
+		shot.fov = fitFov
 		local current = cineShot
 		if current == nil or cineWeight < 1 or shot.shot ~= cineShotIndex then
 			if current ~= nil and cineWeight >= 1 then cineCuts += 1 end
