@@ -260,7 +260,10 @@ and `UltHit` events. When the fields are absent, nothing extra shows and nothing
   - the fighter's name, and the Ultimate's name from `Roster.get(id).moves.Ultimate.name` in upper case;
   - "ULTIMATE" when the roster has no name;
   - a tab in the fighter's colour with the monogram, an accent streak and glow across the screen, and a small
-    ULTIMATE tag (hidden when the name already falls back to ULTIMATE).
+    ULTIMATE tag (hidden when the name already falls back to ULTIMATE);
+  - it slides off at the cinematic's first impact (`HudBanners.dismissUltimate`, after at least
+    `ULT_TITLE_MIN_SECONDS` = 0.9 s so the name reads), or after `ULT_TITLE_SECONDS` = 2.1 s when the Ultimate is
+    blocked or whiffs, so it never covers the action (it used to cover the defender at Goran's suplex landing).
 - **Letterbox:** black bars while a fighter is in state `"Ultimate"`. The HUD bars stay above them, and the controls
   guide steps aside.
 - **UltHit:** the impacts count on the attacker's combo counter with their damage, kind ULTIMATE.

@@ -192,9 +192,9 @@ Nia's COMBOS page in the Move List: every listed route is verified against all s
 
 ## Round 6: Surge and the Ultimate
 
-Goran's Ultimate "Landslide", frame by frame: an armored charge, a body-lock crush, a suplex, a knee slam and a forward drop.
+Goran's Ultimate "Landslide" in real Play: an armored charge, the drag-up and knee slam, the shoulder carry and the forward drop, with both fighters fully in frame under the HUD.
 
-![Landslide](33-ultimate-landslide-sheet.jpg)
+![Landslide](33-ultimate-landslide-play.jpg)
 
 The fight HUD with real data: SURGE and the [L] ULTIMATE indicator in Free Training, the Ultimate's title card with letterbox, the hit counter during the cinematic and Surge refilling afterwards.
 

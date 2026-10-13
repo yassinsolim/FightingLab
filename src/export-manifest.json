@@ -1,5 +1,5 @@
 {
-  "count": 385,
+  "count": 388,
   "exportedFrom": "FightingLab.rbxlx (exported 2026-10-13)",
   "paths": [
     "ReplicatedStorage.FightingLab.Client.AudioController",
@@ -22,6 +22,7 @@
     "ReplicatedStorage.FightingLab.Client.Leaderboard",
     "ReplicatedStorage.FightingLab.Client.LightingProfile",
     "ReplicatedStorage.FightingLab.Client.LobbyAmbience",
+    "ReplicatedStorage.FightingLab.Client.LobbyCamera",
     "ReplicatedStorage.FightingLab.Client.LobbyPrompts",
     "ReplicatedStorage.FightingLab.Client.LobbySprint",
     "ReplicatedStorage.FightingLab.Client.LobbyUI",
@@ -337,6 +338,7 @@
     "ServerStorage.FightingLab.World.Walkways",
     "ServerStorage.UnitTest.Cases.ArenaLook_Test",
     "ServerStorage.UnitTest.Cases.Balance_Test",
+    "ServerStorage.UnitTest.Cases.CameraFraming_Test",
     "ServerStorage.UnitTest.Cases.CharacterLook_Test",
     "ServerStorage.UnitTest.Cases.ClientModules_Test",
     "ServerStorage.UnitTest.Cases.CombatAIRound6_Test",
@@ -359,6 +361,7 @@
     "ServerStorage.UnitTest.Cases.FighterRig_Test",
     "ServerStorage.UnitTest.Cases.FlashDetector_Test",
     "ServerStorage.UnitTest.Cases.HudController_Test",
+    "ServerStorage.UnitTest.Cases.LobbyCamera_Test",
     "ServerStorage.UnitTest.Cases.LobbyUI_Test",
     "ServerStorage.UnitTest.Cases.MatchRunner_Test",
     "ServerStorage.UnitTest.Cases.MotionClip_Test",

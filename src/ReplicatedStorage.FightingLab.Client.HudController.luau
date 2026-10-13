@@ -715,6 +715,8 @@ function M.onEvent(e: CombatEvent)
 		local previous = if index > 1 and combo.attacker == attacker then combo.damage else 0
 		combo = { attacker = attacker, hits = index, damage = previous + (tonumber(e.damage) or 0), shown = true, expiresAt = now + 1.8, counterUntil = combo.counterUntil }
 		comboTag = { side = sideOf(attacker), word = "ULTIMATE", untilTime = now + 2.5 }
+		-- the title card gets out of the way of the action from the first impact on
+		if banners then HudBanners.dismissUltimate(banners) end
 		return
 	end
 	if e.kind == "UltStart" then

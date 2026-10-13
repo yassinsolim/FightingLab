@@ -9,7 +9,8 @@ type Expect = {
 }
 
 export type T = {
-	test: (name: string, fn: () -> ()) -> (),
+	-- opts.timeout: a longer budget (seconds) for a test that loads assets over the network; never shortens `timeout`.
+	test: (name: string, fn: () -> (), opts: { timeout: number? }?) -> (),
 	expect: Expect,
 }
 
@@ -54,10 +55,10 @@ return function(filter: string?, timeout: number?): (number, number)
 			continue
 		end
 		local suite = require(case)
-		local tests: { { name: string, fn: () -> () } } = {}
+		local tests: { { name: string, fn: () -> (), timeout: number? } } = {}
 		suite({
-			test = function(name: string, fn: () -> ())
-				table.insert(tests, { name = case.Name .. " > " .. name, fn = fn })
+			test = function(name: string, fn: () -> (), opts: { timeout: number? }?)
+				table.insert(tests, { name = case.Name .. " > " .. name, fn = fn, timeout = if opts then opts.timeout else nil })
 			end,
 			expect = expect,
 		})
@@ -68,7 +69,7 @@ return function(filter: string?, timeout: number?): (number, number)
 			run += 1
 			local started = os.clock()
 			local ok, err = xpcall(entry.fn, debug.traceback)
-			if os.clock() - started > limit then
+			if os.clock() - started > math.max(limit, entry.timeout or 0) then
 				print("[TIMEOUT] " .. entry.name)
 			elseif ok then
 				passed += 1

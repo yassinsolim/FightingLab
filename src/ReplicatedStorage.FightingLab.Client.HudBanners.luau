@@ -16,6 +16,8 @@ local M = {}
 
 M.ULTIMATE_FALLBACK = "ULTIMATE"
 M.ULT_TITLE_SECONDS = 2.1
+-- The card slides off at the cinematic's first impact so it never covers the action, but stays up at least this long.
+M.ULT_TITLE_MIN_SECONDS = 0.9
 M.COLORS = {
 	ko = Color3.fromRGB(255, 70, 52), time = Color3.fromRGB(255, 200, 69), perfect = Color3.fromRGB(255, 214, 92),
 	fight = Color3.fromRGB(255, 84, 51), round = WHITE, ult = Color3.fromRGB(255, 205, 82), draw = Color3.fromRGB(200, 210, 230),
@@ -72,6 +74,7 @@ export type Banners = {
 	ultSweep: Frame, ultScale: UIScale, ultTab: any, ultMono: TextLabel, ultChip: any, ultGlow: Frame, ultStreak: Frame,
 	ultNameStroke: UIStroke, winner: Frame, winnerTitle: TextLabel, winnerName: TextLabel, winnerPlayer: TextLabel,
 	winnerScore: TextLabel, winnerBar: Frame, token: number, ultToken: number, cinematic: boolean,
+	ultShownAt: number, ultFromRight: boolean, ultLeaving: number,
 }
 
 function M.build(stage: Frame, root: Frame): Banners
@@ -136,7 +139,7 @@ function M.build(stage: Frame, root: Frame): Banners
 		ultBand = ultBand, ultSweep = ultSweep, ultScale = ultScale, ultTab = ultTab, ultMono = ultMono, ultChip = ultChip,
 		ultGlow = ultGlow, ultStreak = ultStreak, ultNameStroke = ultNameStroke, winner = winner, winnerTitle = winnerTitle,
 		winnerName = winnerName, winnerPlayer = winnerPlayer, winnerScore = winnerScore, winnerBar = winnerBar, token = 0, ultToken = 0,
-		cinematic = false,
+		cinematic = false, ultShownAt = 0, ultFromRight = false, ultLeaving = 0,
 	}
 end
 
@@ -211,9 +214,18 @@ end
 
 -- The Ultimate title card: fighter name (accent colour) over the Ultimate's name, swept by a light. The streak and glow
 -- take the fighter's accent; the small ULTIMATE tag shows only when the card carries a real move name.
+local function slideOutUltimate(b: Banners, token: number)
+	if token ~= b.ultToken or b.ultLeaving == token or not b.ult.Visible then return end
+	b.ultLeaving = token
+	tween(b.ult, 0.3, { Position = UDim2.fromScale(if b.ultFromRight then -0.25 else 1.25, 0.74) }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+	task.delay(0.32, function() if token == b.ultToken then b.ult.Visible = false end end)
+end
+
 function M.showUltimate(b: Banners, fighterName: string, ultName: string, accent: Color3?, fromRight: boolean?)
 	b.ultToken += 1
 	local myToken = b.ultToken
+	b.ultShownAt = os.clock()
+	b.ultFromRight = fromRight == true
 	local color = accent or T.ember
 	b.ultFighter.Text = string.upper(fighterName)
 	b.ultFighter.TextColor3 = color
@@ -240,11 +252,19 @@ function M.showUltimate(b: Banners, fighterName: string, ultName: string, accent
 	task.delay(0.25, function()
 		if myToken == b.ultToken then tween(b.ultSweep, 0.7, { Position = UDim2.fromScale(1.2, 0) }, Enum.EasingStyle.Sine) end
 	end)
-	task.delay(M.ULT_TITLE_SECONDS, function()
-		if myToken ~= b.ultToken then return end
-		tween(b.ult, 0.3, { Position = UDim2.fromScale(if fromRight then -0.25 else 1.25, 0.74) }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-		task.delay(0.32, function() if myToken == b.ultToken then b.ult.Visible = false end end)
-	end)
+	task.delay(M.ULT_TITLE_SECONDS, function() slideOutUltimate(b, myToken) end)
+end
+
+-- The cinematic's first impact: the card gets out of the way of the action (once it has been up ULT_TITLE_MIN_SECONDS).
+function M.dismissUltimate(b: Banners)
+	local token = b.ultToken
+	if not b.ult.Visible or b.ultLeaving == token then return end
+	local wait = math.max(0, M.ULT_TITLE_MIN_SECONDS - (os.clock() - b.ultShownAt))
+	if wait <= 0 then
+		slideOutUltimate(b, token)
+	else
+		task.delay(wait, function() slideOutUltimate(b, token) end)
+	end
 end
 
 function M.hideUltimate(b: Banners)

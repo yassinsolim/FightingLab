@@ -1377,7 +1377,7 @@ return function(t)
 				end
 			end
 			t.expect.equal(#problems, 0, #problems .. " proportion problems:\n  " .. table.concat(problems, "\n  "))
-		end)
+		end, { timeout = 12 }) -- loads ~8 precise meshes over the network: its time follows the network, not the game
 	end
 
 	t.test("motion-relevant lengths hold: RootHeight and legs within 1%, arms within 3% of round 3", function()

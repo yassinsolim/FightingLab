@@ -151,7 +151,7 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 525 run, 525 passed, 0 failed`
+  Final result: `[SUMMARY] 632 run, 632 passed, 0 failed`
 
 ## Update: distinct fighters, combos, Surge and the Ultimate, a premium look (2026-10-12)
 
@@ -286,8 +286,8 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
 - A few close-range moves still pass slightly into the body during startup (Goran's Hammer and JabHammer), Goran's
   Uppercut sinks a little into a launched opponent, and in two throws a hand briefly grazes the thrown fighter (Rhys
   on Goran's RamSlam, Nia on Rhys's Throw). The rebuilt side roll bends the kneeling foot past its natural range.
-- In the Ultimate grapples the two bodies can overlap by up to about 17 cm (worst in Sierra's), a few cinematic strikes
-  stop a little short of the body, and a tumbling body passes through upright for a moment mid-roll.
+- In the Ultimates a few frames still overlap a little: Goran's drag-up (0.2-0.4 studs) and Kael's overhand finisher,
+  whose glove grazes the opponent's head; a tumbling body passes through upright for a moment mid-roll.
 - The fighters' faces are the best free catalog heads found so far (no better free head was available); Goran's beard
   does not follow his jaw when his mouth opens.
 - The arena crowds are flat silhouettes.
