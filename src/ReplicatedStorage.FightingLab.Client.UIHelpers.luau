@@ -233,14 +233,37 @@ function M.text(parent: Instance, name: string, value: string, font: Font, size:
 	return label
 end
 
--- Dark glass panel: ink gradient, hairline edge, small radius (the kit's corners stay sharp-ish on purpose).
+-- Dark glass panel: ink gradient, hairline edge, small radius (the kit's corners stay sharp-ish on purpose). Round 6:
+-- the hairline turns ember round the top-right corner (a gradient on the stroke, no extra child: panels often carry
+-- their own UIListLayout), tying every panel to the fight HUD's angled language.
 function M.panel(parent: Instance, name: string, props: { [string]: any }?): Frame
 	local frame: any = M.make("Frame", { Name = name, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.06, BorderSizePixel = 0, Parent = parent })
 	M.gradient(frame, M.Theme.panelTop, M.Theme.panelBottom, 90)
-	M.corner(frame, 6)
-	M.outline(frame, Color3.new(1, 1, 1), 1, 0.88)
+	M.corner(frame, 4)
+	local stroke = M.outline(frame, Color3.new(1, 1, 1), 1, 0)
+	M.make("UIGradient", {
+		Name = "CornerAccent", Rotation = 135,
+		Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, M.Theme.ember), ColorSequenceKeypoint.new(0.1, M.Theme.ember), ColorSequenceKeypoint.new(0.16, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)) }),
+		Transparency = M.ramp({ { 0, 0 }, { 0.1, 0.1 }, { 0.16, 0.88 }, { 1, 0.88 } }),
+		Parent = stroke,
+	})
 	if props then for key, v in props do frame[key] = v end end
 	return frame
+end
+
+-- A w x h corner triangle ("TL"/"BR" split on the "/" diagonal, "TR"/"BL" on the "\" one): a frame whose UIGradient
+-- (rotation in pixels, through the centre) steps from opaque to clear at 0.5. The fight HUD's HudKit uses the same cut.
+function M.slantCap(parent: Instance, name: string, w: number, h: number, keep: string, color: Color3, props: { [string]: any }?): Frame
+	local angle = math.deg(math.atan2(math.max(w, 0.01), math.max(h, 0.01)))
+	local rotation = if keep == "TL" or keep == "BR" then angle else -angle
+	local opaqueLow = keep == "TL" or keep == "BL"
+	local low, high = if opaqueLow then 0 else 1, if opaqueLow then 1 else 0
+	local f: any = M.make("Frame", { Name = name, BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.fromOffset(w, h), Parent = parent })
+	M.make("UIGradient", { Rotation = rotation, Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, low), NumberSequenceKeypoint.new(0.498, low), NumberSequenceKeypoint.new(0.5, high), NumberSequenceKeypoint.new(1, high),
+	}), Parent = f })
+	if props then for k, v in props do f[k] = v end end
+	return f
 end
 
 -- Thin accent bar on the left edge of a panel/card.
@@ -850,6 +873,8 @@ export type Button = {
 	focused: boolean, selected: boolean, enabled: boolean,
 }
 -- opts: text, size, order, accent, primary (filled accent), font, textSize, align ("left"/"center"), glyphs ({labels}), device
+-- Round 6 theme ("Ember & Steel", shared with the fight HUD): crisp 3 px corners, a slanted accent notch in the top
+-- right corner (shown when primary, selected or focused), a diagonal light sweep across primary buttons.
 function M.button(parent: Instance, name: string, opts: { [string]: any }?): Button
 	local o = opts or {}
 	local accent: Color3 = o.accent or M.Theme.ember
@@ -859,11 +884,19 @@ function M.button(parent: Instance, name: string, opts: { [string]: any }?): But
 		BackgroundTransparency = if primary then 0 else 0.15, BorderSizePixel = 0, Size = o.size or UDim2.fromOffset(200, 44),
 		LayoutOrder = o.order or 0, ClipsDescendants = false, Selectable = true, Parent = parent,
 	})
-	M.corner(b, 5)
+	M.corner(b, 3)
 	local stroke = M.outline(b, Color3.new(1, 1, 1), 1, if primary then 0.6 else 0.86)
 	local scale: UIScale = M.make("UIScale", { Parent = b })
 	local bar: Frame = M.make("Frame", { Name = "Bar", BackgroundColor3 = accent, BorderSizePixel = 0, Size = UDim2.new(0, 4, 1, 0), BackgroundTransparency = 1, Parent = b })
 	M.corner(bar, 2)
+	local notch = M.slantCap(b, "Notch", 12, 12, "TR", if primary then Color3.new(1, 1, 1) else accent, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), ZIndex = 2 })
+	notch.Visible = primary
+	if primary then
+		-- a soft diagonal sheen across the fill
+		local sheen = M.make("Frame", { Name = "Sheen", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = b })
+		M.corner(sheen, 3)
+		M.make("UIGradient", { Rotation = 25, Transparency = M.ramp({ { 0, 1 }, { 0.42, 1 }, { 0.5, 0.82 }, { 0.62, 1 }, { 1, 1 } }), Parent = sheen })
+	end
 	local row: Frame = M.make("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = b })
 	local align = if o.align == "left" then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Center
 	M.list(row, true, 8, align, Enum.VerticalAlignment.Center)
@@ -880,6 +913,7 @@ function M.button(parent: Instance, name: string, opts: { [string]: any }?): But
 			stroke.Color = Color3.new(1, 1, 1)
 			stroke.Transparency = if ctl.focused then 0 else 0.6
 			stroke.Thickness = if ctl.focused then 2 else 1
+			notch.Visible = ctl.enabled
 		else
 			b.BackgroundColor3 = if ctl.selected then accent:Lerp(M.Theme.panel2, 0.72) elseif active then M.Theme.panel2:Lerp(Color3.new(1, 1, 1), 0.08) else M.Theme.panel2
 			bar.BackgroundTransparency = if ctl.selected or ctl.focused then 0 else 1
@@ -887,6 +921,8 @@ function M.button(parent: Instance, name: string, opts: { [string]: any }?): But
 			stroke.Transparency = if ctl.focused then 0 elseif ctl.selected then 0.35 elseif hovered then 0.7 else 0.86
 			stroke.Thickness = if ctl.focused then 2 else 1
 			label.TextColor3 = if not ctl.enabled then M.Theme.dim elseif ctl.selected or active then M.Theme.text else Color3.fromRGB(214, 220, 232)
+			notch.Visible = ctl.enabled and (ctl.selected or ctl.focused)
+			notch.BackgroundColor3 = accent
 		end
 		scale.Scale = if ctl.focused then 1.03 else 1
 		b:SetAttribute("Selected", ctl.selected)
@@ -908,33 +944,42 @@ function M.button(parent: Instance, name: string, opts: { [string]: any }?): But
 	return ctl
 end
 
--- Segmented 0..1 bar (attributes, volume): `segments` blocks, filled ones in `color`. Returns a setter.
+-- Segmented 0..1 bar (attributes, volume): `segments` slanted blocks (round 6: parallelograms like the fight HUD's),
+-- filled ones in `color`. Returns the frame, a setter and a recolour function.
 function M.segmentBar(parent: Instance, name: string, segments: number, color: Color3, props: { [string]: any }?): (Frame, (value: number, animate: boolean?) -> (), (c: Color3) -> ())
 	local frame: any = M.make("Frame", { Name = name, BackgroundTransparency = 1, Size = UDim2.fromOffset(240, 10), Parent = parent })
 	if props then for k, v in props do frame[k] = v end end
-	M.list(frame, true, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	local blocks: { Frame } = {}
+	M.list(frame, true, 1, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	local h = if typeof(frame.Size) == "UDim2" and frame.Size.Y.Offset > 0 then frame.Size.Y.Offset else 10
+	local slant = math.max(2, math.floor(h * 0.45))
+	local blocks: { { Frame } } = {}
 	for i = 1, segments do
-		local block = M.make("Frame", { Name = "S" .. i, BackgroundColor3 = color, BackgroundTransparency = 0.82, BorderSizePixel = 0, Size = UDim2.new(1 / segments, -3, 1, 0), LayoutOrder = i, Parent = frame })
-		M.corner(block, 1)
-		blocks[i] = block
+		local holder = M.make("Frame", { Name = "S" .. i, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1 / segments, -1, 1, 0), LayoutOrder = i, Parent = frame })
+		local body = M.make("Frame", { Name = "Body", BackgroundColor3 = color, BackgroundTransparency = 0.82, BorderSizePixel = 0, Position = UDim2.fromOffset(slant, 0), Size = UDim2.new(1, -2 * slant, 1, 0), Parent = holder })
+		local capL = M.slantCap(holder, "CapL", slant, h, "BR", color)
+		local capR = M.slantCap(holder, "CapR", slant, h, "TL", color, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0) })
+		capL.BackgroundTransparency = 0.82
+		capR.BackgroundTransparency = 0.82
+		blocks[i] = { body, capL, capR }
 	end
 	local current = -1
 	local function set(value: number, animate: boolean?)
 		local filled = math.clamp(math.floor(value * segments + 0.5), 0, segments)
 		if filled == current then return end
 		current = filled
-		for i, block in blocks do
+		for i, parts in blocks do
 			local on = i <= filled
 			local goal = { BackgroundTransparency = if on then 0 else 0.82 }
-			if animate then
-				task.delay((i - 1) * 0.018, function() if block.Parent then M.tween(block, 0.12, goal) end end)
-			else
-				block.BackgroundTransparency = goal.BackgroundTransparency
+			for _, p in parts do
+				if animate then
+					task.delay((i - 1) * 0.018, function() if p.Parent then M.tween(p, 0.12, goal) end end)
+				else
+					p.BackgroundTransparency = goal.BackgroundTransparency
+				end
 			end
 		end
 	end
-	local function recolor(c: Color3) for _, block in blocks do block.BackgroundColor3 = c end end
+	local function recolor(c: Color3) for _, parts in blocks do for _, p in parts do p.BackgroundColor3 = c end end end
 	frame:SetAttribute("Segments", segments)
 	return frame, function(value: number, animate: boolean?) set(value, animate) end, recolor
 end
