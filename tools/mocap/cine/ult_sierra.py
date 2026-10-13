@@ -159,9 +159,9 @@ def build(tl: dict) -> dict:
         # the clinch from the side, low
         {"f": i1 + 12, "pos": [5.6, 2.4, 2.6], "look": [0.0, 3.6, 2.0], "fov": 34, "cut": True},
         {"f": i3 + 4, "pos": [5.0, 2.2, 2.8], "look": [0.0, 3.8, 2.0], "fov": 33},
-        # reverse angle for the elbow: her face over its shoulder
-        {"f": i3 + 12, "pos": [-2.4, 4.8, 7.0], "look": [0.2, 4.4, 1.0], "fov": 34, "cut": True},
-        {"f": i4 + 8, "pos": [-3.0, 4.6, 6.6], "look": [0.2, 4.2, 1.2], "fov": 34},
+        # reverse angle for the elbow: her face past its shoulder (wide of the defender's body)
+        {"f": i3 + 12, "pos": [-5.0, 4.8, 6.4], "look": [0.2, 4.4, 1.0], "fov": 34, "cut": True},
+        {"f": i4 + 8, "pos": [-5.4, 4.6, 6.0], "look": [0.2, 4.2, 1.2], "fov": 34},
         # wide while she resets and switches
         {"f": i4 + 12, "pos": [9.6, 3.6, 0.2], "look": [0.0, 3.0, 2.6], "fov": 36, "cut": True},
         {"f": i5 - 14, "pos": [8.6, 3.2, 0.8], "look": [0.0, 3.4, 2.4], "fov": 34},

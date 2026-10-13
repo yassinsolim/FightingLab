@@ -154,9 +154,9 @@ def build(tl: dict) -> dict:
     cam = [
         {"f": 0, "pos": [5.6, 3.2, -1.6], "look": [0.3, 3.3, 2.6], "fov": 38, "cut": True},
         {"f": i1 + 10, "pos": [4.8, 3.0, -0.4], "look": [0.2, 3.3, 2.6], "fov": 36},
-        # her face as she spins into the chop
-        {"f": i1 + 14, "pos": [-2.6, 4.4, 7.2], "look": [0.2, 4.0, 1.0], "fov": 35, "cut": True},
-        {"f": i2 + 10, "pos": [-3.2, 4.2, 6.8], "look": [0.2, 3.9, 1.2], "fov": 35},
+        # her face as she spins into the chop (wide of his shoulder: the line to her passes clear of his body)
+        {"f": i1 + 14, "pos": [-5.0, 4.4, 6.2], "look": [0.2, 4.0, 1.0], "fov": 35, "cut": True},
+        {"f": i2 + 10, "pos": [-5.4, 4.2, 5.8], "look": [0.2, 3.9, 1.2], "fov": 35},
         # low wide for the sweep and the float
         {"f": i2 + 14, "pos": [8.6, 1.4, 1.6], "look": [0.0, 2.2, 2.8], "fov": 36, "cut": True},
         {"f": i4 + 6, "pos": [8.0, 1.6, 2.2], "look": [0.0, 3.2, 3.0], "fov": 36},
