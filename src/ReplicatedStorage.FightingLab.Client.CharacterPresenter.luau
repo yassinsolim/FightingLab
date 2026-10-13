@@ -464,7 +464,8 @@ function M.update(f: RenderFrame)
 		framePoses[i] = poses[i]
 		if rig and view and poses[i] then
 			if Face then Face.updateFromView(rig.model, view, if typeof(f.dt) == "number" then f.dt else 1 / 60, { phase = f.phase, winner = f.winner, slot = i }) end
-			if rig.flash > 0 then rig.flash -= 1; rig.highlight.Enabled = true; rig.highlight.FillTransparency = math.clamp(1 - (rig.flash / 6) * 0.55, 0.45, 0.85) else rig.highlight.Enabled = rig.mirrorOutline; rig.highlight.FillTransparency = 1 end
+			-- Hit flash (round 6: lighter and shorter; a strong white fill washed the fighters out in still frames).
+			if rig.flash > 0 then rig.flash -= 1; rig.highlight.Enabled = true; rig.highlight.FillTransparency = math.clamp(1 - (rig.flash / 4) * 0.3, 0.7, 0.92) else rig.highlight.Enabled = rig.mirrorOutline; rig.highlight.FillTransparency = 1 end
 		end
 	end
 	-- Rolling cost of posing both fighters (sample + IK + ground solver), for the performance budget.

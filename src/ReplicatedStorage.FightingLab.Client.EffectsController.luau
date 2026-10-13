@@ -501,8 +501,8 @@ local function surgeBurst(i: number)
 	a.burstRing:Emit(2)
 	a.burstFlames:Emit(36)
 	a.sparks:Emit(24)
-	flash(edgeFrame, a.color, 0.72, 0.35)
-	c.modules.Characters.setFlash(i, 10)
+	flash(edgeFrame, a.color, 0.6, 0.28)
+	c.modules.Characters.setFlash(i, 5)
 end
 
 local function ultStartBurst(i: number)
@@ -519,7 +519,7 @@ local function ultStartBurst(i: number)
 	a.base.CFrame = a.base.CFrame - Vector3.new(0, 2.6, 0)
 	a.burstRing:Emit(1)
 	if part then emitImpact(part.Position + Vector3.new(0, 0.8, 0), Vector3.yAxis, { color = a.color, core = 10, sparks = 30, dust = 4, ring = 3.0, life = 0.26, flashAlpha = 1, shake = 0 }) end
-	c.modules.Characters.setFlash(i, 12)
+	c.modules.Characters.setFlash(i, 5)
 end
 
 function M.onEvent(e: CombatEvent)
@@ -531,7 +531,8 @@ function M.onEvent(e: CombatEvent)
 			surgeBurst(i)
 		else
 			ultStartBurst(i)
-			flash(flashFrame, Color3.fromRGB(255, 244, 220), 0.35, 0.32)
+			-- Short and light: the HUD plays its own title card and letterbox on UltStart.
+			flash(flashFrame, Color3.fromRGB(255, 244, 220), 0.2, 0.16)
 		end
 		if e.kind == "Surge" and c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(0.03) end
 		if c.modules.Camera.onEvent then c.modules.Camera.onEvent(e) end
@@ -569,7 +570,7 @@ function M.onEvent(e: CombatEvent)
 	if e.kind == "ThrowHit" or (e.knockdown and e.kind ~= "UltHit") then emitDust(point - Vector3.new(0, 1.9, 0), 24, 1.25) end
 	if e.kind == "UltHit" and e.knockdown == true and target then emitDust(Vector3.new(target.Position.X, origin.Y + 0.1, target.Position.Z), 28, 1.5) end
 	if e.kind == "KO" then flash(flashFrame, spec.color, spec.flashAlpha, 0.34) elseif e.counter then flash(edgeFrame, spec.color, spec.flashAlpha, 0.18) else flash(flashFrame, spec.color, spec.flashAlpha, spec.life) end
-	if e.kind ~= "Whiff" and e.kind ~= "Crush" then c.modules.Characters.setFlash(e.target, if e.kind == "Block" then 2 else 6) end
+	if e.kind ~= "Whiff" and e.kind ~= "Crush" then c.modules.Characters.setFlash(e.target, if e.kind == "Block" then 2 else 4) end
 	if c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(spec.shake) end
 	if c.modules.Camera.onEvent then c.modules.Camera.onEvent(e) end
 	c.gui:SetAttribute("EffectsFired", (c.gui:GetAttribute("EffectsFired") or 0) + 1)
