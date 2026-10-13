@@ -6,6 +6,10 @@
 -- portrait roster strip. Switching fighters is a lighting cut (lights down, swap at dark, lights up), so a rig is
 -- never shown while it is being moved or dressed: no bare-body flashes. Confirm calls env.onConfirm(id) (LobbyUI
 -- fires Lobby "SelectFighter" {id}). Without live/previews (tests) it is a plain overlay with the same API.
+-- Round 6 (look): a dramatic layout in the fight HUD's angled language: a big header, the name over a slanted style
+-- plate, the description, slanted stat bars and the signature moves on the left; the fighter large and lit in the
+-- middle; a 2 x 3 roster grid of portrait cards on the right; Back / Confirm bottom right. Transitions slide the info
+-- column and the grid in, the name wipes in on every switch and the stat bars fill segment by segment.
 local RunService = game:GetService("RunService")
 
 local Client = script.Parent
@@ -14,6 +18,7 @@ local UIHelpers = require(Client.UIHelpers)
 local MoveList = require(Client.MoveList)
 local SelectScene = require(Client.SelectScene)
 local AvatarGate = require(Client.AvatarGate)
+local HudKit = require(Client.HudKit)
 local Roster = require(Lab.Roster)
 
 local T = UIHelpers.Theme
@@ -205,8 +210,8 @@ export type Controller = {
 	destroy: () -> (),
 }
 
-type Tile = { button: TextButton, scale: UIScale, stroke: UIStroke, vp: ViewportFrame, cam: Camera, world: WorldModel, cover: Frame, bar: Frame, name: TextLabel, badge: TextLabel, preview: { model: Model, release: () -> () }? }
-type StageRig = { model: Model, ready: boolean, warmAt: number, footDelta: number?, cold: boolean }
+type Tile = { button: TextButton, scale: UIScale, stroke: UIStroke, vp: ViewportFrame, cam: Camera, world: WorldModel, cover: Frame, bar: Frame, name: TextLabel, badge: TextLabel, preview: { model: Model, release: () -> () }?, corner: Frame? }
+type StageRig = { model: Model, ready: boolean, warmAt: number, footDelta: number?, height: number?, cold: boolean }
 
 FighterSelect.CUT_DOWN = 0.08 -- lights out before the swap
 FighterSelect.CUT_UP = 0.24 -- lights back up after it
@@ -241,7 +246,7 @@ function FighterSelect.mount(env: SelectEnv): Controller
 	local closedAt = 0
 	local token = 0
 	local shownId: string? = nil -- fighter currently standing on the platform
-	local stageState = { cutT = -1, cutTo = nil :: string?, swapped = false, push = 0, pushGoal = 0, confirmUntil = 0, pose = "Stance", level = 1, openedAt = 0, flight = false }
+	local stageState = { height = nil :: number?, cutT = -1, cutTo = nil :: string?, swapped = false, push = 0, pushGoal = 0, confirmUntil = 0, pose = "Stance", level = 1, openedAt = 0, flight = false }
 	local cameraSaved: { type: Enum.CameraType, subject: Instance?, fov: number, cframe: CFrame }? = nil
 	local renderBound = false
 
@@ -308,61 +313,78 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		end
 		table.insert(conns, stage:GetPropertyChangedSignal("Size"):Connect(fitBody))
 		fitBody()
-		-- Header
-		local tag = text(body, "Tag", "FIGHTER SELECT", T.heavy, 13, T.ember, { Position = UDim2.fromOffset(58, 26), Size = UDim2.fromOffset(300, 16) })
-		make("Frame", { Name = "Rule", BackgroundColor3 = T.ember, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 18), Size = UDim2.fromOffset(30, 2), Parent = tag })
-		refs.count = text(body, "Count", "", T.number, 13, T.muted, { Position = UDim2.fromOffset(58, 46), Size = UDim2.fromOffset(200, 16) })
+		-- Header: SELECT YOUR FIGHTER over a slanted ember rule, and the roster position
+		local tag = text(body, "Tag", "SELECT YOUR FIGHTER", T.title, 17, T.gold, { Position = UDim2.fromOffset(58, 24), Size = UDim2.fromOffset(420, 20) })
+		local rule = HudKit.slab(tag, "Rule", 86, 4, 2, "/", T.ember, 0, { Position = UDim2.fromOffset(0, 24) })
+		rule.holder.Name = "Rule"
+		refs.count = text(body, "Count", "", T.number, 13, T.muted, { Position = UDim2.fromOffset(154, 42), Size = UDim2.fromOffset(200, 16) })
 		-- Info column
-		local info: Frame = make("Frame", { Name = "Info", BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 62), Size = UDim2.fromOffset(620, 470), Parent = body })
+		local info: Frame = make("Frame", { Name = "Info", BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 70), Size = UDim2.fromOffset(640, 470), Parent = body })
 		refs.info = info
-		refs.name = text(info, "Name", "", T.display, 118, T.text, { Size = UDim2.fromOffset(700, 128), TextXAlignment = Enum.TextXAlignment.Left })
-		refs.nameShadow = UIHelpers.textStroke(refs.name, 0.55, 2)
-		refs.style = text(info, "Style", "", T.heavy, 18, T.gold, { Position = UDim2.fromOffset(6, 126), Size = UDim2.fromOffset(600, 22) })
-		refs.tagline = text(info, "Tagline", "", T.medium, 19, Color3.fromRGB(226, 230, 238), { Position = UDim2.fromOffset(6, 154), Size = UDim2.fromOffset(500, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
-		local attrs = make("Frame", { Name = "Attributes", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 222), Size = UDim2.fromOffset(380, 110), Parent = info })
-		UIHelpers.list(attrs, false, 9)
+		refs.name = text(info, "Name", "", T.display, 116, T.text, { Size = UDim2.fromOffset(660, 122), Position = UDim2.fromOffset(0, 0), ClipsDescendants = false })
+		refs.nameShadow = UIHelpers.textStroke(refs.name, 0.5, 2.5)
+		-- the fighting style on a slanted plate in the fighter's colour
+		local styleChip = HudKit.chip(info, "StyleChip", "", 28, T.heavy, 15, T.ember, T.ink, "/", { Position = UDim2.fromOffset(4, 126) })
+		refs.styleChip = styleChip
+		refs.style = styleChip.label
+		refs.tagline = text(info, "Tagline", "", T.medium, 19, Color3.fromRGB(226, 230, 238), { Position = UDim2.fromOffset(6, 166), Size = UDim2.fromOffset(500, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+		local attrs = make("Frame", { Name = "Attributes", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 230), Size = UDim2.fromOffset(420, 112), Parent = info })
+		UIHelpers.list(attrs, false, 8)
 		refs.bars = {}
 		for i = 1, 4 do
 			local r = make("Frame", { Name = "Attr" .. i, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = i, Parent = attrs })
 			local label = text(r, "Label", "", T.heavy, 13, T.muted, { Size = UDim2.fromOffset(90, 20) })
-			local _, set, recolor = UIHelpers.segmentBar(r, "Bar", 10, T.gold, { Position = UDim2.fromOffset(96, 4), Size = UDim2.new(1, -96, 0, 12) })
-			refs.bars[i] = { label = label, set = set, recolor = recolor }
+			local _, set, recolor = UIHelpers.segmentBar(r, "Bar", 10, T.gold, { Position = UDim2.fromOffset(96, 3), Size = UDim2.new(1, -150, 0, 14) })
+			local value = text(r, "Value", "", T.number, 13, T.text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(44, 20), TextXAlignment = Enum.TextXAlignment.Right })
+			refs.bars[i] = { label = label, set = set, recolor = recolor, value = value }
 		end
-		local sigTitle = text(info, "SignatureTitle", "SIGNATURE", T.heavy, 12, T.ember, { Position = UDim2.fromOffset(6, 352), Size = UDim2.fromOffset(200, 16) })
+		local sigTitle = text(info, "SignatureTitle", "SIGNATURE MOVES", T.heavy, 12, T.ember, { Position = UDim2.fromOffset(6, 356), Size = UDim2.fromOffset(240, 16) })
 		sigTitle.Name = "SignatureTitle"
-		refs.signature = make("Frame", { Name = "Signature", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 372), Size = UDim2.fromOffset(500, 92), Parent = info })
+		refs.signature = make("Frame", { Name = "Signature", BackgroundTransparency = 1, Position = UDim2.fromOffset(6, 376), Size = UDim2.fromOffset(500, 92), Parent = info })
 		UIHelpers.list(refs.signature, false, 6)
 		refs.infoScale = make("UIScale", { Parent = info })
 		-- Stage-side messages: loading shimmer and the confirm stamp.
-		refs.loading = text(body, "Loading", "PREPARING FIGHTER...", T.heavy, 16, T.muted, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.69, 0.5), Size = UDim2.fromOffset(320, 24), TextXAlignment = Enum.TextXAlignment.Center, Visible = false })
-		local stamp = make("Frame", { Name = "Stamp", BackgroundColor3 = T.ember, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.69, 0.62), Size = UDim2.fromOffset(330, 70), Rotation = -4, Visible = false, Parent = body })
-		text(stamp, "Text", "LOCKED IN", T.display, 48, T.ink, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+		refs.loading = text(body, "Loading", "PREPARING FIGHTER...", T.heavy, 16, T.muted, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.6, 0.5), Size = UDim2.fromOffset(320, 24), TextXAlignment = Enum.TextXAlignment.Center, Visible = false })
+		local stamp = make("Frame", { Name = "Stamp", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.6, 0.64), Size = UDim2.fromOffset(360, 74), Visible = false, Parent = body })
+		HudKit.slab(stamp, "Plate", 360, 74, 24, "/", T.ember, 0, { Size = UDim2.fromScale(1, 1) })
+		text(stamp, "Text", "LOCKED IN", T.display, 50, T.ink, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2 })
 		refs.stamp = stamp
 		refs.stampScale = make("UIScale", { Parent = stamp })
-		-- Roster strip
-		local strip: Frame = make("Frame", { Name = "Roster", BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 548), Size = UDim2.fromOffset(6 * 96 + 5 * 10, 120), Parent = body })
+		-- Roster grid (right): two columns of portrait cards
+		local TILE_W, TILE_H, GAP = 104, 120, 10
+		local cols = 2
+		local rows = math.ceil(#Roster.order / cols)
+		local gridTitle = text(body, "RosterTitle", "ROSTER", T.heavy, 12, T.ember, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -52, 0, 70), Size = UDim2.fromOffset(cols * TILE_W + (cols - 1) * GAP, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		refs.gridTitle = gridTitle
+		local strip: Frame = make("Frame", { Name = "Roster", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -52, 0, 92), Size = UDim2.fromOffset(cols * TILE_W + (cols - 1) * GAP, rows * (TILE_H + GAP)), Parent = body })
 		refs.strip = strip
+		refs.tilePos = function(i: number, lifted: boolean): UDim2
+			local col, row = (i - 1) % cols, (i - 1) // cols
+			return UDim2.fromOffset(col * (TILE_W + GAP) + (if lifted then -6 else 0), row * (TILE_H + GAP))
+		end
 		for i, id in Roster.order do
 			local def = Roster.get(id)
-			local b: TextButton = make("TextButton", { Name = "Tile_" .. id, Text = "", AutoButtonColor = false, BackgroundColor3 = T.panel, BorderSizePixel = 0, ClipsDescendants = true, Position = UDim2.fromOffset((i - 1) * 106, 8), Size = UDim2.fromOffset(96, 112), Parent = strip })
-			UIHelpers.corner(b, 5)
-			UIHelpers.gradient(b, def.accentColor:Lerp(T.bg, 0.6), T.bg, 90)
+			local b: TextButton = make("TextButton", { Name = "Tile_" .. id, Text = "", AutoButtonColor = false, BackgroundColor3 = T.panel, BorderSizePixel = 0, ClipsDescendants = true, Position = refs.tilePos(i, false), Size = UDim2.fromOffset(TILE_W, TILE_H), Parent = strip })
+			UIHelpers.corner(b, 3)
+			UIHelpers.gradient(b, def.accentColor:Lerp(T.bg, 0.55), T.bg, 90)
 			local stroke = UIHelpers.outline(b, WHITE, 1, 0.8)
 			local vp, cam, world = FighterSelect.newViewport(b, "Bust")
-			vp.Size = UDim2.new(1, 0, 1, -22)
+			vp.Size = UDim2.new(1, 0, 1, -24)
 			vp.ZIndex = 2
 			-- Opaque until the portrait clone is complete (same look as the tile background, with the monogram).
-			local cover = make("Frame", { Name = "Cover", BackgroundColor3 = WHITE, BackgroundTransparency = 0, BorderSizePixel = 0, Size = UDim2.new(1, 0, 1, -22), ZIndex = 3, Parent = b })
-			UIHelpers.gradient(cover, def.accentColor:Lerp(T.bg, 0.6), T.bg, 90)
-			local mono = text(cover, "Monogram", string.sub(def.displayName, 1, 1), T.display, 46, def.accentColor, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3 })
+			local cover = make("Frame", { Name = "Cover", BackgroundColor3 = WHITE, BackgroundTransparency = 0, BorderSizePixel = 0, Size = UDim2.new(1, 0, 1, -24), ZIndex = 3, Parent = b })
+			UIHelpers.gradient(cover, def.accentColor:Lerp(T.bg, 0.55), T.bg, 90)
+			local mono = text(cover, "Monogram", string.sub(def.displayName, 1, 1), T.display, 48, def.accentColor, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3 })
 			mono.TextTransparency = 0.2
-			local bar = make("Frame", { Name = "Bar", BackgroundColor3 = def.accentColor, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -22), Size = UDim2.new(1, 0, 0, 3), ZIndex = 4, Parent = b })
-			local nameBand = make("Frame", { Name = "NameBand", BackgroundColor3 = T.bg, BackgroundTransparency = 0.05, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 22), ZIndex = 4, Parent = b })
-			local name = text(nameBand, "Name", def.displayName, T.heavy, 13, T.muted, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5 })
+			local bar = make("Frame", { Name = "Bar", BackgroundColor3 = def.accentColor, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 3), ZIndex = 4, Parent = b })
+			local nameBand = make("Frame", { Name = "NameBand", BackgroundColor3 = T.bg, BackgroundTransparency = 0.05, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 24), ZIndex = 4, Parent = b })
+			local name = text(nameBand, "Name", string.upper(def.displayName), T.title, 14, T.muted, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5 })
+			-- the accent corner of the selected card
+			local corner = UIHelpers.slantCap(b, "Corner", 22, 22, "TR", def.accentColor, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), ZIndex = 6, Visible = false })
 			local badge = text(b, "Badge", "IN USE", T.heavy, 9, T.ink, { Position = UDim2.fromOffset(5, 5), Size = UDim2.fromOffset(40, 13), BackgroundTransparency = 0, BackgroundColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5, Visible = false })
 			UIHelpers.corner(badge, 2)
 			local sc = make("UIScale", { Parent = b })
-			tiles[id] = { button = b, scale = sc, stroke = stroke, vp = vp, cam = cam, world = world, cover = cover, bar = bar, name = name, badge = badge, preview = nil }
+			tiles[id] = { button = b, scale = sc, stroke = stroke, vp = vp, cam = cam, world = world, cover = cover, bar = bar, name = name, badge = badge, preview = nil, corner = corner }
 			table.insert(conns, b.Activated:Connect(function()
 				if not isOpen then return end
 				if selectedId == id then refs.confirm(); return end
@@ -439,9 +461,10 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			tile.name.TextColor3 = if sel then T.text else T.muted
 			tile.badge.Visible = id == cur
 			tile.vp.ImageTransparency = if sel then 0 else 0.35
-			local goal = { Position = UDim2.fromOffset(((table.find(Roster.order, id) or 1) - 1) * 106, if sel then 0 else 8) }
+			if tile.corner then tile.corner.Visible = sel end
+			local goal = { Position = refs.tilePos(table.find(Roster.order, id) or 1, sel) }
 			if animate then UIHelpers.tween(tile.button, 0.16, goal, Enum.EasingStyle.Quart) else tile.button.Position = goal.Position end
-			tile.scale.Scale = if sel then 1.04 else 1
+			tile.scale.Scale = if sel then 1.05 else 1
 		end
 		local ok = canSelect()
 		refs.confirmB.setEnabled(ok)
@@ -450,14 +473,14 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		lastInfoId = selectedId
 		refs.name.Text = def.displayName
 		refs.name.TextColor3 = WHITE
-		refs.style.Text = string.upper(def.style)
-		refs.style.TextColor3 = def.accentColor:Lerp(WHITE, 0.15)
+		refs.styleChip.set(string.upper(def.style), def.accentColor, def.accentColor:Lerp(T.ink, 0.86))
 		refs.tagline.Text = def.tagline
 		for i, a in UIHelpers.attributes(def) do
 			local bar = refs.bars[i]
 			bar.label.Text = a.name
 			bar.recolor(def.accentColor)
 			bar.set(a.value, animate)
+			bar.value.Text = tostring(math.clamp(math.floor(a.value * 10 + 0.5), 1, 10))
 		end
 		for _, c in refs.signature:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
 		for i, key in MoveList.signature(def) do
@@ -469,9 +492,11 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			text(r, "Name", string.upper(mv.name), T.heavy, 15, T.text, { Position = UDim2.fromOffset(104, 0), Size = UDim2.new(1, -106, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 		end
 		if animate then
-			refs.name.Position = UDim2.fromOffset(-36, 0)
-			refs.name.TextTransparency = 0.6
-			UIHelpers.tween(refs.name, 0.26, { Position = UDim2.fromOffset(0, 0), TextTransparency = 0 }, Enum.EasingStyle.Quint)
+			refs.name.Position = UDim2.fromOffset(-48, 0)
+			refs.name.TextTransparency = 0.7
+			UIHelpers.tween(refs.name, 0.28, { Position = UDim2.fromOffset(0, 0), TextTransparency = 0 }, Enum.EasingStyle.Quint)
+			refs.styleChip.holder.Position = UDim2.fromOffset(-20, 126)
+			UIHelpers.tween(refs.styleChip.holder, 0.3, { Position = UDim2.fromOffset(4, 126) }, Enum.EasingStyle.Quint)
 			refs.tagline.TextTransparency = 1
 			UIHelpers.tween(refs.tagline, 0.3, { TextTransparency = 0 })
 		end
@@ -533,6 +558,21 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		end
 		return lowest
 	end
+	-- Top of the head (hair and hats included) in world space, for the camera fit.
+	local function headTop(model: Model): number?
+		local head = model:FindFirstChild("Head")
+		if not (head and head:IsA("BasePart")) then return nil end
+		local top = head.Position.Y + head.Size.Y * 0.5
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and d.Parent and d.Parent:IsA("Accessory") and (d.Position - head.Position).Magnitude < 2.5 then
+				local cf, size = d.CFrame, d.Size
+				for _, sx in { -0.5, 0.5 } do for _, sy in { -0.5, 0.5 } do for _, sz in { -0.5, 0.5 } do
+					top = math.max(top, (cf * Vector3.new(size.X * sx, size.Y * sy, size.Z * sz)).Y)
+				end end end
+			end
+		end
+		return math.min(top, head.Position.Y + 2.2)
+	end
 	-- A pose change on the shown rig (stance -> intro on confirm) blends from the joints it had, so nothing pops.
 	local blend = { model = nil :: Model?, pose = "", from = {} :: { [Motor6D]: CFrame }, started = -math.huge }
 	local function captureMotors(model: Model): { [Motor6D]: CFrame }
@@ -584,6 +624,8 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			poseShown(os.clock())
 			local bottom = footBottom(rig.model)
 			rig.footDelta = guess + (if bottom then SelectScene.platformY() - bottom else 0)
+			local top = headTop(rig.model)
+			if top then rig.height = top + (rig.footDelta - guess) - SelectScene.platformY() end
 		end
 		rig.model:PivotTo(base + Vector3.new(0, rig.footDelta :: number, 0))
 		poseShown(os.clock())
@@ -653,7 +695,12 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		refs.loading.Visible = shownId == nil and isOpen
 		SelectScene.setLevel(level)
 		stageState.push += (stageState.pushGoal - stageState.push) * math.min(1, dt * 3.2)
-		local cf, fov = SelectScene.cameraFor(studioTime, aspect(), stageState.push)
+		local shownRig = shownId and rigs[shownId]
+		local wantHeight = if shownRig and typeof(shownRig.height) == "number" then shownRig.height else nil
+		if wantHeight then
+			stageState.height = if stageState.height then stageState.height + (wantHeight - stageState.height) * math.min(1, dt * 5) else wantHeight
+		end
+		local cf, fov = SelectScene.cameraFor(studioTime, aspect(), stageState.push, stageState.height)
 		cam.CameraType = Enum.CameraType.Scriptable
 		cam.CFrame = cf
 		cam.FieldOfView = fov
@@ -805,10 +852,10 @@ function FighterSelect.mount(env: SelectEnv): Controller
 			bindRender()
 			gui.Enabled = true
 			-- UI slides in while the camera settles.
-			refs.info.Position = UDim2.fromOffset(12, 62)
-			UIHelpers.tween(refs.info, 0.5, { Position = UDim2.fromOffset(52, 62) }, Enum.EasingStyle.Quint)
-			refs.strip.Position = UDim2.fromOffset(52, 600)
-			UIHelpers.tween(refs.strip, 0.45, { Position = UDim2.fromOffset(52, 548) }, Enum.EasingStyle.Quint)
+			refs.info.Position = UDim2.fromOffset(4, 70)
+			UIHelpers.tween(refs.info, 0.5, { Position = UDim2.fromOffset(52, 70) }, Enum.EasingStyle.Quint)
+			refs.strip.Position = UDim2.new(1, 20, 0, 92)
+			UIHelpers.tween(refs.strip, 0.45, { Position = UDim2.new(1, -52, 0, 92) }, Enum.EasingStyle.Quint)
 			UIHelpers.tween(fade, 0.45, { BackgroundTransparency = 1 })
 			task.delay(0.46, function() if myToken == token then fadeGui.Enabled = false end end)
 		end)

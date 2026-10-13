@@ -16,10 +16,10 @@ local ctx: Ctx? = nil
 -- Studio placement: well outside the map and the arenas, above the fall height.
 M.ORIGIN = Vector3.new(0, 900, 3200)
 M.PLATFORM_TOP = 0.42
-M.CAMERA_DISTANCE = 15.5
-M.CAMERA_FOV = 30
+M.CAMERA_DISTANCE = 14
+M.CAMERA_FOV = 29
 M.LOOK_HEIGHT = 3.15
-M.SCREEN_X = 0.69 -- where the fighter stands on screen (0..1, the info column is on the left)
+M.SCREEN_X = 0.6 -- where the fighter stands on screen (0..1: info column on the left, roster grid on the right)
 M.FACING_YAW = -20 -- degrees the fighter turns toward the info column
 
 type Studio = {
@@ -64,7 +64,7 @@ local function build(): Studio
 	local floorColor = Color3.fromRGB(14, 16, 22)
 	local wallColor = Color3.fromRGB(9, 10, 15)
 	-- Light-tight room (no sky, no sun): floor, ceiling and four walls.
-	part(model, "Floor", Vector3.new(90, 1, 90), CFrame.new(o + Vector3.new(0, -0.5, 0)), floorColor, Enum.Material.Slate, { Reflectance = 0 })
+	part(model, "Floor", Vector3.new(90, 1, 90), CFrame.new(o + Vector3.new(0, -0.5, 0)), floorColor, Enum.Material.Marble, { Reflectance = 0.12 })
 	part(model, "Ceiling", Vector3.new(90, 1, 90), CFrame.new(o + Vector3.new(0, 30.5, 0)), wallColor, Enum.Material.SmoothPlastic)
 	part(model, "WallBack", Vector3.new(90, 32, 1), CFrame.new(o + Vector3.new(0, 15, -14)), wallColor, Enum.Material.SmoothPlastic)
 	part(model, "WallFront", Vector3.new(90, 32, 1), CFrame.new(o + Vector3.new(0, 15, 45)), wallColor, Enum.Material.SmoothPlastic)
@@ -98,6 +98,15 @@ local function build(): Studio
 		p:SetAttribute("Base", base)
 		table.insert(blades, p)
 		table.insert(accentParts, p)
+	end
+	-- Round 6: two tall light pillars framing the fighter, and a thin floor line running to each.
+	for _, sx in { -1, 1 } do
+		local pillar = part(model, "Pillar" .. (if sx < 0 then "L" else "R"), Vector3.new(0.18, 20, 0.18), CFrame.new(o + Vector3.new(sx * 6.4, 10, -6.5)), Color3.fromRGB(255, 200, 69), Enum.Material.Neon, { CastShadow = false, Transparency = 0.15 })
+		pillar:SetAttribute("Base", 0.15)
+		table.insert(accentParts, pillar)
+		local line = part(model, "PillarLine" .. (if sx < 0 then "L" else "R"), Vector3.new(0.08, 0.04, 7), CFrame.new(o + Vector3.new(sx * 6.4, 0.02, -3)), Color3.fromRGB(255, 200, 69), Enum.Material.Neon, { CastShadow = false, Transparency = 0.55 })
+		line:SetAttribute("Base", 0.55)
+		table.insert(accentParts, line)
 	end
 	local floorBand = part(model, "FloorBand", Vector3.new(60, 0.04, 0.12), CFrame.new(o + Vector3.new(0, 0.02, -10.2)), Color3.fromRGB(255, 200, 69), Enum.Material.Neon, { CastShadow = false, Transparency = 0.72 })
 	floorBand:SetAttribute("Base", 0.72)
@@ -201,14 +210,28 @@ function M.platformY(): number return M.ORIGIN.Y + M.PLATFORM_TOP end
 
 -- Camera CFrame and FOV for the showcase. `push` (0..1) pulls the camera in for intros/confirms; `t` drives a slow
 -- sway. The look target is shifted so the fighter lands at SCREEN_X whatever the aspect ratio.
-function M.cameraFor(t: number, aspect: number, push: number?): (CFrame, number)
+-- `height` (optional, studs above the platform) fits the shot to the shown fighter: the whole body stays in frame at
+-- rest (tall fighters get a slightly wider shot instead of a cropped head) and a push ends on the head and chest.
+function M.cameraFor(t: number, aspect: number, push: number?, height: number?): (CFrame, number)
 	local o = M.ORIGIN
 	local k = math.clamp(push or 0, 0, 1)
-	local distance = M.CAMERA_DISTANCE - k * 5.5
 	local fov = M.CAMERA_FOV - k * 3
+	local baseDistance, lookY = M.CAMERA_DISTANCE, M.LOOK_HEIGHT + k * 0.5
+	if typeof(height) == "number" and height > 1 then
+		local h = math.clamp(height, 3, 12)
+		local tan0 = math.tan(math.rad(M.CAMERA_FOV) * 0.5)
+		local half = (h + 1.4) * 0.5
+		baseDistance = math.clamp(half / tan0, M.CAMERA_DISTANCE - 1, M.CAMERA_DISTANCE + 3)
+		local view0 = baseDistance * tan0
+		local top = M.PLATFORM_TOP + h
+		local rest = if view0 >= half then M.PLATFORM_TOP - 0.9 + half else top + 0.5 - view0
+		local view1 = baseDistance * 0.61 * math.tan(math.rad(M.CAMERA_FOV - 3) * 0.5)
+		lookY = rest + (top + 0.35 - view1 - rest) * k
+	end
+	local distance = baseDistance * (1 - k * 0.39)
 	local yaw = math.rad(math.sin(t * 0.7) * 2.2 + 3)
 	local bob = math.sin(t * 0.9) * 0.06
-	local target = o + Vector3.new(0, M.LOOK_HEIGHT + k * 0.5 + bob, 0)
+	local target = o + Vector3.new(0, lookY + bob, 0)
 	local dir = CFrame.Angles(0, yaw, 0):VectorToWorldSpace(Vector3.new(0, 0, 1))
 	local eye = target + dir * distance + Vector3.new(0, -0.1 - k * 0.2, 0)
 	local cf = CFrame.lookAt(eye, target)
