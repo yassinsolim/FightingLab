@@ -343,8 +343,8 @@ def temple(side: int, dy=0.0):
     return (("head", "headTop", 0.4), (0.108 * side, 0.02 + dy, 0.0), "head", _rt("Head", 1.12 * side, 0.15 + dy / 0.12, -0.1))
 
 
-def sternum(dy=0.0, dz=0.0):
-    return chest(0.0, dy, dz)
+def sternum(dy=0.0, dz=0.0, dx=0.0):
+    return chest(dx, dy, dz)
 
 
 def solar(dz=0.0):
@@ -353,12 +353,12 @@ def solar(dz=0.0):
 
 def ribs(side: int, dy=0.0):
     """Side of the rib cage (a body hook); side +1 = the owner's right."""
-    return (("waist", "neck", 0.3), (0.21 * side, dy, 0.03), "chest", _rt("UpperTorso", 1.1 * side, -0.45 + dy / 0.18, -0.3))
+    return (("waist", "neck", 0.28), (0.15 * side, dy, 0.10), "chest", _rt("UpperTorso", 0.8 * side, -0.5 + dy / 0.18, -1.1))
 
 
 def liver(side: int = 1):
     """Low on the side, above the hip (a lead hook to the body lands on the defender's right: side +1)."""
-    return (("pelvis", "waist", 0.95), (0.20 * side, 0.02, 0.03), "pelvis", _rt("LowerTorso", 1.15 * side, 0.75, -0.3))
+    return (("pelvis", "waist", 0.92), (0.12 * side, 0.04, 0.125), "pelvis", _rt("LowerTorso", 0.75 * side, 0.85, -1.2))
 
 
 def hit_grip(limb: str, target, f_impact: float, before: float = 3, after: float = 2) -> dict:
@@ -381,23 +381,43 @@ def tip_of(J: dict, limb: str) -> np.ndarray:
     return J["hand" + s] if limb in T.HANDS else J["ankle" + s]
 
 
-def reach_dz(ref, limb: str, target, d_track, frame: float, margin: float = 0.02, clear: float = 0.04) -> float:
+def reach_dz(ref, limb: str, target, d_track, frame: float, margin: float = 0.02, clear: float = 0.04, arm_tol: float = -0.03, dx: float = 0.0, joint: str | None = None) -> float:
     """How far (m, along the attacker's +z) to move the attacker pose `ref` so that its striking `limb` reaches the
     target point (a grip spec on the defender) at sim `frame`, stopping `margin` short (the runtime strike grip then
     lands it on the real body). Set twobody.DIST first."""
     base = T.base_pose(ref) if not isinstance(ref, T.Pose) else ref
+    if dx:
+        base = shifted(base, [dx, 0.0, 0.0])
     J = T.full_joints(base)
     pd, _ = d_track.sample(frame)
     JD = T.full_joints(pd)
     tgt = T.to_other(T.point(JD, target[:3]))
-    dz = float(tgt[2] - tip_of(J, limb)[2] - margin)
+    dz = float(tgt[2] - (J[joint] if joint else tip_of(J, limb))[2] - margin)
     # Never closer than the bodies allow: back the step-in off until the torsos and heads clear by `clear`.
     JDa = T.joints_to_other(JD)
     for _ in range(80):
-        if body_gap(T.full_joints(shifted(base, [0, 0, dz])), JDa) >= clear:
+        JA = T.full_joints(shifted(base, [0, 0, dz]))
+        if body_gap(JA, JDa) >= clear and arm_gap(JA, JDa, limb) >= arm_tol:
             break
         dz -= 0.01
     return dz
+
+
+def arm_gap(JA: dict, JD_in_A: dict, limb: str) -> float:
+    """Smallest distance (m) between the striking limb's upper segment (upper arm / thigh) and forearm / shin and the
+    other body's core; the striking hand / foot itself is excluded (it lands on the target)."""
+    s = T.SIDE[limb]
+    names = ("upperArm" + s, "foreArm" + s) if limb in T.HANDS else ("thigh" + s, "shin" + s)
+    best = 9.0
+    for na, a0, a1, ra in T.capsules(JA):
+        if na not in names:
+            continue
+        if na.startswith(("foreArm", "shin")):
+            a1 = a0 + (a1 - a0) * 0.5   # the half next to the fist / foot may touch the target
+        for nd, d0, d1, rd in T.capsules(JD_in_A):
+            if nd.startswith(CORE_CAPS):
+                best = min(best, T.seg_dist(a0, a1, d0, d1) - ra - rd)
+    return best
 
 
 CORE_CAPS = ("spineLow", "spineHigh", "shoulders", "hips", "head", "neck")
@@ -415,3 +435,216 @@ def body_gap(JA: dict, JD_in_A: dict) -> float:
                 continue
             best = min(best, T.seg_dist(a0, a1, d0, d1) - ra - rd)
     return best
+
+# ---- spec building blocks (all six Ultimate specs) ----------------------------------------------------------------
+
+def pk(f, pose, ease=None, lift=None, **kw):
+    """Key at sim frame f from a whole pose (a Pose or a ref); kw: relative edits (rot_plus -> 'rot+', waist_plus,
+    neck_plus, pelvis_plus), limb dicts, contact / ground; lift = (lead foot, rear foot) step arcs (m)."""
+    d = {"from": pose if isinstance(pose, T.Pose) else pose_at(pose)}
+    if ease:
+        d["ease"] = ease
+    for k, v in kw.items():
+        d[k.replace("_plus", "+")] = v
+    if lift:
+        for limb, h in (("LeftFoot", lift[0]), ("RightFoot", lift[1])):
+            if h:
+                d.setdefault(limb, {})["lift"] = h
+    return F(f, **d)
+
+
+def strike_beat(dtrack, f_imp: int, clip: str, limb: str, target, stance: T.Pose, start_off: int = 14,
+                windup_off: int = 7, recover_off: int = 8, guard_after: int = 10, extra: dict | None = None,
+                margin: float = 0.02, clear: float = 0.04, dz_bias: float = 0.0, step: float = 0.04,
+                contact_ref: str | None = None, dx: float = 0.0, arm_tol: float = -0.03, joint: str | None = None):
+    """One strike of a cinematic from an installed attack clip: a guard key at the beat's spot (lifted steps), the
+    clip's start, wind-up, contact (snap, the striking limb gripped onto the target) and recover poses, and a guard
+    after it. The whole beat is moved along +z so the limb meets the target (reach_dz). Returns (dz, keys)."""
+    e = extra or {}
+    cref = contact_ref or at(clip, "contact")
+    dz = reach_dz(cref, limb, target, dtrack, f_imp, margin, clear, arm_tol, dx, joint) + dz_bias
+    keys = [
+        pk(f_imp - start_off - 4, pose_at(stance, dz, dx), lift=(step, step), **e.get("guard", {})),
+        pk(f_imp - start_off, pose_at(at(clip, "start"), dz, dx), **e.get("start", {})),
+        pk(f_imp - windup_off, pose_at(at(clip, "windup"), dz, dx), **e.get("windup", {})),
+        pk(f_imp, pose_at(cref, dz, dx), "snap", **({limb: dict({"grip": target, "w": 1.0}, **e.get("limb", {}))} if not joint else {}), **e.get("contact", {})),
+        pk(f_imp + recover_off, pose_at(at(clip, "recover"), dz, dx), **e.get("recover", {})),
+    ]
+    if guard_after:
+        keys.append(pk(f_imp + recover_off + guard_after, pose_at(at(clip, "end"), dz, dx), **e.get("after", {})))
+    return dz, keys
+
+
+class Hits:
+    """Collects the per-impact data of a spec: impact frames, hits (VFX limb/height), strike checks and runtime grips."""
+
+    def __init__(self):
+        self.impacts, self.hits, self.strikes, self.grips = [], [], [], []
+
+    def add(self, f_imp: int, limb: str, height: str, target, grip: bool = True, before: float = 3, after: float = 2):
+        self.impacts.append(f_imp)
+        self.hits.append({"limb": limb, "height": height})
+        if target is not None:
+            self.strikes.append({"impact": len(self.hits), "frame": f_imp, "limb": limb, "target": target})
+            if grip and limb in T.LIMBS:
+                self.grips.append(hit_grip(limb, target, f_imp, before, after))
+
+
+def yawed(pose: T.Pose, deg: float) -> T.Pose:
+    """The whole pose turned `deg` about the vertical through its pelvis (Roblox convention: + = turns left): root
+    rotation, limb targets (feet re-planted around the pelvis), poles and foot rotations."""
+    p = resolved(pose)
+    q = T.eq([0, deg, 0])
+    R = T.qm(q)
+    piv = T.flip(p.pelvis)
+
+    def rot_pt(v):
+        return T.flip(R @ (T.flip(v) - piv) + piv)
+
+    def rot_dir(v):
+        return T.flip(R @ T.flip(v))
+
+    p.q["root"] = T.qn(T.qmul(q, p.q["root"]))
+    for limb in T.LIMBS:
+        e = p.limbs[limb]
+        e["at"] = rot_pt(e["at"])
+        e["pole"] = T.unit(rot_dir(e["pole"]))
+        e["rot"] = T.qn(T.qmul(q, e["rot"]))
+        e["shin"] = T.unit(rot_dir(e["shin"]))
+    return p
+
+
+def flight(f0: int, f_land: int, z_from: float, kind: str = "FaceUp", yaw_from: float = 0.0, yaw_end: float | None = None,
+           apex: float = 0.9, lift: float = 0.0):
+    """Defender keys from a big blow to lying on its spot (z = 0) in the endKind pose, landing exactly on the end pose
+    at f_land. FaceUp: rocked off its feet backwards in an arc; FaceDown: turned away from the attacker (yaw_end,
+    default 180 deg past yaw_from's side) and pitched face-first away from it. The pitch is applied in the heading frame
+    (the head always goes away from the attacker, whatever the spin). Pelvis `apex` m high at the top. Limbs are keyed
+    in the body's own frames (hands: chest, feet: pelvis), so they follow every turn."""
+    end = end_pose(kind)
+    span = max(f_land - f0, 6)
+
+    def limbs(hl, hr, fl, fr):
+        return {"LeftHand": {"local": hl, "lw": 1.0}, "RightHand": {"local": hr, "lw": 1.0},
+                "LeftFoot": {"local": fl, "lw": 1.0}, "RightFoot": {"local": fr, "lw": 1.0}}
+
+    if kind == "FaceDown":
+        y_end = yaw_end if yaw_end is not None else (-180.0 if yaw_from <= 0 else 180.0)
+        y1, y2 = yaw_from + (y_end - yaw_from) * 0.45, yaw_from + (y_end - yaw_from) * 0.85
+        z1, z2 = z_from * 0.7, z_from * 0.28
+        k1 = F(f0 + span * 0.3, **{"pelvis": [0.0, apex + lift, z1], "rot": [0, y1, 0], "rot+": [30, 0, 0], "waist": [-6, 0, 0], "neck": [8, 0, 0],
+                                    **limbs([-0.30, 0.28, 0.30], [0.30, 0.30, 0.28], [-0.13, -0.84, -0.12], [0.13, -0.80, -0.06]),
+                                    "contact": {"LeftFoot": 0.0, "RightFoot": 0.0}, "ground": 0.0})
+        k2 = F(f0 + span * 0.7, ease="in", **{"pelvis": [0.0, 0.5 + lift * 0.5, z2], "rot": [0, y2, 0], "rot+": [68, 0, 0], "waist": [-4, 0, 0], "neck": [16, 0, 0],
+                                              **limbs([-0.32, 0.22, 0.44], [0.32, 0.22, 0.44], [-0.14, -0.86, -0.18], [0.14, -0.84, -0.12])})
+    else:
+        y_end = yaw_end if yaw_end is not None else 0.0
+        z1, z2 = z_from * 0.7, z_from * 0.15
+        k1 = F(f0 + span * 0.3, **{"pelvis": [0.0, apex + lift, z1], "rot": [0, yaw_from + (y_end - yaw_from) * 0.4, 0], "rot+": [45, 0, 0], "waist": [6, 0, 0], "neck": [-10, 0, 0],
+                                    **limbs([-0.56, 0.30, 0.10], [0.58, 0.34, 0.06], [-0.14, -0.74, 0.34], [0.14, -0.70, 0.42]),
+                                    "contact": {"LeftFoot": 0.0, "RightFoot": 0.0}, "ground": 0.0})
+        k2 = F(f0 + span * 0.7, ease="in", **{"pelvis": [0.0, 0.46 + lift * 0.5, z2], "rot": [0, yaw_from + (y_end - yaw_from) * 0.85, 0], "rot+": [76, 0, 0], "neck": [-22, 0, 0],
+                                              **limbs([-0.58, 0.24, -0.04], [0.58, 0.26, -0.06], [-0.16, -0.80, 0.24], [0.16, -0.76, 0.30])})
+    k3 = F(f_land, ease="in", **{"from": end, "ground": 1.0})
+    return [k1, k2, k3]
+
+def chest_local(pose: T.Pose, limb: str) -> list:
+    """A hand's current target expressed in the pose's chest frame (twobody 'local': library axes, from the waist
+    joint), so it rides along when the torso bends or turns."""
+    J = T.torso_joints(pose)
+    Rc = J["_R"]["chest"]
+    rel = T.flip(pose.limbs[limb]["at"]) - T.flip(J["waist"])
+    return [float(x) for x in T.flip(Rc.T @ rel)]
+
+
+def guard_local(pose: T.Pose, dy: float = 0.0, dz: float = 0.0) -> dict:
+    """Both hands held where they are in the pose's chest frame (a guard that follows the torso)."""
+    out = {}
+    for limb in T.HANDS:
+        loc = chest_local(pose, limb)
+        out[limb] = {"local": [loc[0], loc[1] + dy, loc[2] + dz], "lw": 1.0}
+    return out
+
+def _mq(q) -> np.ndarray:
+    q = np.asarray(q, dtype=float)
+    return T.qn(np.array([q[0], -q[1], -q[2], q[3]]))
+
+
+def mirrored(pose: T.Pose) -> T.Pose:
+    """The pose mirrored left <-> right (a southpaw version of an orthodox pose): x negated, limbs swapped, rotations
+    reflected across the body's sagittal plane."""
+    p = resolved(pose)
+    out = p.copy()
+    out.pelvis = np.array([-p.pelvis[0], p.pelvis[1], p.pelvis[2]])
+    for slot in ("root", "waist", "neck"):
+        out.q[slot] = _mq(p.q[slot])
+    swap = {"LeftHand": "RightHand", "RightHand": "LeftHand", "LeftFoot": "RightFoot", "RightFoot": "LeftFoot"}
+    for limb, other in swap.items():
+        e = p.limbs[other]
+        n = out.limbs[limb]
+        n["at"] = np.array([-e["at"][0], e["at"][1], e["at"][2]])
+        n["pole"] = T.unit(np.array([-e["pole"][0], e["pole"][1], e["pole"][2]]))
+        n["rot"] = _mq(e["rot"])
+        n["shin"] = T.unit(np.array([-e["shin"][0], e["shin"][1], e["shin"][2]]))
+        n["grip"], n["w"], n["knee"], n["kw"] = None, 0.0, None, 0.0
+        n["local"], n["lw"], n["plocal"] = np.zeros(3), 0.0, None
+    out.contact = [p.contact[1], p.contact[0]]
+    return out
+
+
+def lowered(pose: T.Pose, dy: float) -> T.Pose:
+    """The pose with the body (not the feet) lowered by dy metres (knees bend)."""
+    return shifted(pose, [0.0, -abs(dy), 0.0])
+
+def raised(pose: T.Pose, dy: float, dz: float = 0.0) -> T.Pose:
+    """The whole pose (pelvis, hands and feet) moved up by dy (and forward by dz) metres: airborne."""
+    p = resolved(pose)
+    d = np.array([0.0, dy, dz])
+    p.pelvis = p.pelvis + d
+    for limb in T.LIMBS:
+        p.limbs[limb]["at"] = p.limbs[limb]["at"] + d
+    return p
+
+
+def ankle(side: int, off=(0, 0, 0)):
+    """The outside of an ankle (sweeps); side +1 = the owner's right."""
+    s = "R" if side > 0 else "L"
+    return (("knee" + s, "ankle" + s, 0.85), (0.04 * side + off[0], off[1], off[2]), "pelvis", _rt(_side(side) + "LowerLeg", 0.9 * side, -0.8, 0.0))
+
+
+def floating(f, h: float, z: float, pitch: float = 80.0, yaw: float = 0.0, roll: float = 0.0, ease=None, legs: float = 0.0):
+    """A defender key floating in the air on its back (pitched `pitch` deg back in the heading frame: head away from the
+    attacker), pelvis `h` m high at `z`; arms loose, legs a little bent (`legs` bends them more)."""
+    # pitched first, then turned about the vertical (heading frame): `yaw` turns the horizontal body across the line
+    d = {"pelvis": [0.0, h, z], "rot": [pitch, 0, roll], "rot+": [0, yaw, 0], "waist": [6, 0, 0], "neck": [-14, 0, 0],
+         "LeftHand": {"local": [-0.46, 0.28, 0.12], "lw": 1.0}, "RightHand": {"local": [0.48, 0.30, 0.10], "lw": 1.0},
+         "LeftFoot": {"local": [-0.14, -0.78 + legs, 0.22 + legs * 0.6], "lw": 1.0}, "RightFoot": {"local": [0.15, -0.74 + legs, 0.30 + legs * 0.6], "lw": 1.0},
+         "contact": {"LeftFoot": 0.0, "RightFoot": 0.0}, "ground": 0.0}
+    if ease:
+        d["ease"] = ease
+    return F(f, **d)
+
+def rotated(pose: T.Pose, deg, about=None) -> T.Pose:
+    """The whole pose turned by the Euler rotation `deg` [x, y, z] (degrees, heading frame; x+ = tips back, y+ = turns
+    left, z+ = tips left) about its pelvis (or the point `about`, own-LS metres): root rotation, limb targets, poles,
+    foot rotations. Flips, cartwheels and spins keep the limbs with the body."""
+    p = resolved(pose)
+    q = T.eq(list(deg))
+    R = T.qm(q)
+    piv = T.flip(p.pelvis if about is None else np.asarray(about, float))
+
+    def rot_pt(v):
+        return T.flip(R @ (T.flip(v) - piv) + piv)
+
+    def rot_dir(v):
+        return T.flip(R @ T.flip(v))
+
+    p.pelvis = rot_pt(p.pelvis)
+    p.q["root"] = T.qn(T.qmul(q, p.q["root"]))
+    for limb in T.LIMBS:
+        e = p.limbs[limb]
+        e["at"] = rot_pt(e["at"])
+        e["pole"] = T.unit(rot_dir(e["pole"]))
+        e["rot"] = T.qn(T.qmul(q, e["rot"]))
+        e["shin"] = T.unit(rot_dir(e["shin"]))
+    return p

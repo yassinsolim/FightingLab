@@ -112,8 +112,8 @@ def check_pair(spec, frames, PA, PD, JA, JD) -> dict:
         rep["selfA"].append(sa)
         rep["selfD"].append(sd)
         rep["selfWhere"].append(swa + "|" + swd)
-        rep["floorA"].append(T.lowest(JA[k]))
-        rep["floorD"].append(T.lowest(JD[k]))
+        rep["floorA"].append(min(JA[k][j][1] for j in JA[k] if not j.startswith("_") and j != "pelvis"))
+        rep["floorD"].append(min(JD[k][j][1] for j in JD[k] if not j.startswith("_") and j != "pelvis"))
         for who, J in (("A", JA[k]), ("D", JD[k])):
             for limb in T.LIMBS:
                 tw = T.limb_twist(J, limb)
@@ -135,6 +135,10 @@ def check_pair(spec, frames, PA, PD, JA, JD) -> dict:
     return rep
 
 
+JOINT_OF = {"LeftHand": "handL", "RightHand": "handR", "LeftFoot": "ankleL", "RightFoot": "ankleR", "LeftElbow": "elbowL",
+            "RightElbow": "elbowR", "LeftKnee": "kneeL", "RightKnee": "kneeR", "Head": "head"}
+
+
 def strike_gaps(spec, frames, JA, JD) -> list[dict]:
     """At every impact: the distance from the striking limb's tip to its target point on the defender (metres)."""
     out = []
@@ -144,8 +148,7 @@ def strike_gaps(spec, frames, JA, JD) -> list[dict]:
             continue
         k = frames.index(f)
         target = T.to_other(T.point(JD[k], g["target"][:3]))
-        s = T.SIDE[g["limb"]] if g["limb"] in T.SIDE else "R"
-        tip = JA[k]["hand" + s] if g["limb"] in T.HANDS else JA[k]["ankle" + s]
+        tip = JA[k][JOINT_OF.get(g["limb"], "handR")]
         out.append({"impact": g.get("impact"), "frame": f, "limb": g["limb"], "gapCm": round(float(np.linalg.norm(tip - target)) * 100, 1)})
     return out
 
@@ -190,14 +193,17 @@ def end_gap(PD_last, kind: str) -> float:
 def render(spec, frames, JA, JD, out: str, step: int = 10, views=("side", "threequarter"), size: int = 230, scale: float = 92):
     impacts = set(spec["impacts"])
     pick = sorted(set(list(range(0, len(frames), step)) + [frames.index(f) for f in impacts if f in frames] + [len(frames) - 1]))
-    cx = np.array([0, 0.85, T.DIST[0] * 0.5])
     rows = []
     for view in views:
         panels = []
         for k in pick:
             f = frames[k]
             hl = (255, 60, 60) if f in impacts else None
-            panels.append(T.draw_bodies([(T.joints_to_other(JD[k]), T.COL_D), (JA[k], T.COL_A)], view, size, scale, cx, f"{view[:5]} f{f}", hl))
+            jd = T.joints_to_other(JD[k])
+            # frame each panel on the pair (the action can leave the start spots, e.g. a throw behind the attacker)
+            mid = 0.5 * (np.asarray(JA[k]["pelvis"]) + np.asarray(jd["pelvis"]))
+            cx = np.array([mid[0] * 0.5, 0.85, min(max(mid[2], T.DIST[0] * 0.5 - 1.2), T.DIST[0] * 0.5 + 1.2)])
+            panels.append(T.draw_bodies([(jd, T.COL_D), (JA[k], T.COL_A)], view, size, scale, cx, f"{view[:5]} f{f}", hl))
         per_row = 11
         for i in range(0, len(panels), per_row):
             rows.append(panels[i:i + per_row])
