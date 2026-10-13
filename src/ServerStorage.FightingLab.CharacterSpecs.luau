@@ -8,7 +8,7 @@ return {
 		Goran = "d8d917b0d8002f2cf20fbd59568b6ec270296d7e",
 		Lumi = "98819103b377345576dc1b67debdc1e61aed6898",
 		Rhys = "f870d9638b1b7b9051042ffa5e0918e555060c4e",
-		Nia = "b30dcdc007b5f2942bae39cb49886563e3827901",
+		Nia = "df6f01993a3c757eebfe6cd7f40354d7cd07b69a",
 	},
 	specs = {
 		Kael = {
@@ -1177,7 +1177,7 @@ return {
 				},
 			},
 			mood = 14618207727,
-			look = "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with warm gold brush embroidery and laced gold bracers, a gold armlet on her bare left upper arm, deep-purple draped waist wrap, dark plum tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
+			look = "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with warm gold brush embroidery and laced gold bracers, gold armlets on both bare upper arms, deep-purple draped waist wrap, dark plum tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
 			bodyColors = {
 				Head = { 236, 214, 200 },
 				Torso = { 236, 214, 200 },
@@ -1215,12 +1215,21 @@ return {
 					offset = { 0.075, 0.29, -0.004 },
 					rotation = { 0, 0, -13 },
 				},
+				{
+					assetId = 73260183475840,
+					name = "RightArmlet",
+					target = "RightUpperArm",
+					role = "armlet",
+					scale = { 0.5, 0.3769, 0.5093 },
+					offset = { -0.075, 0.29, -0.004 },
+					rotation = { 0, 180, -13 },
+				},
 			},
 			hideHands = false,
 			shoeStyle = "low",
 			handScale = { 1.0, 1.13, 1.0 },
 			signature = {
-				label = "gold armlet on her bare left upper arm",
+				label = "gold armlets on both bare upper arms",
 				assetIds = { 73260183475840 },
 			},
 		},

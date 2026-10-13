@@ -175,7 +175,7 @@
     }
   ],
   "mood": 14618207727,
-  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with warm gold brush embroidery and laced gold bracers, a gold armlet on her bare left upper arm, deep-purple draped waist wrap, dark plum tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
+  "look": "Adult kung-fu-inspired flow fighter with fair realistic face and a black chin-length bob; black cropped mandarin-collar top with warm gold brush embroidery and laced gold bracers, gold armlets on both bare upper arms, deep-purple draped waist wrap, dark plum tapered training pants with stitched panels, soft dark slip-on shoes, open hands.",
   "bodyColors": {
     "Head": [
       236,
@@ -264,6 +264,27 @@
         0,
         -13
       ]
+    },
+    {
+      "assetId": 73260183475840,
+      "name": "RightArmlet",
+      "target": "RightUpperArm",
+      "role": "armlet",
+      "scale": [
+        0.5,
+        0.3769,
+        0.5093
+      ],
+      "offset": [
+        -0.075,
+        0.29,
+        -0.004
+      ],
+      "rotation": [
+        0,
+        180,
+        -13
+      ]
     }
   ],
   "hideHands": false,
@@ -274,7 +295,7 @@
     1.0
   ],
   "signature": {
-    "label": "gold armlet on her bare left upper arm",
+    "label": "gold armlets on both bare upper arms",
     "assetIds": [
       73260183475840
     ]
