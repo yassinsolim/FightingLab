@@ -55,6 +55,9 @@ clipsheet.REF_BODY = os.path.join(OV6, "research", "motion", "raw", "accad", "Ma
 BODY = clipsheet.reference_body()
 LEG, ARM, STAND = BODY.L, BODY.A, BODY.stand
 CORE_DIR = os.environ.get("FIGHTINGLAB_CLIPS") or os.path.join(REPO, "src")
+# Reference clips the specs sample but the game does not ship (e.g. a round-5 clip a round-6 clip re-times).
+REF_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refclips")
+CLIP_DIRS = [CORE_DIR, REF_DIR]
 LIMB_BASE = {"LeftHand": 15, "RightHand": 25, "LeftFoot": 35, "RightFoot": 45}
 HANDS = ("LeftHand", "RightHand")
 FEET = ("LeftFoot", "RightFoot")
@@ -281,7 +284,7 @@ def full_joints(p: Pose) -> dict:
 # base poses: Core clips, styled stances
 
 def core_channels(name: str):
-    return keyed.load_core_clip(name, [CORE_DIR])
+    return keyed.load_core_clip(name, CLIP_DIRS)
 
 
 def core_frame(ref: str) -> np.ndarray:
@@ -358,7 +361,7 @@ def stance_clip_name(style: str) -> str:
     import lineup
     name = "Stance_" + lineup.STYLE_NAMES[style]
     try:
-        keyed.load_core_clip(name, [CORE_DIR])
+        keyed.load_core_clip(name, CLIP_DIRS)
         return name
     except FileNotFoundError:
         return "Stance"

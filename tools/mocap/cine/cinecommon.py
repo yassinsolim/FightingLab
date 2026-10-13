@@ -272,7 +272,7 @@ def clip_info(name: str):
     hit = _CLIP_CACHE.get(name)
     if hit:
         return hit
-    ch, raw = keyed.load_core_clip(name, [T.CORE_DIR])
+    ch, raw = keyed.load_core_clip(name, T.CLIP_DIRS)
     fps = float(raw["fps"])
     n = ch.shape[1]
     dur = n / fps if raw.get("loop") else (n - 1) / fps

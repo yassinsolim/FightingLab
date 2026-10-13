@@ -507,20 +507,9 @@ def air_tumble(ctx):
     axis = np.asarray(J["head"]) - np.asarray(J["pelvis"])
     return [C.pk(f, C.rotated_axis(base, axis, -90.0 * i)) for i, f in enumerate((0, 6, 12, 18, 24))] + [C.pk(30, P("Juggle", 0.6))], 30
 
-def lumi_snapkick_base(ctx):
-    """3 (round 6): a fast lead front snap kick thrown off a small hop (both feet off the floor over frames 3-9: low
-    crush), landing bouncing on the supporting foot. Keyed on Rhys's front snap (not on this clip itself: a rebuild
-    must not compound the hop)."""
-    return standard(ctx, "Kick_Rhys_FrontSnap", lead=2, a=0.1, edit=air(0.12, 6, 7))
-
-
 @clip("Lumi", "SnapKick", "Kicks")
 def lumi_snapkick(ctx):
-    """3 (round 6): a fast lead front snap kick off a small hop (frames 3-9 airborne, low crush), landing on the support
-    foot; its last active frame is the crescent follow-up's first pose."""
-    keys = lumi_snapkick_base(ctx)
-    # 3,4 (SnapCrescent) starts on the snap kick's last active frame: that frame shows the crescent clip's first pose.
-    end_active = ctx.startup + ctx.active
-    keys = [k for k in keys if not (ctx.first < float(k["f"]) <= end_active + 1)]
-    keys.append(C.pk(end_active, C.pose_at(C.at("Kick_Lumi_SnapCrescent", "start"))))
-    return keys
+    """3 (round 6): Lumi's own fast lead front snap kick (the round-5 clip, refclips/Kick_Lumi_SnapKickR5) thrown off a
+    small hop: both feet off the floor over frames 3-9 (low crush), landing on the support foot by the contact; the
+    same timing marks, so its last active frame is still the crescent follow-up's first pose."""
+    return standard(ctx, "Kick_Lumi_SnapKickR5", lead=0, a="start", edit=air(0.08, 6, 7))

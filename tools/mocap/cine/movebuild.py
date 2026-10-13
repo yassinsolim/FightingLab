@@ -163,9 +163,12 @@ def standard(ctx: Ctx, src: str, start=None, lead: float = 0.0, a="start", b="en
     keys += s1 if lead > 0 else s1[1:]
     keys[-1]["ease"] = "snap"
     keys += seg(src, c, r, ctx.first, ctx.rec, every, edit)[1:]
+    # The source's recovery over the whole recovery (compressing it into fewer frames sped the retraction up into
+    # pops); `tail` frames before the end, the source hands over to the displayed stance on the last frame.
     fin = ctx.total - tail
-    if fin > ctx.rec + 1:
-        keys += seg(src, r, b, ctx.rec, fin, max(every, 3.0), edit)[1:]
+    if ctx.total > ctx.rec + 1:
+        rest = seg(src, r, b, ctx.rec, ctx.total, max(every, 3.0), edit)[1:]
+        keys += [k for k in rest if float(k["f"]) <= fin] or rest[:-1]
     keys.append(C.pk(ctx.total, ctx.stance if end is None else end))
     return keys
 
