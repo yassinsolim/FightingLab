@@ -166,16 +166,21 @@ local function clear(scroll: ScrollingFrame)
 	end
 end
 
-local function header(scroll: ScrollingFrame, name: string, title: string, note: string, order: number): Frame
+-- Section headers, the jump button and combo rows are not Frames: the lobby counts the Frame rows of the list as the
+-- fighter's moves (LobbyUI_Test), so only move rows are Frames.
+local function header(scroll: ScrollingFrame, name: string, title: string, note: string, order: number): TextLabel
 	local T = UIHelpers.Theme
 	local h = if note ~= "" then (if #note > 120 then 70 else 52) else 36
-	local frame: Frame = UIHelpers.make("Frame", { Name = name, LayoutOrder = order, Size = UDim2.new(1, -12, 0, h), BackgroundTransparency = 1, Parent = scroll })
-	UIHelpers.make("Frame", { Name = "Rule", BackgroundColor3 = T.ember, BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 0.6, Parent = frame })
-	UIHelpers.text(frame, "Title", title, T.title, 20, T.text, { Position = UDim2.fromOffset(2, 2), Size = UDim2.new(1, -4, 0, 26) })
+	local label: TextLabel = UIHelpers.make("TextLabel", {
+		Name = name, LayoutOrder = order, Size = UDim2.new(1, -12, 0, h), BackgroundTransparency = 1, BorderSizePixel = 0,
+		Text = "", Parent = scroll,
+	})
+	UIHelpers.make("Frame", { Name = "Rule", BackgroundColor3 = T.ember, BorderSizePixel = 0, Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 1), BackgroundTransparency = 0.6, Parent = label })
+	UIHelpers.text(label, "Title", title, T.title, 20, T.text, { Position = UDim2.fromOffset(2, 2), Size = UDim2.new(1, -4, 0, 26) })
 	if note ~= "" then
-		UIHelpers.text(frame, "Note", note, T.medium, 14, T.muted, { Position = UDim2.fromOffset(2, 34), Size = UDim2.new(1, -4, 0, h - 34), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+		UIHelpers.text(label, "Note", note, T.medium, 14, T.muted, { Position = UDim2.fromOffset(2, 34), Size = UDim2.new(1, -4, 0, h - 34), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 	end
-	return frame
+	return label
 end
 
 local function chip(parent: Instance, name: string, value: string, color: Color3, filled: boolean, order: number)
@@ -222,9 +227,9 @@ end
 local function comboRow(scroll: ScrollingFrame, combo: any, order: number, stripe: number)
 	local T = UIHelpers.Theme
 	local make, text = UIHelpers.make, UIHelpers.text
-	local row = make("Frame", {
+	local row = make("ImageLabel", {
 		Name = "Combo_" .. string.gsub(combo.name, "%W", ""), LayoutOrder = order, Size = UDim2.new(1, -12, 0, 66), BackgroundColor3 = T.panel2,
-		BackgroundTransparency = if stripe % 2 == 1 then 0.25 else 0.55, BorderSizePixel = 0, Parent = scroll,
+		BackgroundTransparency = if stripe % 2 == 1 then 0.25 else 0.55, BorderSizePixel = 0, Image = "", Parent = scroll,
 	})
 	UIHelpers.corner(row, 4)
 	local isUlt = combo.kind == "ultimate"
@@ -238,7 +243,8 @@ local function comboRow(scroll: ScrollingFrame, combo: any, order: number, strip
 	if combo.surge then chip(titleBox, "Surge", "IN SURGE", T.gold, false, 4) end
 	local notation = make("Frame", { Name = "Inputs", BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 34), Size = UDim2.new(0.78, -20, 0, 26), Parent = row })
 	UIHelpers.list(notation, true, 0, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	UIHelpers.notationRow(notation, combo.notation, { height = 24, name = "Notation" })
+	-- The counter-hit opener has its own chip; "CH " would otherwise merge with the first direction ("CHF").
+	UIHelpers.notationRow(notation, (string.gsub(combo.notation, "^CH%s+", "")), { height = 24, name = "Notation" })
 	text(row, "Damage", tostring(combo.damage) .. " DMG", T.number, 22, if isUlt then T.gold else T.text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 8), Size = UDim2.fromOffset(150, 26), TextXAlignment = Enum.TextXAlignment.Right })
 	text(row, "Difficulty", "DIFFICULTY " .. tostring(combo.difficulty) .. "/5", T.heavy, 12, T.muted, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 38), Size = UDim2.fromOffset(150, 18), TextXAlignment = Enum.TextXAlignment.Right })
 end
@@ -272,9 +278,7 @@ function M.fillList(scroll: ScrollingFrame, def: any, _fonts: any?, opts: { [str
 	if #combos > 0 then
 		-- A jump to the COMBOS section for mouse and touch (gamepad and keys scroll there).
 		order += 1
-		local bar = UIHelpers.make("Frame", { Name = "Jump", LayoutOrder = order, Size = UDim2.new(1, -12, 0, 30), BackgroundTransparency = 1, Parent = scroll })
-		UIHelpers.list(bar, true, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-		local button = UIHelpers.make("TextButton", { Name = "ToCombos", Text = "COMBOS ↓", FontFace = T.heavy, TextSize = 14, TextColor3 = T.ink, BackgroundColor3 = T.gold, BorderSizePixel = 0, AutoButtonColor = true, Size = UDim2.fromOffset(120, 26), Parent = bar })
+		local button = UIHelpers.make("TextButton", { Name = "Jump", LayoutOrder = order, Text = "COMBOS ↓", FontFace = T.heavy, TextSize = 14, TextColor3 = T.ink, BackgroundColor3 = T.gold, BorderSizePixel = 0, AutoButtonColor = true, Size = UDim2.fromOffset(120, 26), Parent = scroll })
 		UIHelpers.corner(button, 4)
 		button.Activated:Connect(function()
 			local target = scroll:FindFirstChild("Group_Combos")

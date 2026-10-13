@@ -211,7 +211,7 @@ local function packEvent(e: { [string]: any }): { any }
 	return {
 		e.kind, e.attacker, e.target, opt(e.move), e.damage or 0, e.advantage or 0, e.frame, opt(e.point), e.combo or 0,
 		e.air == true, e.counter == true, e.launch == true, e.knockdown == true, opt(e.tier), opt(e.archetype), opt(e.height), opt(e.limb),
-		e.evaded == true, e.tumble == true,
+		e.evaded == true, e.tumble == true, e.punish == true,
 	}
 end
 
@@ -225,6 +225,7 @@ local function unpackEvent(t: unknown): { [string]: any }?
 		tier = unopt(a[14]), archetype = unopt(a[15]), height = unopt(a[16]), limb = unopt(a[17]),
 		evaded = if a[18] == true then true else nil,
 		tumble = if a[19] == true then true else nil,
+		punish = if a[20] == true then true else nil,
 	}
 end
 
@@ -456,7 +457,7 @@ end
 local function writeEvent(w: Writer, e: { [string]: any })
 	local flags = (if e.air == true then 1 else 0) + (if e.counter == true then 2 else 0) + (if e.launch == true then 4 else 0)
 		+ (if e.knockdown == true then 8 else 0) + (if typeof(e.point) == "Vector3" then 16 else 0) + (if e.evaded == true then 32 else 0)
-		+ (if e.tumble == true then 64 else 0)
+		+ (if e.tumble == true then 64 else 0) + (if e.punish == true then 128 else 0)
 	wu8(w, flags)
 	wstr(w, e.kind); wu8(w, num(e.attacker, 1)); wu8(w, num(e.target, 2)); wstr(w, e.move); wf32(w, num(e.damage, 0))
 	wi16(w, num(e.advantage, 0)); wu32(w, num(e.frame, 0)); wu8(w, num(e.combo, 0))
@@ -477,6 +478,7 @@ local function readEvent(r: Reader): { [string]: any }
 	e.knockdown = if bit32.band(flags, 8) ~= 0 then true else nil
 	e.evaded = if bit32.band(flags, 32) ~= 0 then true else nil
 	e.tumble = if bit32.band(flags, 64) ~= 0 then true else nil
+	e.punish = if bit32.band(flags, 128) ~= 0 then true else nil
 	return e
 end
 

@@ -43,7 +43,8 @@ Round 6 (codec v3, `NetProtocol` CODEC_VERSION 3; absent fields read as false / 
 table (`archetype = "ultimate"`). Events: `Surge` (attacker = target = the fighter entering Surge), `UltStart` (the
 Ultimate's first frame), `UltHit` (`combo` = impact index 1..n, `knockdown = true` on the last), `KO` with `move =
 "Ultimate"` at the end of a lethal cinematic, `Catch` (Goran's Bear Trap; attacker = Goran), `Hit.tumble = true`
-(event flag bit 64). Debug attributes: `LearnerSurge`, `LearnerUltUsed`, `LearnerStance` (and `Trainer*`).
+(event flag bit 64), `Hit.punish = true` (event flag bit 128: a clean ground hit on an opponent recovering from its
+own move or staggered after a parry, for a HUD "PUNISH" call-out). Debug attributes: `LearnerSurge`, `LearnerUltUsed`, `LearnerStance` (and `Trainer*`).
 
 Event kinds are unchanged: `Hit` (`counter`, `launch`, `knockdown`, `air` flags), `Block` (`height` Low = crouch
 block), `Whiff`, `KO`, `Parry`, `Crush`, `Armor`, `ThrowStart`, `ThrowHit`, `ThrowBreak`.

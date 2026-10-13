@@ -273,6 +273,43 @@ return function(t)
 		expect.equal(hit.tumble, nil, "no second tumble in one juggle")
 	end)
 
+	test("hits on a recovering or staggered opponent are flagged punish (HUD call-out); counter hits and plain hits are not", function()
+		-- Whiffed slow move: hit it in its recovery.
+		local m = practice("Kael", "Goran", 3.0)
+		local a, d = m.fighters[1], m.fighters[2]
+		local slow = Roster.getMove("Goran", "Haymaker")
+		d.move = "Haymaker"; d.moveName = slow.name; d.state = "Recovery"; d.moveFrame = slow.startup + slow.active + 2; d.hasHit = true
+		local jab = Roster.getMove("Kael", "Jab")
+		a.move = "Jab"; a.moveName = jab.name; a.moveFrame = jab.startup; a.state = "Startup"
+		local hit = first(steps(m, 3), "Hit")
+		assert(hit, "the jab lands on the recovering opponent")
+		expect.equal(hit.punish, true, "recovery hit is a punish")
+		expect.equal(hit.counter, nil)
+		-- Staggered after a parry.
+		m = practice("Kael", "Goran", 3.0)
+		a, d = m.fighters[1], m.fighters[2]
+		d.state = "Stagger"; d.stun = 20; d.stagger = 20
+		a.move = "Jab"; a.moveName = jab.name; a.moveFrame = jab.startup; a.state = "Startup"
+		hit = first(steps(m, 3), "Hit")
+		assert(hit, "the jab lands on the staggered opponent")
+		expect.equal(hit.punish, true, "stagger hit is a punish")
+		-- A counter hit in the opponent's startup and a plain hit on an idle opponent are not punishes.
+		m = practice("Kael", "Goran", 3.0)
+		a, d = m.fighters[1], m.fighters[2]
+		d.move = "Haymaker"; d.moveName = slow.name; d.state = "Startup"; d.moveFrame = 2
+		a.move = "Jab"; a.moveName = jab.name; a.moveFrame = jab.startup; a.state = "Startup"
+		hit = first(steps(m, 3), "Hit")
+		assert(hit, "counter hit lands")
+		expect.equal(hit.counter, true)
+		expect.equal(hit.punish, nil, "a counter hit is not a punish")
+		m = practice("Kael", "Goran", 3.0)
+		a = m.fighters[1]
+		a.move = "Jab"; a.moveName = jab.name; a.moveFrame = jab.startup; a.state = "Startup"
+		hit = first(steps(m, 3), "Hit")
+		assert(hit, "plain hit lands")
+		expect.equal(hit.punish, nil, "a plain hit is not a punish")
+	end)
+
 	test("delayable Coil whirl follow-ups and ground combo scaling", function()
 		local whirl = Roster.getMove("Nia", "CoilWhirl")
 		local second = Roster.getMove("Nia", "CoilWhirl2")

@@ -194,7 +194,9 @@ convention only.
 **Snapshot (codec v3, additive).** Fighter flag bit 32 = `surge`, bit 64 = `ultUsed` (bit 128 = `tumble`). During the
 cinematic both fighters carry `throw = { archetype = "ultimate", move = "Ultimate", role = "Attacker" | "Defender",
 frame = <cinematic frame>, duration, impactFrame = <first impact> }`. Client frames (RenderBuffer / MatchRunner
-entries) expose `surge`, `ultUsed`, state `"Ultimate"` and that table; absent fields read as false / nil.
+entries) expose `surge`, `ultUsed`, state `"Ultimate"` and that table; absent fields read as false / nil. Hit events
+may carry `punish = true` (event flag bit 128): the hit landed on an opponent recovering from its own move or
+staggered after a parry (integrator request, for a HUD call-out).
 
 **Input.** `Controls.fight.keyboard.ultimate = "L"` (sends the Ultimate button), U+I pressed together (within 1
 frame) also works; `Controls.fight.gamepad.ultimate = "ButtonR2"`; `Controls.notation.ultimate = "1+2"`; action text
