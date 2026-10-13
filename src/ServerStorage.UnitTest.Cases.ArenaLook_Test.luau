@@ -13,6 +13,7 @@ local StageController = require(Client:WaitForChild("StageController"))
 local WorldModules = ServerStorage:WaitForChild("FightingLab"):WaitForChild("World")
 local Layout = require(WorldModules:WaitForChild("Layout"))
 local FightSets = require(WorldModules:WaitForChild("FightSets"))
+local ArenaKit = require(WorldModules:WaitForChild("ArenaKit"))
 
 local function arenaModel(id: string): Model?
 	local w = workspace:FindFirstChild("FightingLabWorld")
@@ -192,5 +193,34 @@ return function(t)
 		for _, child in workspace:GetChildren() do
 			expect.falsy(string.sub(child.Name, 1, 20) == "FightingLabFightSet_", "no set left in the Workspace on the server")
 		end
+	end)
+	t.test("stair name mats: one word per line at a fixed size that fits, never a word split across lines", function()
+		expect.equal(table.concat(ArenaKit.nameLines("Harbor Dusk"), "|"), "HARBOR|DUSK")
+		expect.equal(table.concat(ArenaKit.nameLines("Summit Observatory"), "|"), "SUMMIT|OBSERVATORY")
+		expect.equal(table.concat(ArenaKit.nameLines("Plaza"), "|"), "PLAZA")
+		local mats = 0
+		for _, def in Layout.ARENAS do
+			local model = arenaModel("Arena_" .. def.stageId)
+			local gate = model and model:FindFirstChild("Gate_" .. def.stageId)
+			local mat = gate and gate:FindFirstChild("NameMat")
+			-- (the rooftop names itself on its podium signs instead of a mat)
+			if not mat or not mat:IsA("BasePart") then continue end
+			local label = mat:FindFirstChildWhichIsA("SurfaceGui")
+			local text = label and label:FindFirstChild("Text") :: TextLabel?
+			expect.truthy(text ~= nil, def.stageId .. " name mat lettering")
+			if not text then continue end
+			mats += 1
+			expect.falsy(text.TextScaled, def.stageId .. ": fixed size (TextScaled splits words)")
+			expect.falsy(text.TextWrapped, def.stageId .. ": no wrapping")
+			local lines = ArenaKit.nameLines(def.displayName)
+			expect.equal(text.Text, table.concat(lines, "\n"))
+			-- the longest line fits the mat's lettering box at that size (0.78 em per capital)
+			local longest = 0
+			for _, l in lines do longest = math.max(longest, #l) end
+			local boxW = math.max(mat.Size.X, mat.Size.Z) * ArenaKit.NAME_PPS * 0.8
+			expect.truthy(text.TextSize * 0.78 * longest <= boxW + 0.5, def.stageId .. " fits")
+			expect.truthy(text.TextSize >= 18, def.stageId .. " stays readable (" .. text.TextSize .. " px)")
+		end
+		expect.truthy(mats >= 4, "the stair name mats were found (" .. mats .. ")")
 	end)
 end

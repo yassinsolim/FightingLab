@@ -607,6 +607,23 @@ function ArenaKit.contractPieces(model: Model, def: ArenaDef)
 	ArenaKit.arrival(model, def)
 end
 
+ArenaKit.NAME_PPS = 32 -- name mat lettering resolution (pixels per stud)
+
+-- The arena name for a mat or sign split into lines (the first word, then the rest), upper case.
+function ArenaKit.nameLines(displayName: string): { string }
+	local name = string.upper(displayName)
+	local first, rest = string.match(name, "^(%S+)%s+(.+)$")
+	return if first and rest then { first, rest } else { name }
+end
+
+-- Largest whole text size at which `lines` (GothamBlack capitals, about 0.78 em wide each, 1.12 em line height) fit
+-- a box of boxW x boxH pixels without wrapping.
+function ArenaKit.nameTextSize(lines: { string }, boxW: number, boxH: number): number
+	local longest = 1
+	for _, l in lines do longest = math.max(longest, #l) end
+	return math.max(8, math.floor(math.min(boxH / (#lines * 1.12), boxW / (longest * 0.78))))
+end
+
 -- Name mat at the stair foot (model Gate_<StageId>): a themed inlay centred on the stair, lettered with the arena
 -- name so it reads for someone walking up from the plaza. Flush with the floor, so it never blocks a walkway or a
 -- view, and it stays between the two pads.
@@ -623,15 +640,18 @@ function ArenaKit.gate(model: Model, def: ArenaDef, material: Enum.Material, col
 	for _, s in { -1, 1 } do
 		Kit.glow(g, cf * CFrame.new(s * (depth / 2 - 0.25), 0.155, 0), Vector3.new(0.16, 0.02, width - 0.6), def.accent, { Name = "NameMatTrim", Transparency = 0.15 })
 	end
-	Kit.label(mat, Enum.NormalId.Top, string.upper(def.displayName), {
+	-- One word per line at a fixed size that fits the mat (TextScaled wraps inside a word: "HARBO / R DUSK").
+	local lines = ArenaKit.nameLines(def.displayName)
+	Kit.label(mat, Enum.NormalId.Top, table.concat(lines, "\n"), {
 		font = Enum.Font.GothamBlack,
 		color = textColor or Color3.new(1, 1, 1),
 		stroke = Kit.shade(def.accent, 0.45),
 		strokeTransparency = 0.25,
-		pps = 24,
-		padding = 0.14,
+		pps = ArenaKit.NAME_PPS,
+		padding = 0.1,
 		light = 0.35,
 		brightness = 1.3,
+		textSize = ArenaKit.nameTextSize(lines, width * ArenaKit.NAME_PPS * 0.8, depth * ArenaKit.NAME_PPS * 0.8),
 	})
 	return g
 end
