@@ -12,6 +12,9 @@ local Roster = require(script.Parent.Roster)
 local Sim = require(script.Parent.CombatSim)
 
 local AI = {}
+-- Counters for tools and tests (CPU vs CPU statistics); never read by the AI itself.
+AI.stats = { routesStarted = 0, routesDone = 0, routesDropped = 0, routesNoLaunch = 0, ultPunish = 0, ultEnder = 0, ultReversal = 0, ultRoute = 0, ultRead = 0, stanceCancels = 0, signatureReads = 0 }
+function AI.resetStats() for k in AI.stats do AI.stats[k] = 0 end end
 
 export type Params = {
 	reactionDelay: number, reactionJitter: number, decisionMin: number, decisionMax: number,
@@ -27,6 +30,10 @@ export type Params = {
 	-- Patience: neutral frames without an attack or a deliberate movement before the CPU acts whatever its reads say
 	-- (no read may keep it passive); in range it attacks after `patience * 1.6` frames without attacking.
 	patience: number,
+	-- Round 6: how often the fighter's 3+4 signature (stance / catch) is used and how well stance follow-ups are
+	-- chosen (`signature`), the chance to play a listed combo route after a launcher (`routeSkill`, Roster combos),
+	-- and the chance to take an Ultimate opportunity (punish, combo ender) when it is ready (`ultimateUse`).
+	signature: number, routeSkill: number, ultimateUse: number,
 	-- Legacy names (tests/tools): blockChance = guardDiscipline, lowBlockChance = lowReact, punishChance = blockPunish,
 	-- throwBreakChance = throwBreak, stringChance = stringContinue, sidestepChance = stepChance.
 	blockChance: number, lowBlockChance: number, punishChance: number, throwBreakChance: number, stringChance: number,
@@ -47,6 +54,9 @@ local function params(t: { [string]: any }): Params
 	t.turnScale = t.turnScale or 1
 	t.crowdJab = t.crowdJab or 0
 	t.patience = t.patience or 120
+	t.signature = t.signature or 0
+	t.routeSkill = t.routeSkill or 0
+	t.ultimateUse = t.ultimateUse or 0
 	return (t :: any) :: Params
 end
 
@@ -57,21 +67,24 @@ local PARAMS: { [string]: Params } = {
 		throwBreak = 0.5, throwRead = 0.58, stringContinue = 0.45, hitConfirm = false, noise = 0.45,
 		attackCadence = 90, attackCadenceJitter = 50, aggression = 0.4, stepGap = 900, stepChance = 0.03,
 		backdashChance = 0.03, dashIn = 0.1, meaty = 0.05, meatyError = 8, getupRoll = 0.05, turnTake = 0.3, pressure = 0.3, readSkill = 0.15, holdGuard = 0.25,
-		throwChance = 0.05, lowChance = 0.08, launcherChance = 0.01, crowdJab = 1, patience = 150 }),
+		throwChance = 0.05, lowChance = 0.08, launcherChance = 0.01, crowdJab = 1, patience = 150,
+		signature = 0.25, routeSkill = 0, ultimateUse = 0.03 }),
 	Normal = params({ reactionDelay = 22, reactionJitter = 4, decisionMin = 16, decisionMax = 34,
 		guardDiscipline = 0.7, lowReact = 0.55, lowRead = 0.12, duckHighs = 0.1, duckThrows = 0.05,
 		blockPunish = 0.5, whiffPunish = 0.4, punishLauncher = true, juggleHits = 2,
 		throwBreak = 0.55, throwRead = 0.6, stringContinue = 0.6, hitConfirm = false, noise = 0.15,
 		attackCadence = 42, attackCadenceJitter = 34, aggression = 0.6, stepGap = 420, stepChance = 0.06,
 		backdashChance = 0.06, dashIn = 0.25, meaty = 0.3, meatyError = 4, getupRoll = 0.2, turnTake = 0.4, pressure = 0.45, readSkill = 0.55, holdGuard = 0.9,
-		throwChance = 0.08, lowChance = 0.1, launcherChance = 0.02, patience = 110 }),
+		throwChance = 0.08, lowChance = 0.1, launcherChance = 0.02, patience = 110,
+		signature = 0.6, routeSkill = 0.45, ultimateUse = 0.6 }),
 	Hard = params({ reactionDelay = 14, reactionJitter = 2, decisionMin = 12, decisionMax = 26,
 		guardDiscipline = 0.9, lowReact = 0.85, lowRead = 0.22, duckHighs = 0.3, duckThrows = 0.2,
 		blockPunish = 0.85, whiffPunish = 0.7, punishLauncher = true, juggleHits = 3,
 		throwBreak = 0.75, throwRead = 0.8, stringContinue = 0.55, hitConfirm = true, noise = 0.06,
 		attackCadence = 28, attackCadenceJitter = 26, aggression = 0.7, stepGap = 270, stepChance = 0.08,
 		backdashChance = 0.08, dashIn = 0.35, meaty = 0.5, meatyError = 2, getupRoll = 0.35, turnTake = 0.55, pressure = 0.55, readSkill = 0.85, holdGuard = 1,
-		throwChance = 0.1, lowChance = 0.12, launcherChance = 0.03, patience = 90 }),
+		throwChance = 0.1, lowChance = 0.12, launcherChance = 0.03, patience = 90,
+		signature = 0.85, routeSkill = 0.95, ultimateUse = 0.9 }),
 }
 
 function AI.params(level: string?): Params
@@ -172,6 +185,7 @@ local function snapshotOf(m: Sim.Match, index: number, f: Sim.Fighter, frame: nu
 		state = f.state, move = f.move, moveFrame = f.moveFrame, moveStart = moveStartOf(m, index, f),
 		pos = f.pos, health = f.health, crouched = f.crouched, hasHit = f.hasHit, lastDefendedMove = f.lastDefendedMove,
 		stepFrame = f.stepFrame, guard = f.guard, velocityY = f.velocityY, stun = f.stun, frame = frame,
+		stance = f.stance, stanceFrame = f.stanceFrame,
 	}
 end
 
@@ -232,6 +246,77 @@ end
 local function flatDistance(a: Sim.Fighter, b: Sim.Fighter): number
 	local d = b.pos - a.pos
 	return Vector3.new(d.X, 0, d.Z).Magnitude
+end
+
+-- Round 6 knowledge: combo routes, signatures, the Ultimate -------------------------------------------------------
+
+-- The move a player gets for a notation from neutral (or from the stance the notation names): "df+2", "PKT+2", "3+4".
+local function moveByNotation(character: Roster.CharacterDef, notation: string): string?
+	if notation == "1+2" then return if character.moves.Ultimate then "Ultimate" else nil end
+	for _, key in character.moveOrder do
+		local def = character.moves[key]
+		if def.chainFrom == nil and def.notation == notation then return key end
+	end
+	return nil
+end
+
+export type Route = { combo: Roster.ComboDef, keys: { string }, opener: string, launchIndex: number }
+-- A fighter's listed combos (Roster CharacterDef.combos) with the move each press gives (a plain button right after a
+-- move is its string follow-up when pressed inside the chain window) and the step that launches.
+local routeCache: { [any]: { Route } } = {}
+local function routesOf(character: Roster.CharacterDef): { Route }
+	local cached = routeCache[character]
+	if cached then return cached end
+	local list: { Route } = {}
+	for _, combo in character.combos or {} do
+		local keys: { string } = {}
+		local prev: string? = nil
+		local ok = true
+		for k, step in combo.steps do
+			local key: string? = nil
+			if prev and not string.find(step.input, "+", 1, true) then
+				local pdef = character.moves[prev]
+				for _, fk in followersOf(character, prev) do
+					local fdef = character.moves[fk]
+					if string.match(fdef.notation, "([^,]+)$") == step.input and step.wait - 1 <= pdef.startup + pdef.active + Sim.ChainLate + (fdef.delay or 0) then key = fk end
+				end
+			end
+			key = key or moveByNotation(character, step.input)
+			if key == nil then ok = false break end
+			keys[k] = key
+			prev = key
+		end
+		local launchIndex = 0
+		if ok then
+			for k, key in keys do
+				local def = character.moves[key]
+				if def.onHit == "LAUNCH" or (combo.counter and def.onCounter == "LAUNCH") or (combo.kind == "ultimate" and key == "Ultimate") then launchIndex = k break end
+			end
+		end
+		if ok and launchIndex > 0 then table.insert(list, { combo = combo, keys = keys, opener = keys[1], launchIndex = launchIndex }) end
+	end
+	routeCache[character] = list
+	return list
+end
+AI.routesOf = routesOf
+
+-- The fighter's 3+4 move (stance entry or catch).
+local function signatureKey(character: Roster.CharacterDef): string?
+	return moveByNotation(character, "3+4")
+end
+
+-- Is the Ultimate worth spending now (it is ready; `damage` = what it would deal)? Easy almost never, Normal on most
+-- punishes and combo enders, Hard when it wins the round, late in the round, when behind, or now and then.
+local function wantsUltimate(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, s: Brain, p: Params, damage: number): boolean
+	if not Sim.ultimateReady(me) or me.character.moves.Ultimate == nil then return false end
+	if not chance(s, p.ultimateUse) then return false end
+	if p.hitConfirm then
+		local lethal = foe.health <= damage
+		local late = m.timer <= Config.FPS * 20
+		local behind = me.health / me.maxHealth < foe.health / foe.maxHealth
+		return lethal or late or behind or chance(s, 0.4)
+	end
+	return true
 end
 
 -- Brain ------------------------------------------------------------------------------------------------------------
@@ -458,18 +543,44 @@ local CROUCH_CAP = 72
 local CROUCH_CAP_STREAK = 84
 local READ_CROUCH: { [string]: boolean } = { ["pressure-guard"] = true, ["crouch-read"] = true, ["respect"] = true, ["wake-crouch"] = true, ["approach-crouch"] = true }
 
-local ROLE_BASE: { [string]: number } = { poke = 26, string = 20, mid = 16, low = 9, throw = 10, walkThrow = 5, power = 6, launcher = 2, homing = 3, powerLow = 3, parry = 0, dashAttack = 3, stepAttack = 2, duck = 0 }
+local ROLE_BASE: { [string]: number } = { poke = 26, string = 20, mid = 16, low = 9, throw = 10, walkThrow = 5, power = 6, launcher = 2, homing = 3, powerLow = 3, parry = 0, dashAttack = 3, stepAttack = 2, duck = 0, signature = 0 }
+-- `signature` = weight of entering the 3+4 stance from neutral at full `signature` skill (Goran's catch and Rhys's
+-- parry stance are reads: `react` and the pressure weights below use them).
 local BIAS: { [string]: { [string]: number } } = {
-	Kael = { string = 10, poke = 6 },
-	Sierra = { mid = 8, homing = 2 },
+	Kael = { string = 10, poke = 6, signature = 9 },
+	Sierra = { mid = 8, homing = 2, signature = 8 },
 	Goran = { throw = 10, walkThrow = 8, power = 6, string = -8 },
-	Lumi = { homing = 3, power = 3, dashAttack = 3, stepAttack = 2 },
-	Rhys = { mid = 8, parry = 2 },
-	Nia = { string = 12 },
+	Lumi = { homing = 3, power = 3, dashAttack = 3, stepAttack = 2, signature = 8 },
+	Rhys = { mid = 8, parry = 2, signature = 2 },
+	Nia = { string = 12, signature = 10 },
 }
+
+-- Distance from which a stance can do something: its longest follow-up reach plus the ground it covers by itself.
+local stanceReachCache: { [any]: number } = {}
+local function stanceReach(character: Roster.CharacterDef, st: Roster.StanceDef): number
+	local cache = stanceReachCache[st]
+	if cache then return cache end
+	local best = 0
+	for _, key in character.moveOrder do
+		local def = character.moves[key]
+		if def.stance == st.key and def.chainFrom == nil and def.damage > 0 then best = math.max(best, def.range + def.advance) end
+	end
+	best += st.travel + st.drift * st.cancelFrom
+	stanceReachCache[st] = best
+	return best
+end
 
 local function candidates(me: Sim.Fighter, role: string, dist: number, foeCrouched: boolean): { string }
 	local list = {}
+	if role == "signature" then
+		-- The 3+4 stance entry, when one of its follow-ups can reach from here; Goran's catch when their pokes reach him.
+		local key = signatureKey(me.character)
+		local def = if key then me.character.moves[key] else nil
+		local st = if def and def.toStance then me.character.stances[def.toStance] else nil
+		if key and st and dist <= stanceReach(me.character, st) - 0.15 then table.insert(list, key) end
+		if key and def and def.props.catch and dist <= 3.8 then table.insert(list, key) end
+		return list
+	end
 	for _, key in me.character.moveOrder do
 		local def = me.character.moves[key]
 		-- Stance follow-ups, stance entries and the Ultimate are chosen by their own decisions, never as neutral picks.
@@ -509,6 +620,17 @@ local function pickRole(s: Brain, me: Sim.Fighter, dist: number, stepOk: boolean
 	local w = table.clone(ROLE_BASE)
 	local bias = BIAS[me.characterId]
 	if bias then for k, v in bias do w[k] = math.max(0, (w[k] or 0) + v) end end
+	local p: Params = s.params
+	-- The signature stance: a skilled player leans on it, a beginner forgets it exists.
+	w.signature = (w.signature or 0) * (p and p.signature or 0)
+	if read and read.rate >= 2 and (me.characterId == "Rhys" or me.characterId == "Goran") then
+		-- They keep swinging: Still Water parries / the Bear Trap catches the next high or mid.
+		w.signature += 9 * (p and p.readSkill or 0)
+	end
+	if p and Sim.ultimateReady(me) then
+		-- In Surge with the Ultimate ready: go for the launch that the Ultimate can finish.
+		w.launcher += 12 * p.ultimateUse
+	end
 	local h = s.habits
 	if h.crouchTime > 30 then
 		-- A croucher blocks lows and ducks highs and throws: go for mids.
@@ -531,7 +653,7 @@ local function pickRole(s: Brain, me: Sim.Fighter, dist: number, stepOk: boolean
 	local totalWeight = 0
 	for _, v in w do totalWeight += v end
 	local r = rand(s) * totalWeight
-	local order = { "poke", "string", "mid", "low", "throw", "walkThrow", "power", "launcher", "homing", "powerLow", "parry", "dashAttack", "stepAttack", "duck" }
+	local order = { "poke", "string", "mid", "low", "throw", "walkThrow", "power", "launcher", "homing", "powerLow", "parry", "dashAttack", "stepAttack", "duck", "signature" }
 	for _, role in order do
 		r -= w[role] or 0
 		if r <= 0 then return role end
@@ -554,6 +676,137 @@ local function planString(s: Brain, p: Params, me: Sim.Fighter, key: string, ful
 	if p.hitConfirm or full then depth = #chain
 	else for i = 1, #chain do if chance(s, p.stringContinue) then depth = i else break end end end
 	s.stringPlan = { chain = chain, done = 0, depth = depth, pressAt = -1, confirm = p.hitConfirm and not full }
+end
+
+-- Combo routes -----------------------------------------------------------------------------------------------------
+
+-- One frame of a listed combo route (`s.route`, see startRoute): presses its inputs with the route's frame timing
+-- (Sim.comboTick, counted like the route: frames without hitstop) and drops it as soon as a hit after the launcher
+-- would no longer be a combo (the opponent is not in the air or in hitstun). Returns true while the route drives.
+local function routeTick(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, s: Brain): boolean
+	local r = s.route
+	if not r then return false end
+	local broken = me.state == "Hitstun" or me.state == "Airborne" or me.state == "Blockstun" or me.state == "Stagger"
+		or me.state == "Landing" or me.state == "Getup" or me.throwInfo ~= nil or foe.health <= 0
+	if broken or m.frame > r.untilFrame then
+		if r.run.step <= #r.run.steps then AI.stats.routesDropped += 1 end
+		s.route = nil
+		return false
+	end
+	local run = r.run
+	if run.step > #run.steps then
+		if me.move == nil and me.state ~= "Stance" and not run.release then AI.stats.routesDone += 1; s.route = nil return false end
+		Sim.comboTick(run)
+		return true
+	end
+	if run.wait == 0 and run.step > r.launchIndex then
+		local juggled = foe.state == "Airborne" or foe.state == "Hitstun"
+		if not juggled or (foe.state == "Airborne" and foe.airLocked) then
+			-- dropped after the launch connected (a real drop) or the launcher itself did not launch
+			if run.step > r.launchIndex + 1 then AI.stats.routesDropped += 1 else AI.stats.routesNoLaunch += 1 end
+			s.route = nil
+			return false
+		end
+	end
+	Sim.comboTick(run)
+	s.lastAttackFrame = m.frame
+	s.idle = 0
+	s.rangeIdle = 0
+	s.stringPlan = nil
+	s.routePresses = (s.routePresses or 0) + 1
+	return true
+end
+
+-- Starts the listed combo whose first move is `key` (a launcher or the 3+4 stance entry): from now on the CPU plays
+-- its inputs with their timing. `ultimate` = prefer the route ending in the Ultimate (only when it is ready).
+local function startRoute(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params, key: string, ultimate: boolean?, force: boolean?): boolean
+	if p.routeSkill <= 0 or (not force and not chance(s, p.routeSkill)) then return false end
+	local options: { Route } = {}
+	for _, r in routesOf(me.character) do
+		local isUlt = r.combo.kind == "ultimate"
+		if r.opener == key and not r.combo.counter and isUlt == (ultimate == true) and (not isUlt or Sim.ultimateReady(me)) then table.insert(options, r) end
+	end
+	if #options == 0 then return false end
+	local pick = options[rint(s, 1, #options)]
+	if p.hitConfirm then
+		for _, r in options do if r.combo.damage > pick.combo.damage then pick = r end end
+	end
+	local total = 0
+	for _, step in pick.combo.steps do total += step.wait end
+	s.route = { run = Sim.comboRun(m, index, pick.combo.steps), launchIndex = pick.launchIndex, name = pick.combo.name, untilFrame = m.frame + total + 240 }
+	s.routesStarted = (s.routesStarted or 0) + 1
+	AI.stats.routesStarted += 1
+	if pick.combo.kind == "ultimate" then AI.stats.ultRoute += 1 end
+	s.stringPlan = nil
+	s.plan = nil
+	me.input.crouch = false
+	routeTick(m, me, foe, s)
+	return true
+end
+
+-- Signature stances -------------------------------------------------------------------------------------------------
+
+-- In a 3+4 stance: wait a little (defensive stances wait for the opponent's attack), then do a follow-up that reaches
+-- or leave the stance. Skill picks the follow-up for the situation; a beginner picks one at random.
+local function stanceAI(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params, dist: number, seen: { [string]: any })
+	local st = Sim.stanceOf(me)
+	if not st then return end
+	local entryId = m.frame - me.stanceFrame
+	local plan = s.stancePlan
+	if not plan or plan.id ~= entryId then
+		local wait = if st.props.parry then rint(s, 18, 40) elseif st.guard then rint(s, 6, 30) elseif st.travel > 0 then rint(s, 0, 4) else rint(s, 0, 10)
+		plan = { id = entryId, pressAt = math.min(st.maxFrames - 2, st.cancelFrom + wait), done = false }
+		s.stancePlan = plan
+		s.stanceUses = (s.stanceUses or 0) + 1
+	end
+	releaseAll(m, me, index)
+	if plan.done or me.stanceFrame + 1 < plan.pressAt then return end
+	plan.done = true
+	-- Follow-ups that can reach (Aerial still covers ground while it waits for cancelFrom).
+	local options: { string } = {}
+	local weights: { number } = {}
+	local travelLeft = 0
+	if st.travel > 0 then
+		local tNow = math.clamp((me.stanceFrame - 1) / math.max(1, st.travelFrames), 0, 1)
+		local tAt = math.clamp((math.max(me.stanceFrame, st.cancelFrom) - 1) / math.max(1, st.travelFrames), 0, 1)
+		travelLeft = st.travel * ((1 - (1 - tAt) ^ 2) - (1 - (1 - tNow) ^ 2))
+	end
+	local foeLow = seen.crouched == true and seen.move == nil
+	-- Reads on the opponent right now: attacking (a launcher or crush follow-up beats it) or guarding (stay safe).
+	local foeAttacking = seen.move ~= nil and (seen.state == "Startup" or seen.state == "Active")
+	for _, key in me.character.moveOrder do
+		local def = me.character.moves[key]
+		if def.stance == st.key and def.chainFrom == nil and def.damage > 0 and dist - travelLeft <= threatOf(def) - 0.1 then
+			local w = 3
+			if def.onHit == "LAUNCH" then
+				-- Launchers are -15 on block: a skilled player launches when the opponent is busy, not into a guard.
+				w = 1.5 + (if foeAttacking then 6 * p.readSkill else (1 - p.readSkill) * 2)
+			elseif def.onBlock <= -10 then
+				w = 1.5
+			end
+			if def.height == "Low" then w = if foeLow then 1 else 2 + 2 * p.readSkill * math.min(1, (s.habits.standBlocks or 0) / 2) end
+			if def.height == "High" and foeLow then w = 0.2 end
+			if def.onBlock >= -4 and def.onHit ~= "LAUNCH" then w += 3 * p.readSkill end
+			table.insert(options, key)
+			table.insert(weights, w)
+		end
+	end
+	local leave = if #options == 0 then 1 else 0.15 + (1 - p.signature) * 0.2
+	local totalWeight = leave
+	for _, w in weights do totalWeight += w end
+	local r = rand(s) * totalWeight
+	for i, key in options do
+		r -= weights[i]
+		if r <= 0 then
+			pressMove(m, me, index, s, key)
+			planString(s, p, me, key)
+			s.nextAttack = m.frame + p.attackCadence
+			return
+		end
+	end
+	-- Leave: 3+4 again (the stance entry key toggles the stance off).
+	local entry = signatureKey(me.character)
+	if entry then Sim.queueAttack(me, entry) end
 end
 
 local function chooseAttack(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params, dist: number, seen: { [string]: any }): boolean
@@ -592,21 +845,45 @@ local function chooseAttack(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, ind
 		end
 	end
 	if not key then return false end
+	-- A stance read: do not throw highs into a high-crushing stance, highs or mids into a parry stance, lows into a
+	-- low-crushing one (players who know the matchup; a beginner swings anyway).
+	local foeStance = if seen.state == "Stance" and seen.stance then Roster.stance(foe.characterId, seen.stance) else nil
+	if foeStance and chance(s, p.readSkill) then
+		local def = me.character.moves[key]
+		local bad = (foeStance.props.highCrush ~= nil and def.height == "High")
+			or (foeStance.props.parry ~= nil and (def.height == "High" or def.height == "Mid"))
+			or (foeStance.props.lowCrush ~= nil and def.height == "Low")
+		if bad then
+			local alt = if foeStance.props.parry then candidates(me, "low", dist, false) else candidates(me, "mid", dist, true)
+			if foeStance.props.parry then for _, k in candidates(me, "throw", dist, false) do table.insert(alt, k) end end
+			if #alt == 0 then return false end
+			key = alt[rint(s, 1, #alt)]
+			role = "read"
+		end
+	end
+	local chosen = key :: string
 	s.nextAttack = m.frame + p.attackCadence + rint(s, 0, p.attackCadenceJitter)
 	if role == "walkThrow" then
 		-- Walk in and grab (the throw is pressed once close enough; the plan is dropped if anything happens).
-		s.plan = { kind = "walkThrow", key = key, untilFrame = m.frame + 36 }
+		s.plan = { kind = "walkThrow", key = chosen, untilFrame = m.frame + 36 }
 		setIntent(m, s, "walk-throw", 36, 1, false)
 		applyIntent(m, me, index, s)
 	elseif role == "dashAttack" then
 		doDash(m, me, index, s, 1)
-		s.plan = { kind = "dashAttack", key = key, at = m.frame + Config.DashAttackFrame + rint(s, 0, 3) }
+		s.plan = { kind = "dashAttack", key = chosen, at = m.frame + Config.DashAttackFrame + rint(s, 0, 3) }
 	elseif role == "stepAttack" then
 		doSidestep(m, me, index, s, if chance(s, 0.5) then 1 else -1)
-		s.plan = { kind = "stepAttack", key = key, at = m.frame + Config.SidestepAttackFrame + rint(s, 0, 4) }
+		s.plan = { kind = "stepAttack", key = chosen, at = m.frame + Config.SidestepAttackFrame + rint(s, 0, 4) }
+	elseif role == "signature" then
+		-- Into the stance: a listed stance combo now and then, otherwise the stance decides (stanceAI).
+		s.stancePlan = nil
+		if not startRoute(m, me, foe, index, s, p, chosen) then pressMove(m, me, index, s, chosen) end
+		s.stringPlan = nil
 	else
-		pressMove(m, me, index, s, key)
-		planString(s, p, me, key)
+		local def = me.character.moves[chosen]
+		if def.onHit == "LAUNCH" and startRoute(m, me, foe, index, s, p, chosen, wantsUltimate(m, me, foe, s, p, def.damage + me.character.moves.Ultimate.damage * Config.UltComboScale)) then return true end
+		pressMove(m, me, index, s, chosen)
+		planString(s, p, me, chosen)
 	end
 	return true
 end
@@ -627,6 +904,22 @@ local function bestPunisher(me: Sim.Fighter, frames: number, dist: number, p: Pa
 		end
 	end
 	return best
+end
+
+-- After a parry (a Deflect or the Still Water stance) the opponent staggers: punish inside the stagger, once.
+local function staggerPunish(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params, dist: number): boolean
+	if foe.state ~= "Stagger" then s.staggerSeen = false return false end
+	if s.staggerSeen or foe.stun < 6 or me.move ~= nil or not Sim.isFree(me) then return false end
+	s.staggerSeen = true
+	if not chance(s, math.max(p.blockPunish, 0.15)) then return false end
+	local key = bestPunisher(me, foe.stun, dist, p, foe.crouched)
+	if not key then return false end
+	if not startRoute(m, me, foe, index, s, p, key) then
+		pressMove(m, me, index, s, key)
+		planString(s, p, me, key, true)
+	end
+	s.nextAttack = m.frame + 24
+	return true
 end
 
 -- Behaviours -------------------------------------------------------------------------------------------------------
@@ -712,30 +1005,69 @@ local function blockstun(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index:
 			local frames = -blockedDef.onBlock
 			if frames >= 10 and chance(s, p.blockPunish) then
 				s.punishKey = bestPunisher(me, frames, flatDistance(me, foe), p, foe.crouched or blockedDef.crouching)
+				-- The Ultimate as a punish (it lands in time and reaches).
+				local ult = me.character.moves.Ultimate
+				if ult and frames >= impactOf(ult) and flatDistance(me, foe) <= threatOf(ult) - 0.1 and wantsUltimate(m, me, foe, s, p, ult.damage) then s.punishKey = "Ultimate" end
 			end
 		end
 	end
 	if s.punishKey and me.stun <= 3 then
 		local key = s.punishKey :: string
 		s.punishKey = nil
-		pressMove(m, me, index, s, key)
-		planString(s, p, me, key, true)
+		local def = me.character.moves[key]
+		if key ~= "Ultimate" and def and def.onHit == "LAUNCH" and chance(s, p.routeSkill) then
+			-- A launch punish played as a listed combo: the route starts on the first free frame (its timing counts
+			-- from the launcher's start, exactly like a buffered press).
+			local ult = me.character.moves.Ultimate
+			s.routePending = { key = key, ult = ult ~= nil and wantsUltimate(m, me, foe, s, p, def.damage + ult.damage * Config.UltComboScale), untilFrame = m.frame + me.stun + 4 }
+		else
+			if key == "Ultimate" then AI.stats.ultPunish += 1 end
+			pressMove(m, me, index, s, key)
+			planString(s, p, me, key, true)
+		end
 		s.nextAttack = m.frame + 24
 		-- The punish is buffered for the first free frame: nothing after blockstun may replace it.
 		s.punishedFor = s.punishFor
 	end
 end
 
+-- 3+4 in the recovery of a cancelable move (a string ender, a poke) puts the fighter in its stance: used after the
+-- move connected (hit or block), decided once per move, more often by skilled CPUs.
+local function stanceCancel(m: Sim.Match, me: Sim.Fighter, s: Brain, p: Params): boolean
+	local def = if me.move then me.character.moves[me.move] else nil
+	if not def or not def.stanceCancel or me.moveFrame <= def.startup + def.active then return false end
+	local id = m.frame - me.moveFrame
+	if s.cancelFor == id then return false end
+	s.cancelFor = id
+	if not me.hasHit or not chance(s, p.signature * 0.5) then return false end
+	local entry = signatureKey(me.character)
+	if not entry then return false end
+	Sim.queueAttack(me, entry)
+	s.stancePlan = nil
+	s.stringPlan = nil
+	s.stanceCancels = (s.stanceCancels or 0) + 1
+	AI.stats.stanceCancels += 1
+	return true
+end
+
 local function continueString(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params)
 	local plan = s.stringPlan
-	if not plan or plan.done >= plan.depth or me.chainMove ~= nil then return end
+	if not plan or plan.done >= plan.depth or me.chainMove ~= nil then
+		if me.chainMove == nil then stanceCancel(m, me, s, p) end
+		return
+	end
 	local nextKey = plan.chain[plan.done + 1]
 	local nextDef = me.character.moves[nextKey]
 	if not nextDef or nextDef.chainFrom ~= me.move then return end
 	local src = Sim.moveDef(me, me.move :: string)
-	local windowEnd = src.startup + src.active + Sim.ChainLate
+	-- Delayable follow-ups (Nia's whirl) can come later, up to the end of the recovery.
+	local windowEnd = math.min(src.startup + src.active + Sim.ChainLate + (nextDef.delay or 0), totalOf(src) - 1)
 	if me.moveFrame > windowEnd then plan.depth = plan.done return end
-	if plan.pressAt < 0 then plan.pressAt = math.max(2, src.startup + rint(s, -3, 4)) end
+	if plan.pressAt < 0 then
+		plan.pressAt = math.max(2, src.startup + rint(s, -3, 4))
+		-- A skilled player varies the rhythm of a delayable follow-up.
+		if nextDef.delay and chance(s, p.signature * 0.5) then plan.pressAt = math.min(windowEnd - 1, src.startup + src.active + rint(s, 4, Sim.ChainLate + nextDef.delay)) end
+	end
 	if plan.confirm then
 		local knowAt = src.startup + 1 + s.delay
 		if me.moveFrame < math.min(knowAt, windowEnd) then return end
@@ -793,6 +1125,34 @@ local function juggle(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: nu
 	end
 	setIntent(m, s, "juggle-walk", 4, if dist > 3.0 then 1 else 0, false)
 	applyIntent(m, me, index, s)
+end
+
+-- The Ultimate as a juggle ender: decided once per juggle (when it is ready), then pressed so that it starts as soon as
+-- we can act and lands while the body is still low enough to hit. Returns true when it pressed.
+local function ultimateEnder(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: number, s: Brain, p: Params): boolean
+	local ult = me.character.moves.Ultimate
+	if not ult or foe.state ~= "Airborne" or foe.airLocked or not Sim.ultimateReady(me) then return false end
+	local juggleId = m.frame - foe.airFrames
+	if s.ultJuggleFor ~= juggleId then
+		s.ultJuggleFor = juggleId
+		s.ultJugglePlan = if wantsUltimate(m, me, foe, s, p, ult.damage * Config.UltComboScale) then juggleId else nil
+	end
+	if s.ultJugglePlan ~= juggleId then return false end
+	-- A press now is kept for AttackBuffer frames: our current move must end (and free us) before that.
+	local busy = 0
+	if me.move then
+		local def = me.character.moves[me.move]
+		busy = if def then math.max(0, totalOf(def) - me.moveFrame) + 1 else 99
+	end
+	if busy > Config.AttackBuffer then return false end
+	local y = predictY(foe, busy + impactOf(ult))
+	if y <= 0.3 then s.ultJugglePlan = nil return false end
+	if y >= Config.AirHitCeiling - 0.2 or flatDistance(me, foe) > threatOf(ult) - 0.1 then return false end
+	s.ultJugglePlan = nil
+	pressMove(m, me, index, s, "Ultimate")
+	s.stringPlan = nil
+	AI.stats.ultEnder += 1
+	return true
 end
 
 -- Frame on which the knocked-down opponent becomes actionable (it guards from that frame).
@@ -881,6 +1241,48 @@ local function react(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: num
 		end
 		return false
 	end
+	-- Their Ultimate is armored but loses to a throw: a strong player grabs it in its startup, others guard it.
+	if def.cinematic and dist <= THROW_REACH - 0.1 and chance(s, p.readSkill * 0.6) then
+		local throws = candidates(me, "throw", dist, false)
+		if #throws > 0 and framesLeft >= impactOf(me.character.moves[throws[1]]) then
+			pressMove(m, me, index, s, throws[rint(s, 1, #throws)])
+			s.stringPlan = nil
+			setIntent(m, s, "hold", 8, 0, false)
+			return true
+		end
+	end
+	-- Our Ultimate through their strike: its armor absorbs the hit and it lands while their move is still recovering
+	-- (only when that is guaranteed: their move lasts past our impact).
+	local ult = me.character.moves.Ultimate
+	if ult and not def.cinematic and Sim.ultimateReady(me) and endsIn >= impactOf(ult) + 1 and dist <= threatOf(ult) - 0.1 and def.damage < me.health
+		and chance(s, p.readSkill) and wantsUltimate(m, me, foe, s, p, ult.damage) then
+		pressMove(m, me, index, s, "Ultimate")
+		s.stringPlan = nil
+		setIntent(m, s, "hold", 8, 0, false)
+		AI.stats.ultReversal += 1
+		return true
+	end
+	-- Signature reads on a strike that is still coming: Goran's Bear Trap catches a high or mid, Rhys's Still Water
+	-- parries a slow one (a read: stronger players do it more).
+	if (def.height == "High" or def.height == "Mid") and not def.cinematic and not s.crouch then
+		local sigKey = signatureKey(me.character)
+		local sig = if sigKey then me.character.moves[sigKey] else nil
+		if sigKey and sig then
+			local catch = sig.props.catch
+			local st = if sig.toStance then me.character.stances[sig.toStance] else nil
+			local fits = (catch ~= nil and framesLeft >= catch.window[1] and framesLeft <= catch.window[2] - 2)
+				or (st ~= nil and st.props.parry ~= nil and framesLeft >= st.props.parry.window[1] + 1)
+			if fits and dist <= threatOf(def) + 0.3 and chance(s, p.readSkill * 0.4) then
+				s.stancePlan = nil
+				pressMove(m, me, index, s, sigKey)
+				s.stringPlan = nil
+				s.signatureReads = (s.signatureReads or 0) + 1
+				AI.stats.signatureReads += 1
+				setIntent(m, s, "hold", 8, 0, false)
+				return true
+			end
+		end
+	end
 	if s.crouch and def.height == "High" then
 		-- Reading highs from a crouch: the high whiffs over us; answer with a crouching move when we read it well.
 		if chance(s, p.readSkill) then
@@ -945,8 +1347,21 @@ local function whiffPunish(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, inde
 	if not def or not treatAsStandalone(s, foe.character, seen.move) then return false end
 	local remaining = totalOf(def) - (seen.moveFrame + (m.frame - seen.frame))
 	if remaining < 6 or not chance(s, p.whiffPunish) then return false end
+	local ult = me.character.moves.Ultimate
+	if ult and remaining >= impactOf(ult) and dist <= threatOf(ult) - 0.1 and wantsUltimate(m, me, foe, s, p, ult.damage) then
+		pressMove(m, me, index, s, "Ultimate")
+		s.stringPlan = nil
+		s.nextAttack = m.frame + 24
+		AI.stats.ultPunish += 1
+		return true
+	end
 	local key = bestPunisher(me, remaining, dist, p, foe.crouched)
 	if not key then return false end
+	local kdef = me.character.moves[key]
+	if kdef.onHit == "LAUNCH" and ult and startRoute(m, me, foe, index, s, p, key, wantsUltimate(m, me, foe, s, p, kdef.damage + ult.damage * Config.UltComboScale)) then
+		s.nextAttack = m.frame + 24
+		return true
+	end
 	pressMove(m, me, index, s, key)
 	planString(s, p, me, key, true)
 	s.nextAttack = m.frame + 24
@@ -1115,6 +1530,38 @@ local function neutral(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, index: n
 	rerollDelay(s, p)
 	s.nextDecision = m.frame + rint(s, p.decisionMin, p.decisionMax)
 	if pressured then
+		-- A read on their next button: a catch (Bear Trap) or a parry stance (Still Water) as they keep pressing.
+		local sigKey = signatureKey(me.character)
+		local sigDef = if sigKey then me.character.moves[sigKey] else nil
+		local sigStance = if sigDef and sigDef.toStance then me.character.stances[sigDef.toStance] else nil
+		if sigKey and sigDef and (sigDef.props.catch ~= nil or (sigStance ~= nil and sigStance.props.parry ~= nil)) and seen.move == nil
+			and dist <= pokeRange(foe.character) and chance(s, p.readSkill * p.signature * 0.2) then
+			s.stancePlan = nil
+			pressMove(m, me, index, s, sigKey)
+			s.stringPlan = nil
+			s.signatureReads = (s.signatureReads or 0) + 1
+			AI.stats.signatureReads += 1
+			s.nextAttack = m.frame + p.attackCadence
+			return
+		end
+		-- Low on health with the Ultimate ready and they keep swinging: its armor takes their next hit and it lands
+		-- (the comeback gamble of a mid-level player; a guarding opponent blocks it and punishes). Hard does not
+		-- gamble: it answers a seen attack instead (`react`).
+		local ultDef = me.character.moves.Ultimate
+		if ultDef and not p.hitConfirm and Sim.ultimateReady(me) and seen.move == nil and dist <= threatOf(ultDef) - 0.2 and chance(s, p.ultimateUse * 0.25)
+			and wantsUltimate(m, me, foe, s, p, ultDef.damage) then
+			pressMove(m, me, index, s, "Ultimate")
+			s.stringPlan = nil
+			AI.stats.ultRead += 1
+			return
+		end
+		-- Even under steady pressure a player takes a turn now and then: after twice the patience in range without
+		-- attacking, attack in the next gap between their attacks (the quiet-opponent rule above never fires while
+		-- they keep pressing buttons).
+		if (s.freeInRange or 0) >= p.patience * 2 and seen.move == nil and dist <= engage + 0.4 then
+			s.defensive = false
+			if chooseAttack(m, me, foe, index, s, p, dist, seen) then return end
+		end
 		-- They keep pressing buttons in range: guard with the stance that beats their habits and never walk in.
 		local readChance = if s.habits.crouchTime > 40 then math.min(1, p.readSkill + 0.25) else p.readSkill
 		-- The same low (or grab) over and over: even a mid-level player starts ducking it.
@@ -1215,14 +1662,20 @@ function AI.step(m: Sim.Match, index: number)
 	-- Activity bookkeeping for the patience rule (see `neutral`): crouch run and attacks started by any path.
 	if me.crouched and me.move == nil then s.crouchRun = (s.crouchRun or 0) + 1 else s.crouchRun = 0 end
 	if me.move and me.moveFrame <= 1 then s.idle = 0; s.rangeIdle = 0 end
+	-- Free frames in range since the last attack that actually started (pressed attacks can be dropped).
+	if me.move and me.moveFrame <= 1 then s.freeInRange = 0
+	elseif Sim.isFree(me) and flatDistance(me, foe) <= math.max(me.character.stats.preferredRange, pokeRange(me.character) - 0.5) + 0.4 then s.freeInRange = (s.freeInRange or 0) + 1 end
 	if me.health <= 0 then releaseAll(m, me, index) return end
 	if me.throwInfo then
+		if me.throwInfo.ultimate then releaseAll(m, me, index) s.route = nil return end
 		if me.throwInfo.role == "Defender" then defendThrow(m, me, index, s, p) end
 		return
 	end
 	local seen = AI.perceive(m, 3 - index, s.delay)
 	learn(m, s, seen, foe)
 	if foe.health <= 0 then releaseAll(m, me, index) return end
+	-- A listed combo in progress drives the inputs until it ends or drops.
+	if s.route and routeTick(m, me, foe, s) then return end
 	local state = me.state
 	if state == "Landing" then chooseGetup(m, me, index, s, p) return end
 	if state == "Getup" then
@@ -1236,6 +1689,10 @@ function AI.step(m: Sim.Match, index: number)
 		return
 	end
 	if state == "Blockstun" then blockstun(m, me, foe, index, s, p) return end
+	if state == "Stance" then stanceAI(m, me, foe, index, s, p, flatDistance(me, foe), seen) return end
+	-- A buffered Ultimate (an ender pressed in the launcher's recovery) comes out as soon as we can act: never replace it.
+	if me.input.attack == "Ultimate" then return end
+	if ultimateEnder(m, me, foe, index, s, p) then return end
 	if me.move then continueString(m, me, foe, index, s, p) return end
 	if state == "Dash" or state == "Backdash" or state == "Sidestep" then
 		local plan = s.plan
@@ -1249,6 +1706,19 @@ function AI.step(m: Sim.Match, index: number)
 	local plan = s.plan
 	if plan and (plan.kind == "dashAttack" or plan.kind == "stepAttack") and m.frame > plan.at + 24 then s.plan = nil end
 	local dist = flatDistance(me, foe)
+	-- A launch punish decided in blockstun starts as a listed combo on this first free frame.
+	local pending = s.routePending
+	if pending then
+		s.routePending = nil
+		if m.frame <= pending.untilFrame then
+			if not startRoute(m, me, foe, index, s, p, pending.key, pending.ult, true) then
+				pressMove(m, me, index, s, pending.key)
+				planString(s, p, me, pending.key, true)
+			end
+			return
+		end
+	end
+	if staggerPunish(m, me, foe, index, s, p, dist) then return end
 	if plan and plan.kind == "whiffPunish" then
 		if m.frame >= plan.at then
 			-- We saw it coming up short (or ducked the grab): now it whiffs, punish the recovery.
