@@ -220,6 +220,13 @@ def build(entry: dict, roster: dict, out_dir: str | None) -> dict:
     Ps, Js = T.solve_single(tr, frames)
     T.auto_contacts(Ps, Js, tr.explicit_contact, step / 60)
     T.sanitize_contacts(Ps, step / 60)
+    if move is not None and not any((Ps[k].contact[i] or 0.0) > 0 for k in range(len(Ps)) for i in range(2)):
+        # A move that never stands still (spins, cartwheels) still starts or ends on the floor: plant the feet that are
+        # down on its first and last frames (the runtime foot lock holds them while the move takes over).
+        for k in (0, len(Ps) - 1):
+            for i, limb in enumerate(T.FEET):
+                if Ps[k].limbs[limb]["at"][1] < 0.045:
+                    Ps[k].contact[i] = 1.0
     ch = track_channels(Ps)
     folder = entry["folder"]
     name = entry["name"] or (("Kick_" if folder == "Kicks" else "Strike_") + fighter + "_" + key)
