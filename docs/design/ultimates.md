@@ -51,7 +51,10 @@ FLThrow1 fields used by the cinematic (all optional except the tracks):
 | `camera` | camera keys `{ t, pos, look, fov, cut, ease, roll }` (see section 4) |
 
 `ClipLibrary.decode` keeps these fields (`decodeImpacts`, `decodeHits`, `decodeCamera`); unknown or malformed values
-are dropped, never an error.
+are dropped, never an error. A track whose root travels further than 2 leg lengths (Goran's suplex lands its defender
+behind him) carries `rootRange = R` (FLClip1, optional): its three root channels are quantised over [-R, R] instead of
+[-2, 2] (`tools/mocap/clipio.py` picks it; without it the root clipped at 2 leg lengths and the thrown body was shown
+in the wrong place).
 
 ## 3. Runtime (`Client.Motion.Cinematic`, `MotionPlayer`)
 
@@ -69,7 +72,23 @@ are dropped, never an error.
   `actual − distance × attackerLeg` (ramped in over `AlignFrames` = 4 frames, released from `release` to the end), so
   the bodies meet whatever the two fighters' sizes and the defender's last frame lies exactly on its sim spot.
 * **Entering.** The sim moves the defender onto its lock spot on the hit frame (a juggled body is pulled to the floor
-  spot): `MotionPlayer` absorbs that jump like a hit push (glide), it never pops.
+  spot): `MotionPlayer` absorbs that jump with a short glide (`UltimateEntryGlide` 0.1 s: the catch knocks it back
+  onto its spot). The catch strike is authored against that spot; with a normal push glide (up to 0.2 s) the body
+  stayed at its point-blank pre-hit spot long enough for the attacker's straight to pass through its chest and its
+  folding head to land on his arm (round 6 follow-up, Kael). Catch strikes also hold a grip on the chest for their
+  first frames.
+* **Strike contact.** Grip windows of the attacker's strikes (`C.Hits().add`) put the bare fist's contact point on the
+  partner's real body. A boxing glove or the forearm behind it still inside the partner's head or body
+  (`Motion.BodyShape`) then draws the point back toward the striker by that depth and the arm solves again, while that
+  helps (`MotionPlayer.applyGrips`, `StrikeGripClearance` 0.02 studs).
+* **Lifted bodies.** A defender key based on a lying pose inherits its floor-support weight (`ground` 1.0, e.g.
+  `C.fallback_contact()`): a carried or lifted body must say `ground=0.0`, else the ground solver pulls it down onto
+  the floor at the attacker's feet (round 6 follow-up: Goran's knee slam and shoulder carry never showed, his legs went
+  through the body and once it sank under the floor). `MotionUltimate_Test` checks every Ultimate clip for it.
+* **Whole poses on screen.** Roblox draws the joints written the frame before with a root moved this frame, so a big
+  root step (a lift, a carry, a drop, the first frame) showed the last pose on the new root for a frame (Nia's body
+  under the floor in run 1 of the playtest). In Play `CharacterPresenter` keeps each fighter's root with the joints
+  shown and moves it in PreAnimation (`DeferRootToPicture`; motioncore.md section 15.7).
 * **Leaving.** The defender's last frame is the knockdown clip's floor contact in the endKind pose (`FallBack` at its
   contact for FaceUp; `FallFrontAir` at its contact, head away from the attacker, for FaceDown); `Motion.States`
   continues the knockdown from that contact (`"Ultimate"` counts as an air key), so Landing/KO/getup continue without
@@ -86,21 +105,40 @@ are dropped, never an error.
   look-at points in the attacker's frame in studs (+X its right, +Y up, +Z toward the defender), mirrored when the
   attacker stands on the viewer's right so the screen direction of the fight is kept. `cut = true` starts a new shot;
   keys interpolate with `ease` inside a shot. Every shot is checked against both bodies (`BodyMargin`) and the arena
-  walls (`safeShot`): a shot that would sit inside a body or a wall is pulled back along its look line. Every shot also
-  keeps both fighters whole in the frame (`_fitShot`: heads and feet with `CineFitMargin` headroom; the lens widens up
-  to `CineFitMaxFov` = 50 degrees, then the camera backs off along its look line). When authoring a reverse angle
+  walls: a shot that would sit inside a body or a wall is pushed out of it (bodies never count as walls). Every shot
+  keeps both fighters whole (head tops, hands and soles) inside the **safe picture area** `CineSafe` (normalised
+  viewport: top 0.215 = under the HUD band of health bars, names and chips that covers the top letterbox bar, bottom
+  0.87 = above the bottom letterbox bar, sides 0.04): `CameraDirector._fitShot` first turns the shot as little as it can
+  (pitch and yaw about its own axes, roll kept), then widens the lens up to `CineFitMaxFov` (50 degrees), then moves
+  the camera back, away from the bodies' middle and a little up, to the nearest place where it fits. The final camera
+  of every frame (after smoothing, shake and the slow-motion narrowing) is checked once more (`_safeFov`, up to
+  `GuardMaxFov`). `M._cinematicShot` is that whole computation, shared by the runtime and `CameraFraming_Test`, which
+  projects the real posed heads, hands and feet of all 36 pairings through every Ultimate's camera (both viewing
+  slots, 16:9 and 4:3). When authoring a reverse angle
   (the attacker's face past the defender), put the camera well to the side of the defender's shoulder (|x| >= 5 studs
   at z >= 6): a camera close behind the defender's back fills the frame with its body. The Play captures in
   `OV6/handoff/motion-shots/round6/ultimate-<fighter>-play.png` showed this on three first drafts (Sierra, Nia, Rhys).
 * Slow motion narrows the lens a little on the final impact; at the end the camera returns to the fight camera over
   `CineReturn` (0.8 s). Attributes `CameraCinematic` / `CameraCinematicShot` expose the state for tests.
+* **Fight camera headroom** (round 6 follow-up). The fight camera keeps every fighter's head under the HUD band:
+  `FightFocusHeight` 3.75 (was 2.75) with the lens at chest height (`FightCameraRise` 0.72: 4.47 studs, as before) and
+  `FightDistanceScale` 1.05, so a 6-stud fighter fills ~57% of the screen height at neutral spacing (55-65%). Each
+  frame `_fitShot` fits both posed bodies (heads and feet) into `FightSafe` (top 0.215, bottom 0.93) up to
+  `FightFitMaxFov` 44 (a jump, a juggle or a throw's close orbit turns the shot and widens the lens a little);
+  `CameraFraming_Test` checks every pairing at five spacings from both player slots.
 
 ## 5. Effects and sound (`EffectsController`, `AudioController`)
 
-* **Surge aura**: while a fighter's `surge` flag is on, a floor ring of flames, sparks and a soft glow in the fighter's
-  accent colour (grey accents use an icy blue), kept below the waist so faces stay readable; a one-time burst and a
-  layered sound on the `Surge` event. Rates and light (`EffectsController.AuraRates` flames 26 / sparks 9 / rings 1.4
-  per second, `AuraLight` brightness 1.4, range 8) are tuned to read at the fight camera.
+* **Surge aura**: while a fighter's `surge` flag is on, its whole body glows in its surge colour (its roster accent
+  made bright; grey accents use an icy blue): `CharacterPresenter`'s per-rig Highlight draws an outline around the
+  body pulsing at `SurgeGlow.hz` (1.3 Hz) between outline transparency 0.08 and 0.42 with a faint fill (0.8-0.9, faces
+  stay readable; `DepthMode` Occluded: never through walls or the other fighter); the hit flash and the mirror match's
+  P2 outline share the same Highlight. Under it a pulsing floor ring of flames and sparks rising to the waist and a
+  warm light (`EffectsController.AuraRates` flames 34 / sparks 14 / rings 1.6 per second, `AuraLight` 1.4, range 8).
+  The `Surge` event adds a one-time burst: a glow flare (`SurgeGlow.flareSeconds` 0.7), a floor shockwave, a column of
+  flames, sparks and a whoosh, an edge flash and a layered sound. When Surge ends, a fighter is put back on its mark or
+  a round resets, every aura particle is cleared at once (`ParticleEmitter:Clear()`): nothing lingers where the fighter
+  stood.
 * **UltStart**: an inward-gathering burst on the attacker and a rising sound; a short, light screen flash (0.16 s:
   the HUD plays its own title card and letterbox on UltStart, so the effects add no text).
 * **UltHit k**: an impact burst at the striking limb of `hits[k]` (else the midpoint), a heavier tier per impact; the
