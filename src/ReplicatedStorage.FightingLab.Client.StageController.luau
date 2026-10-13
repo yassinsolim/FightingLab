@@ -1,13 +1,21 @@
 --!strict
--- Arena presentation during a fight (contract v5): arenas are physical models in the lobby world, so nothing is cloned
--- and global lighting is never touched (spectators share it). For the active arena model this module fades
--- FightingLabCameraOccluder-tagged geometry between the fight camera and the fighters, fades other players' avatars
--- that stand in the camera's view of the fighters, runs the arena's FightingLabFlicker / FightingLabBlink tags, and
--- restores every local tweak exactly when the fight ends.
+-- Arena presentation during a fight (contract v5): arenas are physical models in the lobby world, so nothing is cloned.
+-- For the active arena model this module fades FightingLabCameraOccluder-tagged geometry between the fight camera and
+-- the fighters, fades other players' avatars that stand in the camera's view of the fighters, runs the arena's
+-- FightingLabFlicker / FightingLabBlink tags, and restores every local tweak exactly when the fight ends.
+-- Round 6 (look): the occluder tag is shared by every arena (a stage's floor rises above a lower neighbour's floor and
+-- carries the tag for that neighbour), so only tagged pieces rising above THIS arena's floor + OCCLUDER_HEIGHT fade:
+-- before, the rooftop and summit fight floors faded with their podiums and the neon edge disc under them washed the
+-- floor pink / cyan. On the fighting client only, the arena's mood (LightingProfile.applyArena: time of day,
+-- atmosphere, grade, depth of field) is applied for the fight, a two-light rig follows the camera (a key from the
+-- camera side and the arena's coloured rim from behind the fighters), and the arena's fight-only set dressing
+-- (FightSet, client-shown) appears; all of it is undone by clearArena.
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local AvatarGate = require(script.Parent:WaitForChild("AvatarGate"))
+local LightingProfile = require(script.Parent:WaitForChild("LightingProfile"))
 
 type Ctx = any
 type RenderFrame = any
@@ -30,6 +38,19 @@ local FADE_ALPHA = 0.72
 local FADE_RATE = 14
 local AVATAR_ALPHA = 0.8
 local AVATAR_CLEARANCE = 3.2
+-- World.Layout.OCCLUDER_HEIGHT: only pieces rising this far above the active arena's floor can block its camera.
+M.OCCLUDER_HEIGHT = 1.5
+
+type Rig = { folder: Folder, key: SpotLight, keyPart: BasePart, rim: SpotLight, rimPart: BasePart }
+local rig: Rig? = nil
+local fightSet: Instance? = nil
+type Person = { frame: GuiObject, base: UDim2, phase: number, rate: number }
+local crowdPeople: { Person } = {}
+-- The rest of the district (the plaza and the other stages) is hidden on the fighting client while its fight set is
+-- up: neighbouring podiums stand only 35 studs from a fight's edge, inside any backdrop. Everything is put back.
+type Hidden = { parts: { BasePart }, ltm: { number }, toggled: { Instance } }
+local hidden: Hidden? = nil
+M.HIDE_DISTRICT = true
 
 local function collect(inst: Instance): ({ BasePart }, { { gui: SurfaceGui, enabled: boolean } })
 	local parts: { BasePart } = {}
@@ -49,8 +70,25 @@ local function tagged(tag: string, root: Instance): { Instance }
 	return list
 end
 
+-- Whether a tagged occluder can block the view of a fight whose floor is at `floorY`: its top must rise above the
+-- floor + OCCLUDER_HEIGHT (the tag is global; a stage's own floor stack carries it for its lower neighbours).
+function M.occluderRelevant(inst: Instance, floorY: number): boolean
+	local top = -math.huge
+	if inst:IsA("BasePart") then
+		local cf, s = inst.CFrame, inst.Size * 0.5
+		top = cf.Y + math.abs(cf.RightVector.Y) * s.X + math.abs(cf.UpVector.Y) * s.Y + math.abs(cf.LookVector.Y) * s.Z
+	elseif inst:IsA("Model") then
+		local cf, size = inst:GetBoundingBox()
+		top = cf.Y + size.Y * 0.5
+	else
+		return true
+	end
+	return top > floorY + M.OCCLUDER_HEIGHT + 1e-3
+end
+
 local function cacheArena(root: Instance)
 	for _, inst in tagged("FightingLabCameraOccluder", root) do
+		if not M.occluderRelevant(inst, origin.Y) then continue end
 		local parts, guis = collect(inst)
 		if #parts > 0 then
 			local cf: CFrame, size: Vector3
@@ -199,6 +237,110 @@ function M.clearArena()
 	table.clear(flickers)
 	table.clear(blinks)
 	arenaModel = nil
+	LightingProfile.restore()
+	local r = rig
+	rig = nil
+	if r then r.folder:Destroy() end
+	local set = fightSet
+	fightSet = nil
+	table.clear(crowdPeople)
+	if set then set:Destroy() end
+	local h = hidden
+	hidden = nil
+	if h then
+		for i, p in h.parts do p.LocalTransparencyModifier = h.ltm[i] end
+		for _, inst in h.toggled do (inst :: any).Enabled = true end
+	end
+end
+
+-- Hides (locally) the plaza and every other stage for the fight in `active`; returns how many parts it hid.
+local function hideDistrict(active: Instance): number
+	local world = workspace:FindFirstChild("FightingLabWorld")
+	if not world then return 0 end
+	local roots: { Instance } = {}
+	local lobby = world:FindFirstChild("Lobby")
+	if lobby then table.insert(roots, lobby) end
+	local arenas = world:FindFirstChild("Arenas")
+	if arenas then
+		for _, a in arenas:GetChildren() do if a ~= active then table.insert(roots, a) end end
+	end
+	local h: Hidden = { parts = {}, ltm = {}, toggled = {} }
+	for _, root in roots do
+		for _, d in root:GetDescendants() do
+			if d:IsA("BasePart") then
+				table.insert(h.parts, d); table.insert(h.ltm, d.LocalTransparencyModifier)
+				d.LocalTransparencyModifier = 1
+			elseif d:IsA("SurfaceGui") or d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Light") then
+				if (d :: any).Enabled then (d :: any).Enabled = false; table.insert(h.toggled, d) end
+			end
+		end
+	end
+	hidden = h
+	return #h.parts
+end
+
+-- The camera-following fight light rig (client only): a soft key from the camera side and the arena's coloured rim
+-- from behind the fighters. One shadow caster (the key).
+local function buildRig(stageId: string): Rig?
+	local spec = LightingProfile.rigFor(stageId)
+	if not spec then return nil end
+	local folder = Instance.new("Folder")
+	folder.Name = "FightingLabFightRig"
+	local function holder(name: string): Part
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true; p.CanCollide = false; p.CanQuery = false; p.CanTouch = false; p.CastShadow = false
+		p.Transparency = 1; p.Size = Vector3.new(0.2, 0.2, 0.2)
+		p.Parent = folder
+		return p
+	end
+	local keyPart, rimPart = holder("Key"), holder("Rim")
+	local key = Instance.new("SpotLight")
+	key.Name = "FightKey"; key.Face = Enum.NormalId.Front; key.Color = spec.keyColor; key.Brightness = spec.key
+	key.Range = 34; key.Angle = 48; key.Shadows = true; key.Parent = keyPart
+	local rim = Instance.new("SpotLight")
+	rim.Name = "FightRim"; rim.Face = Enum.NormalId.Front; rim.Color = spec.rimColor; rim.Brightness = spec.rim
+	rim.Range = 36; rim.Angle = spec.rimAngle or 50; rim.Shadows = false; rim.Parent = rimPart
+	folder.Parent = workspace
+	return { folder = folder, key = key, keyPart = keyPart, rim = rim, rimPart = rimPart }
+end
+
+-- Rig placement for a camera and a fight focus: key above and left of the camera, rim behind the fighters.
+function M.rigFrames(camPos: Vector3, focus: Vector3): (CFrame, CFrame)
+	local flat = Vector3.new(focus.X - camPos.X, 0, focus.Z - camPos.Z)
+	local forward = if flat.Magnitude > 0.01 then flat.Unit else Vector3.new(0, 0, -1)
+	local right = forward:Cross(Vector3.yAxis)
+	local keyPos = focus - forward * 9 - right * 6 + Vector3.new(0, 10, 0)
+	local rimPos = focus + forward * 11 + right * 2.5 + Vector3.new(0, 8.5, 0)
+	return CFrame.lookAt(keyPos, focus + Vector3.new(0, 1, 0)), CFrame.lookAt(rimPos, focus + Vector3.new(0, 2.2, 0))
+end
+
+-- Fight-only set dressing the world keeps for this arena (ReplicatedStorage.FightingLab.FightSets.<StageId>):
+-- a clone is shown to the fighting client only, so the plaza behind the stage reads as the arena's own scenery.
+local function showFightSet(stageId: string)
+	local lab = ReplicatedStorage:FindFirstChild("FightingLab")
+	local sets = lab and lab:FindFirstChild("FightSets")
+	local template = sets and sets:FindFirstChild(stageId)
+	if not template then return end
+	local clone = template:Clone()
+	clone.Name = "FightingLabFightSet_" .. stageId
+	clone.Parent = workspace
+	fightSet = clone
+	table.clear(crowdPeople)
+	for _, d in clone:GetDescendants() do
+		if d.Name == "Person" and d:IsA("GuiObject") then
+			local phase, rate = d:GetAttribute("Phase"), d:GetAttribute("Rate")
+			table.insert(crowdPeople, { frame = d, base = d.Position, phase = if typeof(phase) == "number" then phase else 0, rate = if typeof(rate) == "number" then rate else 2 })
+		end
+	end
+end
+
+-- Spectators in the fight set sway a little (a few pixels on their panel).
+local function swayCrowd(now: number)
+	for _, p in crowdPeople do
+		local lift = math.max(0, math.sin(now * p.rate + p.phase)) * 3
+		p.frame.Position = p.base - UDim2.fromOffset(0, math.floor(lift + 0.5))
+	end
 end
 
 function M.setArena(model: Instance?, newOrigin: Vector3?)
@@ -209,12 +351,26 @@ function M.setArena(model: Instance?, newOrigin: Vector3?)
 		local stageId = model:GetAttribute("StageId")
 		if typeof(stageId) == "string" then currentId = stageId end
 		cacheArena(model)
+		if typeof(stageId) == "string" and RunService:IsClient() then
+			LightingProfile.applyArena(stageId)
+			rig = buildRig(stageId)
+			showFightSet(stageId)
+			if fightSet and M.HIDE_DISTRICT then hideDistrict(model) end
+		end
 	end
 	local c = ctx
 	if c and c.gui then
 		c.gui:SetAttribute("ArenaOccluders", #occluders)
 		c.gui:SetAttribute("ArenaId", if model then model.Name else "")
+		c.gui:SetAttribute("ArenaMood", LightingProfile.activeArena() or "")
 	end
+end
+
+-- Tagged pieces the active arena fades (tests and tools).
+function M._occluders(): { Instance }
+	local list = {}
+	for _, o in occluders do table.insert(list, o.inst) end
+	return list
 end
 
 function M.getArena(): Instance?
@@ -249,7 +405,15 @@ function M.update(f: RenderFrame)
 		end
 	end
 	updateAvatars(camPos, cameraFocus, dt)
+	local r = rig
+	if r then
+		local keyCf, rimCf = M.rigFrames(camPos, cameraFocus)
+		r.keyPart.CFrame = keyCf
+		r.rimPart.CFrame = rimCf
+	end
+	LightingProfile.setFocus(len)
 	local now = if typeof(f.now) == "number" then f.now else os.clock()
+	if fightSet then swayCrowd(os.clock()) end
 	for _, item in flickers do
 		local wave = (math.noise(now * item.rate, item.base) + 1) * 0.5
 		item.light.Brightness = item.base * (item.min + (item.max - item.min) * wave)
