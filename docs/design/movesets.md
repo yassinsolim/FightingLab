@@ -103,7 +103,7 @@ until it lands; the `Hit` event carries `tumble = true`. One tumble move per fig
 ### 2.6 Juggles
 
 Launch speed 19 studs/s up (was 16), juggle re-lift 9 (was 7.5), the air time limit 110 frames (was 86): a launcher
-is followed by 3-4 air hits plus the tumble hit; the air-hit cap (5, +1 after a tumble) and the decaying air damage
+is followed by 3-4 air hits plus the tumble hit; the air-hit cap (4 air hits, +1 after the tumble) and the decaying air damage
 keep every juggle at 5-7 hits and inside 45 % of the smallest health bar (`Balance_Test`).
 
 ### 2.7 Combos as data
@@ -114,7 +114,8 @@ counter?, steps = { { wait, input } } }`. `kind` is `launch` (bread and butter),
 is display notation (`"df+2"`, `"PKT+2"`, `"3+4"`, `"1+2"`); `steps[i].wait` = frames after the previous press,
 counting only frames without hitstop (the first is 0). `CombatSim.comboRun / comboTick` play them; `CombatCombo_Test`
 drives every combo against all six fighters and checks that every press connects as a true combo and the damage matches
-(±1); the CPU uses the same routes. Damage targets: 30-45 % of a 100 HP bar (31-40 listed), Ultimate enders ≤ 55 %
+(±1); the CPU plays the same routes (Hard almost always after a launch, Normal sometimes, Easy never) and the
+move list shows them on its COMBOS section. Damage targets: 30-45 % of a 100 HP bar (31-40 listed), Ultimate enders ≤ 55 %
 of the smallest bar (35-44 listed).
 ## 3. Snapshot and event fields (codec v3, additive)
 
@@ -508,7 +509,7 @@ Stance `Coil` (tag `COIL`, snapshot `stance = "Coil"`): entry 6 f, follow-ups fr
 | RisingFrontKick | Rising Front Kick | 3 | Mid | 12 / 3 / 15 | -3 / +4 | 9 | 3.6 + 1.2 | TUMBLE | front_kick | Lead front kick rising from the low stance: knee up, toes pointed, snaps to the stomach and back, rear palm forward. TUMBLE: on an airborne opponent the rising kick flips the body over in the air. |
 | HighKick | Whip Kick | 4 | High | 13 / 3 / 18 | -7 / +5 | 12 | 4.55 + 0.65 | cancel into Coil (3+4), tracking | roundhouse | Whipping rear roundhouse to the head, light and fast: the knee leads, the lower leg whips at the end, arms circle for balance. |
 | LowSpin | Low Spin Kick | d+3 | Low | 13 / 2 / 18 | -11 / +4 | 8 | 4.0 | crouching | sweep | Sinks into a low crouch and the lead leg sweeps a short quick arc into the shin, hands near the floor, stays crouched. |
-| RisingTornado | Rising Whirlwind | d+3,4 | Mid | 20 / 3 / 24 | -15 / LAUNCH | 12 | 3.1 + 1.5 | string after LowSpin | rising_kick | From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body corkscrews up onto the toes. Combos from the low spin on hit (a low-starter launcher); on block there is a gap to interrupt it. |
+| RisingTornado | Rising Whirlwind | d+3,4 | Mid | 20 / 3 / 24 | -15 / LAUNCH | 12 | 3.1 + 1.5 | string after LowSpin | rising_kick | From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body spirals up onto the toes. Combos from the low spin on hit (a low-starter launcher); on block there is a gap to interrupt it. |
 | RisingPalm *input* | Rising Palm Uppercut | db+2 | Mid | 15 / 3 / 22 | -14 / LAUNCH | 13 | 3.2 + 0.9 | high crush f1-7 | uppercut | From a crouch, the rear palm drives straight up under the chin while the legs extend, lead hand pulls down, she rises onto the toes. |
 | ButterflyKick | Butterfly Kick | f+4 | Mid | 18 / 4 / 22 | -10 / KND | 16 | 3.85 + 1.15 | low crush f6-16 | butterfly_kick | Torso drops horizontal and she spins in the air with both legs scissoring outward (butterfly kick), the rear leg striking the chest; feet leave the floor (low crush). |
 | Backfist | Snapping Backfist | b+2 | High | 12 / 3 / 15 | -3 / +6 | 9 | 3.0 + 1.6 | cancel into Coil (3+4), tracking | backfist | Short snapping backfist with the rear hand across the body to the temple, elbow leads, wrist flicks, quick recoil. |
@@ -540,7 +541,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f30 impact 1: a double palm strike to the chest (both palms together); the defender's torso is pushed back.
 - f66 impact 2: she turns and a spinning back-hand chop lands on the side of the neck; the defender's head jerks sideways.
 - f104 impact 3: she drops into a low spinning sweep; the defender's legs are taken and it floats up, horizontal.
-- f146 impact 4: she corkscrews up with a rising spiral kick under the floating body, lifting it higher.
+- f146 impact 4: she spirals up with a rising spiral kick under the floating body, lifting it higher.
 - f190 impact 5: in the air at the top, a whirlwind kick (two legs whipping in one turn) across the floating body.
 - f240 impact 6: she lands, sinks low and blasts a focused two-palm push into the falling defender; it slides across the floor onto its back (FaceUp, 4.6 studs away). Nia finishes in a low stance, palms forward, breathing out.
 

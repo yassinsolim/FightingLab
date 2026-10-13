@@ -161,3 +161,51 @@ legends and prompts from it. UI may stub it locally for testing but must not exp
 When done (or blocked) reply with: what you built (files), how it works, test summary line, evidence paths you
 looked at (one-line verdict each), numbers that prove the acceptance targets you own, known issues, and REQUESTs.
 Keep exports current in `OV6\handoff\<agent>-src\` and a short `OV6\handoff\<agent>.md`.
+
+## 7. Surge and the Ultimate (round 6; owner: combat — `RF.CombatSim`, `RF.CombatConfig`, `RF.Roster`)
+
+Binding for every workstream (round 6 brief, Contract A), as implemented on `r6-combat`. Original system; genre
+convention only.
+
+**Rules (sim).**
+- `CombatConfig.SurgeThreshold = 0.25`, `SurgeDamageMultiplier = 1.1`, `UltComboScale = 0.7`.
+- A fighter enters **Surge** on the first frame of a round its health is ≤ 25 % of its maximum and above 0 (event
+  `{ kind = "Surge", attacker = i, target = i }`). Surge lasts until the round ends or the fighter starts its
+  Ultimate; it adds 10 % to the damage the fighter deals.
+- Every `CharacterDef` has `moves.Ultimate` (key `"Ultimate"`, last in `moveOrder`, input `"LP+RP"`, notation
+  `"1+2"`, an original `name`): i18-22, armored through its startup against every strike (throws beat it; parries
+  and the Bear Trap catch never stop it), 3 active frames, -15 on block (launch punishable), Mid, Heavy, `damage` 30-36
+  spread over `cinematic = { duration, impacts = { { frame, share } }, endKind, endDistance, beats }` (shares sum to 1,
+  4-6 impacts, 190-260 frames, `endDistance` 4.4-4.6 studs). Per-fighter timelines and beats: `movesets.md`.
+- It can start once per round, only in Surge (`ultUsed` afterwards). Its first frame ends Surge and emits
+  `{ kind = "UltStart", attacker = i, target = 3 - i, move = "Ultimate" }`.
+- **On hit** (not blocked) both fighters enter state `"Ultimate"` for `cinematic.duration` frames; positions are locked
+  with the defender `endDistance` studs in front of the attacker (the pair slides inward inside the arena). Damage
+  lands at each impact: `{ kind = "UltHit", attacker, target, move = "Ultimate", damage, combo = <impact 1..n>,
+  knockdown = true on the last }`, share × damage × scaling (× 0.7 when the defender was already in a combo or
+  juggle; the parts add up exactly). The round clock waits. A KO is declared at the end of the cinematic (a `KO`
+  event with `move = "Ultimate"`); otherwise the defender lies in `Landing` with `knockdown = endKind` and the
+  attacker is `Idle`. **On block or whiff**: the normal `Block` / `Whiff` with `move = "Ultimate"` and its recovery.
+  In every case the Ultimate is used for the round.
+- **Free Training** (practice with the dummy on Stand or Guard): the player is always in Surge (no damage bonus, no
+  `Surge` event) and the Ultimate is available again as soon as it ends. Versus CPU practice (dummy Fight) and real
+  matches use the normal rule.
+
+**Snapshot (codec v3, additive).** Fighter flag bit 32 = `surge`, bit 64 = `ultUsed` (bit 128 = `tumble`). During the
+cinematic both fighters carry `throw = { archetype = "ultimate", move = "Ultimate", role = "Attacker" | "Defender",
+frame = <cinematic frame>, duration, impactFrame = <first impact> }`. Client frames (RenderBuffer / MatchRunner
+entries) expose `surge`, `ultUsed`, state `"Ultimate"` and that table; absent fields read as false / nil.
+
+**Input.** `Controls.fight.keyboard.ultimate = "L"` (sends the Ultimate button), U+I pressed together (within 1
+frame) also works; `Controls.fight.gamepad.ultimate = "ButtonR2"`; `Controls.notation.ultimate = "1+2"`; action text
+"Ultimate (1+2)". A typed 1,2 is still the string; 1+2 is only the Ultimate while it is ready.
+
+**CPU.** Easy almost never uses it (0 in 94 CPU-vs-CPU rounds), Normal as a juggle ender or a comeback gamble under
+pressure, Hard as a juggle / combo-route ender and an armored answer to a seen attack, and Hard throws an
+opponent's Ultimate startup (combat-balance.md R6.3).
+
+**Presentation (motion, look; unchanged from the brief).** motion: freeze, flash and push-in on `UltStart`, a
+cinematic camera and a two-role clip per fighter fitted to the impact frames, impact VFX/sound per `UltHit`, a Surge
+aura on `surge = true` and a burst on `Surge`. look: HUD Surge glow + "SURGE" tag, an "ULTIMATE" ready indicator
+(`surge and not ultUsed`) with the key label from Controls, an `UltStart` banner with the fighter's name and
+`Roster.get(id).moves.Ultimate.name`. Everything must work when the fields are absent.
