@@ -256,8 +256,8 @@ function M.init(newCtx: Ctx)
 end
 
 -- The defender's body reaching the floor inside the Ultimate's cinematic (its track's floor channel crossing 0.5).
--- Called every frame by EffectsController.update (the client bootstrap does not update this module per frame) and by
--- M.update; a frame is processed once.
+-- Called every frame by EffectsController.update and by M.update (the client bootstrap updates this module per frame);
+-- a frame is processed once.
 local cineNow: number? = nil
 function M.updateCinematic(f: any)
 	if type(f) ~= "table" or f.now == cineNow then return end

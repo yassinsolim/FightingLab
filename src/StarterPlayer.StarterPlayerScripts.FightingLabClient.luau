@@ -127,7 +127,7 @@ end
 RunService.RenderStepped:Connect(function(dt: number)
 	local frame = session.step(dt)
 	if frame then
-		for _, name in { "Stage", "Characters", "FighterLighting", "Camera", "Effects", "Hud" } do safeUpdate(name, frame) end
+		for _, name in { "Stage", "Characters", "FighterLighting", "Camera", "Effects", "Audio", "Hud" } do safeUpdate(name, frame) end
 	end
 	if Modules.Spectator then safeUpdate("Spectator", frame or lobbyFrame) end
 	if frame then

@@ -163,3 +163,39 @@ All six fighters getting up after a face-down knockdown (left to right in time):
 A real practice fight: Kael's low roundhouse sweeps Sierra, who falls forward, pushes up and is back in guard about a second later.
 
 ![Practice: low kick knockdown](27-practice-low-kick-knockdown.jpg)
+
+## Round 6: refined fighters
+
+All six fighters before (top) and after (bottom): Kael's taped glove cuffs and black trunks, Sierra's white gloves and braided armbands, Goran's beard and forearm chain, Lumi's charcoal pants and grip gloves, Rhys's loose bun, Nia's gold armlets.
+
+![Refined fighters](28-fighters-round6-before-after.jpg)
+
+## Round 6: arena moods
+
+Midnight Rooftop and Harbor Dusk before (left) and after (right): the fight now plays in each arena's own scenery and lighting mood, with floor crests and banners in the wide shot.
+
+![Midnight Rooftop before and after](29-rooftop-before-after.jpg)
+
+![Harbor Dusk before and after](30-harbor-before-after.jpg)
+
+## Round 6: fighter select
+
+The new fighter select: a bigger lit fighter, stats, signature moves and a roster grid; the camera fits each fighter's height.
+
+![Fighter select before and after](31-fighter-select-before-after.jpg)
+
+## Round 6: combos
+
+Nia's COMBOS page in the Move List: every listed route is verified against all six opponents.
+
+![Combos page](32-combos-page.jpg)
+
+## Round 6: Surge and the Ultimate
+
+Goran's Ultimate "Landslide", frame by frame: an armored charge, a body-lock crush, a suplex, a knee slam and a forward drop.
+
+![Landslide](33-ultimate-landslide-sheet.jpg)
+
+The fight HUD with real data: SURGE and the [L] ULTIMATE indicator in Free Training, the Ultimate's title card with letterbox, the hit counter during the cinematic and Surge refilling afterwards.
+
+![Surge and Ultimate HUD](34-surge-and-ultimate-hud.jpg)

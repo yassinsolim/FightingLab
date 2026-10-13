@@ -2,7 +2,8 @@
 
 An original, private Roblox 3D fighting game played as a duel lobby: you spawn in a plaza as your fighter, walk to
 themed arenas, stand on glowing circles to duel other players or a CPU, and practise in a dojo. Six original fighters,
-100 motion-captured or hand-keyed attacks, a CPU with three fair difficulty levels, and an automated anti-cheese pass.
+each with its own signature mechanic, 23-26 moves and tested combo routes; a low-health Surge with a once-per-round
+cinematic Ultimate for every fighter; a CPU with three fair difficulty levels and an automated anti-cheese pass.
 
 ![Lobby](docs/gallery/01-lobby-spawn.jpg)
 
@@ -43,16 +44,28 @@ Fighting (keyboard). The same scheme is shown in the fight (G), in How to Play a
 - U = 1 (left punch), I = 2 (right punch), J = 3 (left kick), K = 4 (right kick). Directions + buttons pick moves
   (e.g. down-forward + 2), and buttons in sequence make strings (e.g. 1,2).
 - O, U+J or I+K: throw. Break an incoming throw by pressing U or I as it starts (matching the throw's punch).
+- J+K (3+4): your fighter's signature (a stance or a catch, see the roster below).
+- L (or U+I together, 1+2): your Ultimate, once per round while in Surge (health at 25% or less).
 - G: controls guide.
 - Practice: R reset positions, T Training / Versus CPU, 1 / 2 / 3 CPU difficulty, Y dummy mode (Stand / Guard /
-  Fight back), P pause (opens the practice panel), Backspace leave practice.
+  Fight back), P pause (opens the practice panel), Backspace leave practice. In Free Training you are always in
+  Surge, so the Ultimate can be tried any time.
 
-Fighting (gamepad): stick or D-pad move, X / Y / A / B = 1 / 2 / 3 / 4, RB throw, Start pause, Select guide.
+Fighting (gamepad): stick or D-pad move, X / Y / A / B = 1 / 2 / 3 / 4, RB throw, RT Ultimate, Start pause, Select guide.
 
 ## Roster and arenas
-Kael (street boxing, pressure), Sierra (kickboxing, range), Goran (heavyweight brawler), Lumi (acrobatic kicks),
-Rhys (traditional karate with a parry), Nia (fluid open-hand style). All six are original characters with realistic
-catalog bodies and heads, fitted textured fightwear and facial expressions; each has 16-17 original moves.
+Every fighter is an original character with a signature on J+K (3+4), strings with different enders, two launchers, a
+tumble extender for juggles, a cinematic Ultimate and three or four listed combos (Move List → COMBOS):
+
+| Fighter | Style | Signature (3+4) | Ultimate |
+|---|---|---|---|
+| Kael | Street boxing, pressure | Pocket: a bob-and-weave stance that ducks highs, with a body shovel and an uppercut launcher | Final Bell |
+| Sierra | Kickboxing, range | Southpaw: switches the lead leg, which changes her kick follow-ups | Eight Limbs |
+| Goran | Heavyweight grappler, armor | Bear Trap: catches a high or mid strike into a suplex; armored moves and a command grab | Landslide |
+| Lumi | Acrobatic freerunning | Aerial: a cartwheel that is airborne over lows, with kick follow-ups | Skyline |
+| Rhys | Karate counter-striker | Still Water: a counter stance that parries highs and mids; high/mid and low parries | Last Kata |
+| Nia | Kung-fu-inspired whirlwind | Coil: a spring stance into three spinning kicks whose 2nd and 3rd hits can be delayed | Monsoon |
+
 Arenas: Midnight Rooftop, Harbor Dusk, Jungle Ruins, Summit Observatory (duels) and Training Bay (practice dojo).
 
 ## Repository layout
@@ -102,9 +115,12 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   one-frame pulse, so holding never orbits).
 - Combat: ReplicatedStorage.FightingLab.CombatSim is deterministic and frame-based: automatic standing / crouching
   guard, discrete sidesteps, committed dash / backdash, strings and chords, throws with break windows, tracking and
-  homing moves, real step-in root motion, hitstop, counter hits, launches, limited juggles (max 4 air hits),
-  knockdowns, invulnerable getups and rolls, and practice-dummy modes. Moves and frame data live in Roster (each move
-  also carries an animation-intent sentence); global tuning in CombatConfig.
+  homing moves, real step-in root motion, hitstop, counter hits, launches, limited juggles (max 4 air hits, plus one
+  per tumble extender), combo damage scaling from the 4th hit, knockdowns, invulnerable getups and rolls, signature
+  stances / catches / parries on 3+4, Surge (25% health) and the once-per-round Ultimate (armored startup, then a
+  locked two-person cinematic with damage on each impact), and practice-dummy modes. Moves, combos and frame data live
+  in Roster (each move also carries an animation-intent sentence; `docs/design/movesets.md` documents every fighter);
+  global tuning in CombatConfig.
 - CPU: ReplicatedStorage.FightingLab.CombatAI perceives the opponent through a reaction delay per difficulty, blocks,
   punishes, uses strings, throws and footwork, reads repeated habits (with reads that fade over time) and has a
   per-difficulty patience timer so it never stays passive. Easy has a per-fighter matchup table so every fighter is
@@ -114,8 +130,9 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   rest on the floor, nothing goes below it), planted-foot locking and a reach net (a grounded foot the leg cannot
   reach goes onto its ball and slides along the floor instead of lifting into the air). Clip modules:
   Client.Motion.Clips.Core.* (stances, walking, dashes, sidesteps, guards, hit reactions, falls, getups, rolls, KO,
-  victory, defeat) and Client.Motion.Clips.Moves.Strikes / Kicks / Throws.* (one clip per move, 100 in total; throws
-  have synchronised attacker and defender tracks, hand grips on the partner's body and break tracks). Clips are
+  victory, defeat) and Client.Motion.Clips.Moves.Strikes / Kicks / Throws.* (one clip per move; throws and the six
+  Ultimates have synchronised attacker and defender tracks, hand grips on the partner's body and break tracks;
+  Client.Motion.Cinematic plays the Ultimates with their camera shots). Clips are
   proportional, so one clip fits every fighter, and each attack clip is time-warped so its impact pose lands exactly on
   the move's first active frame. The older procedural Client.Motion.Strikes / Kicks / Throws remain as a fallback for
   any move without a clip.
@@ -124,15 +141,35 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   R15 avatar; ServerScriptService.FightingLabCharacterBoot rebuilds any saved template whose hash changed. To change a
   look by hand: edit the fighter's entry in CharacterSpecs AND change their string in `hashes`.
 - Presentation: CharacterPresenter (fight rigs, pool, previews, contact-aim heights), CameraDirector, EffectsController,
-  AudioController, FighterLighting, FaceController, HudController (health bars, timer, round pips, combo counter,
-  call-outs, controls guide), LobbyUI (prompts, CPU picker, training picker, practice strip / pause panel, results,
-  Tab menu), FighterSelect (showcase room), StationBoards, Leaderboard, CreditsScreen (renders
+  AudioController, FighterLighting, FaceController, HudController with HudKit / HudBanners (health bars, timer, round
+  pips, combo counter, call-outs, Surge / Ultimate indicators, round and K.O. banners, controls guide),
+  StageController + LightingProfile (per-arena lighting moods) and ServerStorage.FightingLab.World.FightSets (the
+  client-only scenery around each fight), LobbyUI (prompts, CPU picker, training picker, practice strip / pause panel,
+  results, Tab menu), FighterSelect (showcase room), StationBoards, Leaderboard, CreditsScreen (renders
   ReplicatedStorage.FightingLab.Credits, generated by `tools/gen_credits.py` together with CREDITS.md).
 - Making motion clips: `tools/mocap` (convert.py turns licensed motion capture into clip modules, keyed.py
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
   Final result: `[SUMMARY] 525 run, 525 passed, 0 failed`
+
+## Update: distinct fighters, combos, Surge and the Ultimate, a premium look (2026-10-12)
+
+- Every fighter plays differently: a signature on 3+4 (Kael's Pocket weave, Sierra's Southpaw switch, Goran's Bear Trap
+  catch, Lumi's Aerial cartwheel, Rhys's Still Water counter stance, Nia's Coil spins), 23-26 moves each (strings with
+  different enders, two launchers, a tumble extender, lows, punishers, throws). Fighters sharing the same kind of move
+  on the same input dropped from 29% to 5% (only the jabs).
+- Combos: three or four listed routes per fighter on the new COMBOS page of the Move List, every one verified against
+  all six opponents (31-40 damage out of 100, 35-44 when ending in the Ultimate).
+- Surge and the Ultimate: at 25% health or less a fighter enters Surge (a coloured aura, a SURGE tag and slightly
+  stronger hits) and can fire their Ultimate once per round with L (U+I, RT). It has armor while it starts and is
+  punishable on block; on hit a cinematic plays with designed camera shots, effects and sound (Final Bell, Eight
+  Limbs, Landslide, Skyline, Last Kata, Monsoon). The CPU uses it too: Easy never, Normal as a punish, Hard well.
+- Look: each arena has its own lighting mood and fight-only scenery; a new fight HUD (angled health bars with a
+  damage trail, combo damage, ROUND / FIGHT / K.O. / PERFECT banners, Surge and Ultimate indicators, the Ultimate's
+  title card); a bigger fighter select with a roster grid; one theme across the lobby panels.
+- Fighters: refined outfits and one signature detail each (Kael's taped glove cuffs, Sierra's braided armbands, Goran's
+  forearm chain and beard, Lumi's grip gloves, Rhys's loose bun, Nia's gold armlets).
 
 ## Update: cleaner knockdowns, close hits and a visible face (2026-10-12)
 
@@ -249,6 +286,11 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
 - A few close-range moves still pass slightly into the body during startup (Goran's Hammer and JabHammer), Goran's
   Uppercut sinks a little into a launched opponent, and in two throws a hand briefly grazes the thrown fighter (Rhys
   on Goran's RamSlam, Nia on Rhys's Throw). The rebuilt side roll bends the kneeling foot past its natural range.
+- In the Ultimate grapples the two bodies can overlap by up to about 17 cm (worst in Sierra's), a few cinematic strikes
+  stop a little short of the body, and a tumbling body passes through upright for a moment mid-roll.
+- The fighters' faces are the best free catalog heads found so far (no better free head was available); Goran's beard
+  does not follow his jaw when his mouth opens.
+- The arena crowds are flat silhouettes.
 - R15 rigs have no finger bones: open-hand fighters keep the catalog hand shape and Kael / Sierra wear gloves.
 - Studio-only review hooks exist (the FightingLabDuelDebug bindable and a stub world that is only built when the real
   world is missing); they are ignored outside Studio.
