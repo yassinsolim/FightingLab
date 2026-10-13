@@ -161,7 +161,7 @@ Stance `Pocket` (tag `PKT`, snapshot `stance = "Pocket"`): entry 6 f, follow-ups
 | ThrowB | Over-Under Toss | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f32 of 48 | 19 | 3.2 |  | hip_toss | Over-under body lock: rear arm under the opponent's armpit, lead arm over the shoulder, then a hip lift and dump in front onto their back. |
 | Ultimate **new** | Final Bell | 1+2 | Mid | 18 / 3 / 30 | -15 / KND | 32 | 3.6 + 1.2 | armor (all hits) f1-17 | straight | ULTIMATE (Surge only, once per round) 'Final Bell': an armored lunging right straight opens it; on hit the cinematic plays the beats listed in movesets.md (shovel, body hook, uppercut, straight, then the overhand that drops the opponent face-down). |
 
-**Ultimate — "Final Bell"** (key `Ultimate`, 1+2): i18, active 3, recovery 30, -15 on block, armor (all strikes) on frames 1-17, damage 32, reach 3.6 + 1.2. Cinematic: 200 frames (3.3 s), 5 impacts, ends FaceDown 2.8 studs in front of KAEL.
+**Ultimate — "Final Bell"** (key `Ultimate`, 1+2): i18, active 3, recovery 30, -15 on block, armor (all strikes) on frames 1-17, damage 32, reach 3.6 + 1.2. Cinematic: 200 frames (3.3 s), 5 impacts, ends FaceDown 4.4 studs in front of KAEL.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -179,7 +179,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f94 impact 3: lead uppercut through the guard; the defender's chin snaps up, torso straightens and it staggers half a step back.
 - f128 impact 4: right straight to the jaw; the defender's head turns and it spins a quarter turn away, arms limp.
 - f150-175: Kael plants, loads the overhand right high behind his ear (the camera holds on him).
-- f176 impact 5 (the final bell): the overhand right comes over the top onto the temple and drives the defender face-first into the floor (FaceDown, 2.8 studs in front); Kael ends standing over it, gloves up, breathing.
+- f176 impact 5 (the final bell): the overhand right comes over the top onto the temple and drives the defender face-first into the floor (FaceDown, 4.4 studs in front); Kael ends standing over it, gloves up, breathing.
 
 New keys (7): OneTwoShin, HookOverhand, RibRoller, Pocket, PocketShovel, PocketUppercut, Ultimate.
 
@@ -224,7 +224,7 @@ Stance `Southpaw` (tag `SPW`, snapshot `stance = "Southpaw"`): entry 8 f, follow
 | ThrowB | Clinch Trip | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f30 of 46 | 18 | 3.2 |  | arm_toss | Underhook the arm, step across and sweep the opponent's lead leg with the rear leg while turning the shoulders; the opponent spins and lands on their back. |
 | Ultimate **new** | Eight Limbs | 1+2 | Mid | 20 / 3 / 28 | -15 / KND | 33 | 4.0 + 1.0 | armor (all hits) f1-19 | teep | ULTIMATE (Surge only, once per round) 'Eight Limbs': an armored long teep opens it; on hit the cinematic plays the beats in movesets.md (body kick, clinch knees, elbow, switch head kick). |
 
-**Ultimate — "Eight Limbs"** (key `Ultimate`, 1+2): i20, active 3, recovery 28, -15 on block, armor (all strikes) on frames 1-19, damage 33, reach 4.0 + 1.0. Cinematic: 230 frames (3.8 s), 5 impacts, ends FaceUp 3.6 studs in front of SIERRA.
+**Ultimate — "Eight Limbs"** (key `Ultimate`, 1+2): i20, active 3, recovery 28, -15 on block, armor (all strikes) on frames 1-19, damage 33, reach 4.0 + 1.0. Cinematic: 230 frames (3.8 s), 5 impacts, ends FaceUp 4.6 studs in front of SIERRA.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -242,7 +242,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f104 impact 3: the second knee, to the chin; the defender's head snaps back up.
 - f140 impact 4: she releases the clinch with a slashing horizontal elbow across the brow; the defender staggers back, turning away.
 - f150-195: two quick steps back to kicking range, a hop-switch of the feet (Southpaw) and a breath.
-- f196 impact 5: a full-power switch head kick; the defender is spun off its feet and lands on its back (FaceUp, 3.6 studs away). Sierra finishes in her bladed guard.
+- f196 impact 5: a full-power switch head kick; the defender is spun off its feet and lands on its back (FaceUp, 4.6 studs away). Sierra finishes in her bladed guard.
 
 New keys (9): JabTeepHigh, JabTeepLow, SlashElbow, TeepSpinKick, Southpaw, SouthpawHeadKick, SouthpawBodyKick, SouthpawLowKick, Ultimate.
 
@@ -278,7 +278,7 @@ New keys (9): JabTeepHigh, JabTeepLow, SlashElbow, TeepSpinKick, Southpaw, South
 | RamSlam | Ram Slam | f+1+3 | Throw | 15 / 2 / 36 | break 1 ≤f14, impact f42 of 58 | 26 | 3.2 |  | slam | Command grab: lunges forward, scoops the opponent onto his shoulder and drops forward, slamming them flat into the floor (shorter break window). |
 | Ultimate **new** | Landslide | 1+2 | Mid | 22 / 4 / 28 | -15 / KND | 36 | 3.0 + 1.4 | armor (all hits) f1-21 | shoulder_tackle | ULTIMATE (Surge only, once per round) 'Landslide': an armored charging shoulder opens it; on hit the cinematic plays the beats in movesets.md (body-lock crush, suplex, knee slam, carry and forward drop). |
 
-**Ultimate — "Landslide"** (key `Ultimate`, 1+2): i22, active 4, recovery 28, -15 on block, armor (all strikes) on frames 1-21, damage 36, reach 3.0 + 1.4. Cinematic: 240 frames (4.0 s), 4 impacts, ends FaceUp 3.0 studs in front of GORAN.
+**Ultimate — "Landslide"** (key `Ultimate`, 1+2): i22, active 4, recovery 28, -15 on block, armor (all strikes) on frames 1-21, damage 36, reach 3.0 + 1.4. Cinematic: 240 frames (4.0 s), 4 impacts, ends FaceUp 4.6 studs in front of GORAN.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -295,7 +295,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f120-149: he drags the dazed defender up by the waist, its legs buckling.
 - f150 impact 3: he lifts it across his chest and drops it onto his raised knee (body slam onto the thigh); the defender folds over the knee.
 - f170-213: he heaves it onto his shoulder (carry), walks one heavy step forward.
-- f214 impact 4: he falls forward with his whole weight and drives the defender flat onto its back (FaceUp, 3.0 studs in front); Goran rises slowly over it.
+- f214 impact 4: he falls forward with his whole weight and drives the defender flat onto its back (FaceUp, 4.6 studs in front); Goran rises slowly over it.
 
 New keys (6): JabHammerForearm, JabHammerStomp, BootForearm, BootForearmHammer, BearTrap, Ultimate.
 
@@ -338,7 +338,7 @@ Stance `Aerial` (tag `AER`, snapshot `stance = "Aerial"`): entry 4 f, follow-ups
 | ThrowB | Vault Takedown | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f30 of 46 | 17 | 3.2 |  | arm_toss | Hooks the neck from the side, springs up and stamps the lead knee; her weight folds them backwards. |
 | Ultimate **new** | Skyline | 1+2 | Mid | 18 / 3 / 30 | -15 / KND | 30 | 3.9 + 1.2 | armor (all hits) f1-17 | jumping_kick | ULTIMATE (Surge only, once per round) 'Skyline': an armored running jump kick opens it; on hit the cinematic plays the beats in movesets.md (heel kick, cartwheel kick, wall-run flip off the chest, scissor kick, drop sweep, falling heel). |
 
-**Ultimate — "Skyline"** (key `Ultimate`, 1+2): i18, active 3, recovery 30, -15 on block, armor (all strikes) on frames 1-17, damage 30, reach 3.9 + 1.2. Cinematic: 210 frames (3.5 s), 6 impacts, ends FaceDown 3.4 studs in front of LUMI.
+**Ultimate — "Skyline"** (key `Ultimate`, 1+2): i18, active 3, recovery 30, -15 on block, armor (all strikes) on frames 1-17, damage 30, reach 3.9 + 1.2. Cinematic: 210 frames (3.5 s), 6 impacts, ends FaceDown 4.4 studs in front of LUMI.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -357,7 +357,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f86 impact 3: she runs up the defender's thigh and chest like a rooftop wall and kicks off its chest (back-flip off the body); the defender is knocked upright, arms wide.
 - f118 impact 4: at the top of the flip, a scissor kick to the head; the defender's head whips sideways.
 - f150 impact 5: she lands low and a fast drop sweep takes its legs; the defender floats up horizontally.
-- f192 impact 6: she springs into a front flip and drives a falling heel down onto the floating defender, spiking it face-first into the floor (FaceDown, 3.4 studs in front); she lands crouched on one hand.
+- f192 impact 6: she springs into a front flip and drives a falling heel down onto the floating defender, spiking it face-first into the floor (FaceDown, 4.4 studs in front); she lands crouched on one hand.
 
 New keys (8): PalmHeelHook, PalmHeelSweep, CrescentFlyingKick, Aerial, AerialSplit, AerialHeel, AerialSweep, Ultimate.
 
@@ -401,7 +401,7 @@ Stance `StillWater` (tag `STW`, snapshot `stance = "StillWater"`): entry 8 f, fo
 | ThrowB | Shoulder Throw | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f32 of 48 | 19 | 3.2 |  | arm_toss | Arm trap and leg-block takedown, kneeling at the end. |
 | Ultimate **new** | Last Kata | 1+2 | Mid | 20 / 3 / 28 | -15 / KND | 34 | 3.9 + 1.0 | armor (all hits) f1-19 | straight | ULTIMATE (Surge only, once per round) 'Last Kata': an armored gliding reverse punch opens it; on hit the cinematic plays the beats in movesets.md (knife-hand, front kick, rising elbow, a long still breath, one decisive reverse punch). |
 
-**Ultimate — "Last Kata"** (key `Ultimate`, 1+2): i20, active 3, recovery 28, -15 on block, armor (all strikes) on frames 1-19, damage 34, reach 3.9 + 1.0. Cinematic: 190 frames (3.2 s), 4 impacts, ends FaceUp 3.8 studs in front of RHYS.
+**Ultimate — "Last Kata"** (key `Ultimate`, 1+2): i20, active 3, recovery 28, -15 on block, armor (all strikes) on frames 1-19, damage 34, reach 3.9 + 1.0. Cinematic: 190 frames (3.2 s), 4 impacts, ends FaceUp 4.6 studs in front of RHYS.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -417,7 +417,7 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f64 impact 2: a front snap kick into the stomach; the defender doubles over.
 - f98 impact 3: a rising elbow under the chin; the defender's head snaps up and it sways, dazed.
 - f110-169: Rhys steps back into a deep, still stance and exhales; nothing moves but the defender swaying (the camera holds on him).
-- f170 impact 4 (the last kata): one perfect stepping reverse punch to the sternum; the defender is blown off its feet and lands on its back (FaceUp, 3.8 studs away). Rhys holds the finished punch, then returns the fist to his hip.
+- f170 impact 4 (the last kata): one perfect stepping reverse punch to the sternum; the defender is blown off its feet and lands on its back (FaceUp, 4.6 studs away). Rhys holds the finished punch, then returns the fist to his hip.
 
 New keys (8): ReverseHighKick, ReverseLowKick, PunchKickAxe, LowParry, StillWater, StillStrike, StillReverse, Ultimate.
 
@@ -460,7 +460,7 @@ Stance `Coil` (tag `COIL`, snapshot `stance = "Coil"`): entry 6 f, follow-ups fr
 | ThrowB | Twisting Hip Toss | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f32 of 46 | 18 | 3.2 |  | hip_toss | Palms on the opponent's chest and hip, she sinks, twists her whole body and uproots them, tossing them in a spiral onto the floor. |
 | Ultimate **new** | Monsoon | 1+2 | Mid | 19 / 3 / 29 | -15 / KND | 32 | 3.8 + 1.0 | armor (all hits) f1-18 | palm | ULTIMATE (Surge only, once per round) 'Monsoon': an armored spinning palm strike opens it; on hit the cinematic plays the beats in movesets.md (double palm, spinning chop, sweep, spiral kick, mid-air whirl, two-palm push). |
 
-**Ultimate — "Monsoon"** (key `Ultimate`, 1+2): i19, active 3, recovery 29, -15 on block, armor (all strikes) on frames 1-18, damage 32, reach 3.8 + 1.0. Cinematic: 260 frames (4.3 s), 6 impacts, ends FaceUp 3.5 studs in front of NIA.
+**Ultimate — "Monsoon"** (key `Ultimate`, 1+2): i19, active 3, recovery 29, -15 on block, armor (all strikes) on frames 1-18, damage 32, reach 3.8 + 1.0. Cinematic: 260 frames (4.3 s), 6 impacts, ends FaceUp 4.6 studs in front of NIA.
 
 | impact | cinematic frame | share | damage (base) |
 |---|---|---|---|
@@ -479,6 +479,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 - f104 impact 3: she drops into a low spinning sweep; the defender's legs are taken and it floats up, horizontal.
 - f146 impact 4: she corkscrews up with a rising spiral kick under the floating body, lifting it higher.
 - f190 impact 5: in the air at the top, a whirlwind kick (two legs whipping in one turn) across the floating body.
-- f240 impact 6: she lands, sinks low and blasts a focused two-palm push into the falling defender; it slides across the floor onto its back (FaceUp, 3.5 studs away). Nia finishes in a low stance, palms forward, breathing out.
+- f240 impact 6: she lands, sinks low and blasts a focused two-palm push into the falling defender; it slides across the floor onto its back (FaceUp, 4.6 studs away). Nia finishes in a low stance, palms forward, breathing out.
 
 New keys (7): DoubleChopLow, PalmKickHigh, Coil, CoilWhirl, CoilWhirl2, CoilWhirl3, Ultimate.
+
+## 6. Change log after M1 (Contract B)
+
+| commit | change |
+|---|---|
+| M1 (712426d) | keys, stances, Ultimates and timelines published |
+| after M1 | `Ultimate.cinematic.endDistance` raised to 4.4-4.6 studs (motion request: the lying defender's feet reach about 3.1-3.3 studs in front of its root; at 2.8-3.8 they landed under the attacker's legs): Kael 4.4, Sierra 4.6, Goran 4.6, Lumi 4.4, Rhys 4.6, Nia 4.6. Keys, impact frames and durations unchanged. |

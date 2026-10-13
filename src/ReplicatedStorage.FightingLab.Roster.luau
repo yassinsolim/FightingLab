@@ -240,7 +240,7 @@ define({
 	{ key = "ThrowB", name = "Over-Under Toss", input = "RP+RK", notation = "2+4", startup = 12, active = 2, recovery = 34, damage = 19, height = "Throw", range = 3.2, width = 1.4, breakWindow = 20, breakButton = "RearPunch", duration = 48, impactFrame = 32, tier = "Heavy", limb = "Body", anim = { archetype = "hip_toss" },
 		intent = "Over-under body lock: rear arm under the opponent's armpit, lead arm over the shoulder, then a hip lift and dump in front onto their back." },
 	ultimate({ name = "Final Bell", startup = 18, active = 3, recovery = 30, damage = 32, range = 3.6, advance = 1.2, onBlock = -15, limb = "RearArm", anim = { archetype = "straight", side = "Rear", height = "Mid", lunge = 1.0 },
-		cinematic = { duration = 200, impacts = { { frame = 30, share = 0.10 }, { frame = 62, share = 0.14 }, { frame = 94, share = 0.16 }, { frame = 128, share = 0.20 }, { frame = 176, share = 0.40 } }, endKind = "FaceDown", endDistance = 2.8,
+		cinematic = { duration = 200, impacts = { { frame = 30, share = 0.10 }, { frame = 62, share = 0.14 }, { frame = 94, share = 0.16 }, { frame = 128, share = 0.20 }, { frame = 176, share = 0.40 } }, endKind = "FaceDown", endDistance = 4.4,
 			beats = {
 				"f0 (the hit): an armored, lunging right straight to the sternum; the opponent folds forward and Kael steps in chest to chest, dipping into the Pocket.",
 				"f30 impact 1: lead shovel hook to the liver; the defender doubles over to its right side, elbows drop.",
@@ -248,7 +248,7 @@ define({
 				"f94 impact 3: lead uppercut through the guard; the defender's chin snaps up, torso straightens and it staggers half a step back.",
 				"f128 impact 4: right straight to the jaw; the defender's head turns and it spins a quarter turn away, arms limp.",
 				"f150-175: Kael plants, loads the overhand right high behind his ear (the camera holds on him).",
-				"f176 impact 5 (the final bell): the overhand right comes over the top onto the temple and drives the defender face-first into the floor (FaceDown, 2.8 studs in front); Kael ends standing over it, gloves up, breathing.",
+				"f176 impact 5 (the final bell): the overhand right comes over the top onto the temple and drives the defender face-first into the floor (FaceDown, 4.4 studs in front); Kael ends standing over it, gloves up, breathing.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Final Bell': an armored lunging right straight opens it; on hit the cinematic plays the beats listed in movesets.md (shovel, body hook, uppercut, straight, then the overhand that drops the opponent face-down)." }),
 }, {
@@ -323,7 +323,7 @@ define({
 	{ key = "ThrowB", name = "Clinch Trip", input = "RP+RK", notation = "2+4", startup = 12, active = 2, recovery = 34, damage = 18, height = "Throw", range = 3.2, width = 1.4, breakWindow = 20, breakButton = "RearPunch", duration = 46, impactFrame = 30, tier = "Heavy", limb = "Body", anim = { archetype = "arm_toss" },
 		intent = "Underhook the arm, step across and sweep the opponent's lead leg with the rear leg while turning the shoulders; the opponent spins and lands on their back." },
 	ultimate({ name = "Eight Limbs", startup = 20, active = 3, recovery = 28, damage = 33, range = 4.0, advance = 1.0, onBlock = -15, limb = "LeadLeg", anim = { archetype = "teep", side = "Lead", height = "Mid", lunge = 0.6 },
-		cinematic = { duration = 230, impacts = { { frame = 34, share = 0.10 }, { frame = 70, share = 0.12 }, { frame = 104, share = 0.14 }, { frame = 140, share = 0.16 }, { frame = 196, share = 0.48 } }, endKind = "FaceUp", endDistance = 3.6,
+		cinematic = { duration = 230, impacts = { { frame = 34, share = 0.10 }, { frame = 70, share = 0.12 }, { frame = 104, share = 0.14 }, { frame = 140, share = 0.16 }, { frame = 196, share = 0.48 } }, endKind = "FaceUp", endDistance = 4.6,
 			beats = {
 				"f0 (the hit): an armored long teep into the stomach folds the opponent; Sierra steps in behind it.",
 				"f34 impact 1: lead (left) body kick into the liver; the defender bends sideways toward the kick.",
@@ -331,7 +331,7 @@ define({
 				"f104 impact 3: the second knee, to the chin; the defender's head snaps back up.",
 				"f140 impact 4: she releases the clinch with a slashing horizontal elbow across the brow; the defender staggers back, turning away.",
 				"f150-195: two quick steps back to kicking range, a hop-switch of the feet (Southpaw) and a breath.",
-				"f196 impact 5: a full-power switch head kick; the defender is spun off its feet and lands on its back (FaceUp, 3.6 studs away). Sierra finishes in her bladed guard.",
+				"f196 impact 5: a full-power switch head kick; the defender is spun off its feet and lands on its back (FaceUp, 4.6 studs away). Sierra finishes in her bladed guard.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Eight Limbs': an armored long teep opens it; on hit the cinematic plays the beats in movesets.md (body kick, clinch knees, elbow, switch head kick)." }),
 }, {
@@ -400,7 +400,7 @@ define({
 	{ key = "RamSlam", name = "Ram Slam", input = "f+LP+LK", notation = "f+1+3", startup = 15, active = 2, recovery = 36, damage = 26, height = "Throw", range = 3.2, width = 1.4, breakWindow = 14, breakButton = "LeadPunch", duration = 58, impactFrame = 42, tier = "Heavy", limb = "Body", anim = { archetype = "slam" },
 		intent = "Command grab: lunges forward, scoops the opponent onto his shoulder and drops forward, slamming them flat into the floor (shorter break window)." },
 	ultimate({ name = "Landslide", startup = 22, active = 4, recovery = 28, damage = 36, range = 3.0, advance = 1.4, onBlock = -15, limb = "Body", anim = { archetype = "shoulder_tackle", side = "Lead", height = "Mid", lunge = 1.0 },
-		cinematic = { duration = 240, impacts = { { frame = 40, share = 0.12 }, { frame = 92, share = 0.18 }, { frame = 150, share = 0.25 }, { frame = 214, share = 0.45 } }, endKind = "FaceUp", endDistance = 3.0,
+		cinematic = { duration = 240, impacts = { { frame = 40, share = 0.12 }, { frame = 92, share = 0.18 }, { frame = 150, share = 0.25 }, { frame = 214, share = 0.45 } }, endKind = "FaceUp", endDistance = 4.6,
 			beats = {
 				"f0 (the hit): an armored charging shoulder pins the opponent; Goran wraps both arms around its waist (body lock).",
 				"f40 impact 1: he crushes the body lock and shakes the defender; its back arches, arms flail over his shoulders, feet leave the floor.",
@@ -408,7 +408,7 @@ define({
 				"f120-149: he drags the dazed defender up by the waist, its legs buckling.",
 				"f150 impact 3: he lifts it across his chest and drops it onto his raised knee (body slam onto the thigh); the defender folds over the knee.",
 				"f170-213: he heaves it onto his shoulder (carry), walks one heavy step forward.",
-				"f214 impact 4: he falls forward with his whole weight and drives the defender flat onto its back (FaceUp, 3.0 studs in front); Goran rises slowly over it.",
+				"f214 impact 4: he falls forward with his whole weight and drives the defender flat onto its back (FaceUp, 4.6 studs in front); Goran rises slowly over it.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Landslide': an armored charging shoulder opens it; on hit the cinematic plays the beats in movesets.md (body-lock crush, suplex, knee slam, carry and forward drop)." }),
 }, {
@@ -473,7 +473,7 @@ define({
 	{ key = "ThrowB", name = "Vault Takedown", input = "RP+RK", notation = "2+4", startup = 12, active = 2, recovery = 34, damage = 17, height = "Throw", range = 3.2, width = 1.4, breakWindow = 20, breakButton = "RearPunch", duration = 46, impactFrame = 30, tier = "Heavy", limb = "Body", anim = { archetype = "arm_toss" },
 		intent = "Hooks the neck from the side, springs up and stamps the lead knee; her weight folds them backwards." },
 	ultimate({ name = "Skyline", startup = 18, active = 3, recovery = 30, damage = 30, range = 3.9, advance = 1.2, onBlock = -15, limb = "RearLeg", anim = { archetype = "jumping_kick", side = "Rear", height = "Mid", hop = 0.6 },
-		cinematic = { duration = 210, impacts = { { frame = 28, share = 0.10 }, { frame = 56, share = 0.10 }, { frame = 86, share = 0.12 }, { frame = 118, share = 0.14 }, { frame = 150, share = 0.18 }, { frame = 192, share = 0.36 } }, endKind = "FaceDown", endDistance = 3.4,
+		cinematic = { duration = 210, impacts = { { frame = 28, share = 0.10 }, { frame = 56, share = 0.10 }, { frame = 86, share = 0.12 }, { frame = 118, share = 0.14 }, { frame = 150, share = 0.18 }, { frame = 192, share = 0.36 } }, endKind = "FaceDown", endDistance = 4.4,
 			beats = {
 				"f0 (the hit): an armored running jump kick into the chest; the opponent rocks back and Lumi lands light in front of it.",
 				"f28 impact 1: a spinning heel kick to the ribs; the defender bends sideways.",
@@ -481,7 +481,7 @@ define({
 				"f86 impact 3: she runs up the defender's thigh and chest like a rooftop wall and kicks off its chest (back-flip off the body); the defender is knocked upright, arms wide.",
 				"f118 impact 4: at the top of the flip, a scissor kick to the head; the defender's head whips sideways.",
 				"f150 impact 5: she lands low and a fast drop sweep takes its legs; the defender floats up horizontally.",
-				"f192 impact 6: she springs into a front flip and drives a falling heel down onto the floating defender, spiking it face-first into the floor (FaceDown, 3.4 studs in front); she lands crouched on one hand.",
+				"f192 impact 6: she springs into a front flip and drives a falling heel down onto the floating defender, spiking it face-first into the floor (FaceDown, 4.4 studs in front); she lands crouched on one hand.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Skyline': an armored running jump kick opens it; on hit the cinematic plays the beats in movesets.md (heel kick, cartwheel kick, wall-run flip off the chest, scissor kick, drop sweep, falling heel)." }),
 }, {
@@ -554,14 +554,14 @@ define({
 	{ key = "ThrowB", name = "Shoulder Throw", input = "RP+RK", notation = "2+4", startup = 12, active = 2, recovery = 34, damage = 19, height = "Throw", range = 3.2, width = 1.4, breakWindow = 20, breakButton = "RearPunch", duration = 48, impactFrame = 32, tier = "Heavy", limb = "Body", anim = { archetype = "arm_toss" },
 		intent = "Arm trap and leg-block takedown, kneeling at the end." },
 	ultimate({ name = "Last Kata", startup = 20, active = 3, recovery = 28, damage = 34, range = 3.9, advance = 1.0, onBlock = -15, limb = "RearArm", anim = { archetype = "straight", side = "Rear", height = "Mid", lunge = 0.8 },
-		cinematic = { duration = 190, impacts = { { frame = 32, share = 0.12 }, { frame = 64, share = 0.14 }, { frame = 98, share = 0.16 }, { frame = 170, share = 0.58 } }, endKind = "FaceUp", endDistance = 3.8,
+		cinematic = { duration = 190, impacts = { { frame = 32, share = 0.12 }, { frame = 64, share = 0.14 }, { frame = 98, share = 0.16 }, { frame = 170, share = 0.58 } }, endKind = "FaceUp", endDistance = 4.6,
 			beats = {
 				"f0 (the hit): an armored gliding reverse punch to the sternum; the opponent stops dead.",
 				"f32 impact 1: a lead knife-hand chop down onto the collarbone; the defender's shoulder drops.",
 				"f64 impact 2: a front snap kick into the stomach; the defender doubles over.",
 				"f98 impact 3: a rising elbow under the chin; the defender's head snaps up and it sways, dazed.",
 				"f110-169: Rhys steps back into a deep, still stance and exhales; nothing moves but the defender swaying (the camera holds on him).",
-				"f170 impact 4 (the last kata): one perfect stepping reverse punch to the sternum; the defender is blown off its feet and lands on its back (FaceUp, 3.8 studs away). Rhys holds the finished punch, then returns the fist to his hip.",
+				"f170 impact 4 (the last kata): one perfect stepping reverse punch to the sternum; the defender is blown off its feet and lands on its back (FaceUp, 4.6 studs away). Rhys holds the finished punch, then returns the fist to his hip.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Last Kata': an armored gliding reverse punch opens it; on hit the cinematic plays the beats in movesets.md (knife-hand, front kick, rising elbow, a long still breath, one decisive reverse punch)." }),
 }, {
@@ -632,7 +632,7 @@ define({
 	{ key = "ThrowB", name = "Twisting Hip Toss", input = "RP+RK", notation = "2+4", startup = 12, active = 2, recovery = 34, damage = 18, height = "Throw", range = 3.2, width = 1.4, breakWindow = 20, breakButton = "RearPunch", duration = 46, impactFrame = 32, tier = "Heavy", limb = "Body", anim = { archetype = "hip_toss" },
 		intent = "Palms on the opponent's chest and hip, she sinks, twists her whole body and uproots them, tossing them in a spiral onto the floor." },
 	ultimate({ name = "Monsoon", startup = 19, active = 3, recovery = 29, damage = 32, range = 3.8, advance = 1.0, onBlock = -15, limb = "RearArm", anim = { archetype = "palm", side = "Rear", height = "Mid", lunge = 0.8 },
-		cinematic = { duration = 260, impacts = { { frame = 30, share = 0.08 }, { frame = 66, share = 0.12 }, { frame = 104, share = 0.14 }, { frame = 146, share = 0.16 }, { frame = 190, share = 0.18 }, { frame = 240, share = 0.32 } }, endKind = "FaceUp", endDistance = 3.5,
+		cinematic = { duration = 260, impacts = { { frame = 30, share = 0.08 }, { frame = 66, share = 0.12 }, { frame = 104, share = 0.14 }, { frame = 146, share = 0.16 }, { frame = 190, share = 0.18 }, { frame = 240, share = 0.32 } }, endKind = "FaceUp", endDistance = 4.6,
 			beats = {
 				"f0 (the hit): an armored spinning palm strike to the chest; the opponent is rocked back and Nia flows in close.",
 				"f30 impact 1: a double palm strike to the chest (both palms together); the defender's torso is pushed back.",
@@ -640,7 +640,7 @@ define({
 				"f104 impact 3: she drops into a low spinning sweep; the defender's legs are taken and it floats up, horizontal.",
 				"f146 impact 4: she corkscrews up with a rising spiral kick under the floating body, lifting it higher.",
 				"f190 impact 5: in the air at the top, a whirlwind kick (two legs whipping in one turn) across the floating body.",
-				"f240 impact 6: she lands, sinks low and blasts a focused two-palm push into the falling defender; it slides across the floor onto its back (FaceUp, 3.5 studs away). Nia finishes in a low stance, palms forward, breathing out.",
+				"f240 impact 6: she lands, sinks low and blasts a focused two-palm push into the falling defender; it slides across the floor onto its back (FaceUp, 4.6 studs away). Nia finishes in a low stance, palms forward, breathing out.",
 			} },
 		intent = "ULTIMATE (Surge only, once per round) 'Monsoon': an armored spinning palm strike opens it; on hit the cinematic plays the beats in movesets.md (double palm, spinning chop, sweep, spiral kick, mid-air whirl, two-palm push)." }),
 }, {
