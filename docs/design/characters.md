@@ -1,5 +1,108 @@
 # Characters (OV6) — handoff
 
+## Round 6 (refined fighters): premium details, one signature each, six distinct silhouettes
+
+The user asked for "more refinements on ... the characters". Every fighter was audited in a neutral-light turntable
+(front, three-quarter, side, back), face close-ups and the real fight camera (CameraDirector fight plan, MotionPlayer
+poses, Harbor Dusk arena), then the weakest points were fixed with free catalog items, tints and rigid gear. Bodies,
+heads, scales, RootHeights, hip heights, arm lengths, shoes and gloves are unchanged (CharacterLook_Test's proportion,
+glove, shoe and ground tests hold), so nothing regresses the user's earlier complaints (big shoes/gloves/heads, bald Kael).
+
+**Audit (before, main @ c0f160c) and what changed.**
+
+| Fighter | Weakest points found | Fix (asset ids) | Signature (fight-camera read) |
+|---|---|---|---|
+| Kael | Glossy candy-red satin trunks fought the orange gloves; cornrows ran straight back like a cap; slate hoodie read flat grey | Side-swept cornrows over a low fade (EstheKing 17750325511, refit Scale 1.02/1.15/1.10, y -0.04: scalp 100%); black matte trunks (Dockery White Boxing Shorts 9726900805 tinted 34,34,38); charcoal hoodie tint (74,82,94) | White tape over both glove cuffs (M A K O wrist tape 131563942024521 / 140209841353665 as rigid gear, role `tape`, seated inside the cuff) |
+| Sierra | Brown gloves on a teal/white palette; nothing marked her as a kickboxer from behind | White leather gloves (same rigid gloves, tint 236,236,230) | White braided armbands on both upper arms (OlympusϞ prajied 14777057611 / 14777046729, rigid, role `armband`) |
+| Goran | Light-brown beard read as a flat brown patch; pale camo shorts and pale skin made him washed-out; nothing heavy about the hands | Dark-brown full trimmed beard (The Barber Shoppe 13631062181, same fit); deeper tan skin (170,116,84); charcoal shorts tint (70,70,74) | Steel chain wrapped around the left forearm (Eternos Digital Left Wrist Chains 11790893653, layered) |
+| Lumi | Bright mint pants dominated the silhouette and made her the same "boots + long pants + open hands" outline as Goran | Charcoal track pants (tint 52,64,70); mint moved to the hands | Mint fingerless grip gloves (Blizzei 72553576375381, layered, instance renamed `FingerlessGrips`) |
+| Rhys | Slick helmet-like bun with a hard hairline; generic gi colour | Black top bun with loose front strands (Cornlit's UGC 107360538839863, scalp 100%); deeper indigo gi (30,40,80) | The loose top bun and front strands |
+| Nia | Gold trim read lemon-yellow; flat purple pants; bare shoulders without accent | Warm gold top tint (255,206,140); dark plum pants (62,32,86) | Gold armlets on both bare upper arms (Mind & Beauty Boho Gold Thick Arm Cuff 73260183475840, rigid pair, role `armlet`) |
+
+Rejected after trials (sheets in `OV6\work\r6-characters\trials\`): other cornrows/twists for Kael (A/C/D: wrong
+silhouette or bare backs), Lumi hair (puffs, bobs), new heads for Goran/Lumi (OBG Realistic Head, Clone Z, iAngel
+Brooklyn / January 2025, angelshefford February: blank eyes, broken eye holes or a different person), a black singlet
+for Goran (ballooned), a second beard size sweep (the authored fit stays), Muay Thai trunks with printed script
+(already blocked), loud striped fingerless gloves. Beards stay rigid face accessories; makeup (scars/stubble) is not
+used because `HumanoidDescription` in this engine build has no makeup API (MakeupDescription exists, no setter).
+
+**Silhouettes at fight-camera distance** (feet / hands / legwear / hair; every pair now differs in at least two):
+
+| | Feet | Hands | Legwear | Hair |
+|---|---|---|---|---|
+| Kael | high-tops | boxing gloves (orange, taped cuffs) | black trunks | cornrows |
+| Sierra | barefoot | boxing gloves (white) | teal trunks | platinum ponytail |
+| Goran | boots | open (chain + sweatband) | charcoal shorts over tights | shaved, dark beard |
+| Lumi | tabi boots | fingerless gloves (mint) | charcoal track pants | curly taper |
+| Rhys | barefoot | wraps | gi trousers | top bun |
+| Nia | low slip-ons | open (gold armlets) | plum pants + sash | bob |
+
+On main Goran and Lumi differed only in hair (boots, open hands, long legwear).
+
+**Factory.** `Spec.signature = { label, assetIds }` is published as the template's `Signature` attribute (UI may show
+it). Accessory entries may carry `Name`: the applied accessory instance is renamed on build and in `dressCharacter`
+(idempotent). Reason: `Motion.BodyShape.handVolume` reads any accessory named `*glove*` as a layered boxing glove, so
+Lumi's thin fingerless gloves would otherwise turn her hands into glove capsules (MotionQARound5 self-clip test caught
+it: hand vs torso 0.085 in KO face-up); renamed `FingerlessGrips`, her hands stay open hands for the motion runtime.
+
+**Tests** (`CharacterLook_Test`, 38 -> 41):
+- "each fighter wears one signature detail of its own": authored label + items, worn on the template (accessory or
+  rigid gear), `Signature` attribute published, no shared items or labels; tape on a glove lies inside the glove's
+  cuff (along the forearm within the glove, across within its width/depth + 0.03).
+- "the six silhouettes differ at fight-camera distance (feet, hands, legwear, hair)": every pair differs in >= 2.
+- "the motion runtime reads boxing gloves as gloves and open-hand gear as open hands": `BodyShape.handVolume(...).gloved`
+  matches the spec for every hand; authored accessory names land on the template.
+- Boxing-glove checks now apply to rigid glove gear and layered items credited as "boxing glove" (open-hand grip gloves
+  are bounded as gear close to the body instead); gear kind words add "chain" and "grip glove"; measured renders
+  (chroma vs the precise bare limb, `OV6\work\r6-characters\data\r6-items.json`): Goran's chain 0.211 studs off the
+  forearm (0.031 x stature, limit 0.04), Lumi's grips 0.076 (0.013 x stature). Rigid tape, armbands and armlets are
+  measured by the existing rigid-gear bound on the server.
+- On main's specs the two new contract tests fail (6 missing signatures; Goran/Lumi look-alike pair).
+
+Full suite on the branch (my Studio copy, Play, server): `[SUMMARY] 528 run, 528 passed, 0 failed` (main: 525).
+Credits: 81 -> 87 unique items (CREDITS.md / Credits module regenerated by `tools\build-data.ps1`).
+
+**Evidence** (`OV6\handoff\characters-shots\round6\`): `turntable-<Id>-before-vs-after.jpg` (6),
+`face-<Id>-before-vs-after.jpg` (6), `lineup-front-before-vs-after.jpg`, `lineup-34-before-vs-after.jpg`,
+`fightcam-zoom-before-vs-after.jpg` (guard + hit, close fight camera, all six), `fightcam-actions-before.jpg` /
+`fightcam-actions-after.jpg` (guard, jab at extension, kick at contact, hit reaction, real fight framing).
+
+**Known issues (round 6).**
+- Faces are the round-2 heads: no catalog head tried was better (realistic heads are rare, most render blank eyes or a
+  different person). Goran's head still has low-poly shoulders/neck from the January Model Man bundle and the rigid
+  beard still does not follow the jaw on open-mouth expressions. Lumi's head keeps its painted blush.
+- Kael's cuff tape is a flat ring (the M A K O tape mesh); it reads as white tape at fight distance, a hard edge up close.
+- Goran's chain is layered (wraps the forearm cage on the client): it stands 0.21 studs off the forearm, the loosest
+  item in the cast (bound 0.04 x stature = 0.27).
+- Sierra's armbands are the catalog prajied scaled to her arm; the knot is very small at fight distance.
+- No second outfit this round (stretch not started): REQUEST below if wanted later.
+
+**REQUESTs (round 6).**
+- combat (`ReplicatedStorage.FightingLab.Roster`, `look` strings; the specs' `look` fields carry the same text):
+  - Kael: "Adult man, athletic boxer build, medium-olive skin, side-swept cornrows over a low fade; charcoal sleeveless
+    training hoodie with pale trim, black satin boxing trunks, burnt-orange leather boxing gloves with white-taped
+    cuffs, sleek black leather high-top boxing boots."
+  - Sierra: "Adult woman, lean kickboxer build, fair skin, platinum high ponytail with swept fringe; teal striped
+    training tank over a black sports bra, deep-teal satin kickboxing trunks with black waistband, white leather boxing
+    gloves, white braided armbands on both upper arms, barefoot."
+  - Goran: "Adult man, very broad heavyweight build, tan skin, shaved head, full dark-brown beard; deep-red ribbed
+    muscle tank, charcoal fight shorts over black compression tights, black leather lifting belt, red wrist sweatbands,
+    a steel chain wrapped around his left forearm, light-brown suede combat boots, open grappler hands."
+  - Lumi: "Adult woman, light long-limbed build, deep brown skin, brown eyes, black curly taper with a sports band;
+    olive crop tank, black ribbed techwear arm sleeves, mint fingerless grip gloves, charcoal slim-fit track pants
+    tucked into black suede split-toe tabi boots."
+  - Rhys: "Adult man, lean athletic build, light skin, black hair tied in a loose top bun with two free front strands,
+    clean-shaven; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot. Do NOT
+    use a white gi, a torn sleeveless gi or any headband."
+  - Nia: "Adult woman, compact athletic build, fair skin, black chin-length bob; black cropped mandarin-collar top with
+    warm gold embroidery and laced gold bracers, gold armlets on both bare upper arms, deep-purple draped waist wrap,
+    dark plum tapered training pants, soft dark slip-on shoes, open hands. Do NOT use a qipao/cheongsam, buns with
+    ribbons, or pigtails."
+- motion (`Motion.BodyShape.handVolume`), optional: match gloves by `FightingLabRole == "glove"` (rigid) or a
+  `FightingLabGlove` attribute instead of the accessory name, so open-hand items named "...Gloves" never become glove
+  capsules (round 6 works around it by renaming Lumi's grips).
+- look (`FighterSelect` / `SelectScene`), optional: show the template's `Signature` attribute under the tagline.
+
 ## Round 4 (scaling audit): every fighter in real adult proportion
 
 The user asked for a full scaling audit ("each fighter looks right in every scale"): Kael's and Sierra's massive gloves,
