@@ -223,13 +223,20 @@ function M._screenHeightFraction(distance: number, objectHeight: number, vertica
 	return angular / math.rad(verticalFovDegrees)
 end
 
+-- Fight framing (round 6 follow-up): the lens stays at chest height (4.47 studs) but sits 5% further back and aims higher
+-- (focus 3.75 instead of 2.75), so the tallest fighter's head stays under the HUD band (FightSafe.top) at every spacing
+-- with the feet still in frame; neutral spacing frames a 6-stud fighter at ~57% of the screen height (target 55-65%).
+M.FightFocusHeight = 3.75
+M.FightCameraRise = 0.72
+M.FightDistanceScale = 1.05
+
 function M._distanceForSeparation(separation: number): number
-	-- Neutral spacing (7 studs) frames a 6-stud fighter at ~60% of the screen height (target 55-65%).
-	return math.clamp(9.15 + math.max(3.2, separation) * 0.94, 15.0, 24.4)
+	local k = M.FightDistanceScale
+	return math.clamp((9.15 + math.max(3.2, separation) * 0.94) * k, 15.0 * k, 24.4 * k)
 end
 
 function M._distanceForVerticalFit(separation: number, verticalExcess: number): number
-	return math.clamp(M._distanceForSeparation(separation) + math.max(0, verticalExcess) * 1.25, 15.0, 29.8)
+	return math.clamp(M._distanceForSeparation(separation) + math.max(0, verticalExcess) * 1.25, 15.0 * M.FightDistanceScale, 29.8)
 end
 
 function M._projectedHeight(cameraCFrame: CFrame, verticalFovDegrees: number, viewportY: number, head: Vector3, foot: Vector3): number
@@ -260,9 +267,9 @@ function M._plan(p1: Vector3, p2: Vector3, mode: string, now: number, dt: number
 	local mid = (p1 + p2) * 0.5
 	local verticalExcess = math.clamp(extraUp, 0, 4.8)
 	local focusLift = math.min(1.05, verticalExcess * 0.18)
-	local desiredFocus = Vector3.new(mid.X, math.min(3.8, 2.75 + focusLift), mid.Z)
+	local desiredFocus = Vector3.new(mid.X, M.FightFocusHeight + focusLift, mid.Z)
 	local distance = M._distanceForVerticalFit(separation, verticalExcess)
-	local desiredPos = desiredFocus - nextSide * distance + Vector3.new(0, 1.72 + math.min(0.45, verticalExcess * 0.08), 0)
+	local desiredPos = desiredFocus - nextSide * distance + Vector3.new(0, M.FightCameraRise + math.min(0.45, verticalExcess * 0.08), 0)
 	local desiredFov = math.min(44, BASE_FOV + verticalExcess * 1.35)
 
 	if mode == "Intro" then
@@ -300,9 +307,10 @@ function M._plan(p1: Vector3, p2: Vector3, mode: string, now: number, dt: number
 	elseif throwActive then
 		lastThrowOrbit += dt * 1.35
 		local throwSide = rotateFlat(nextSide, math.sin(lastThrowOrbit) * 0.28)
-		desiredFocus = mid + Vector3.new(0, 2.55, 0)
-		desiredPos = desiredFocus - throwSide * math.max(12.5, distance - 4.4) + Vector3.new(0, 1.35, 0)
-		desiredFov = 31
+		-- (Closer and orbiting; M.update's headroom fit turns and widens it so both bodies stay under the HUD band.)
+		desiredFocus = mid + Vector3.new(0, 3.45, 0)
+		desiredPos = desiredFocus - throwSide * math.max(13.5, distance - 3.2) + Vector3.new(0, 0.8, 0)
+		desiredFov = 33
 	end
 
 	return { mode = mode, focus = desiredFocus, position = desiredPos, fov = desiredFov, shakeCap = MAX_SHAKE }
@@ -316,13 +324,20 @@ local function isOccluder(inst: Instance): boolean
 	return CollectionService:HasTag(inst, OCCLUDER_TAG) or (parent ~= nil and parent:IsA("Model") and CollectionService:HasTag(parent, OCCLUDER_TAG))
 end
 
-local function clippedPosition(desiredFocus: Vector3, desiredPosition: Vector3): Vector3
+-- Bodies (any model with a Humanoid: fighters, lobby avatars, posed rigs) never push the camera in; only walls do.
+local function isBody(inst: Instance): boolean
+	local model = inst:FindFirstAncestorOfClass("Model")
+	return model ~= nil and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+local function clippedPosition(desiredFocus: Vector3, desiredPosition: Vector3, extraExcludes: { Instance }?): Vector3
 	local delta = desiredPosition - desiredFocus
 	if delta.Magnitude < 0.1 then return desiredPosition end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.RespectCanCollide = true
 	local excludes: { Instance } = {}
+	if extraExcludes then for _, inst in extraExcludes do table.insert(excludes, inst) end end
 	local c = ctx
 	if c then
 		for i = 1, 2 do
@@ -340,7 +355,7 @@ local function clippedPosition(desiredFocus: Vector3, desiredPosition: Vector3):
 		params.FilterDescendantsInstances = excludes
 		local result = workspace:Raycast(desiredFocus, delta, params)
 		if not result then return desiredPosition end
-		if not isOccluder(result.Instance) then
+		if not isOccluder(result.Instance) and not isBody(result.Instance) then
 			return result.Position - delta.Unit * 0.35
 		end
 		table.insert(excludes, result.Instance)
@@ -373,6 +388,10 @@ function M._clearOfBodies(pos: Vector3, parts: { BasePart }, margin: number?): V
 	return p
 end
 
+-- Both fighters' body parts for framing and the body checks. Their CFrames are what this frame draws: the engine moves
+-- the parts to the Motor6D transforms written this frame only after the picture (a Play capture with markers on both
+-- showed the drawn limbs on the parts, not on the joint chain MotionPlayer.partWorld computes), and CharacterPresenter
+-- keeps each root with the joints shown (DeferRootToPicture).
 local function bodyParts(): { BasePart }
 	local out: { BasePart } = {}
 	local c = ctx
@@ -397,60 +416,157 @@ end
 
 -- A cinematic camera position that is in no body and behind no wall: out of the bodies, clipped by the walls (from the
 -- look point), and out of the bodies again (a wall can push the lens back in front of a fighter).
-local function safeShot(look: Vector3, pos: Vector3): Vector3
-	local parts = bodyParts()
+local function safeShotFor(parts: { BasePart }, models: { Instance }, look: Vector3, pos: Vector3): Vector3
 	local p = M._clearOfBodies(pos, parts)
-	p = clippedPosition(look, p)
+	p = clippedPosition(look, p, models)
 	return M._clearOfBodies(p, parts)
 end
 
--- Framing of a cinematic shot: both fighters whole in the frame (heads and feet, CineFitMargin of headroom). The lens
--- widens up to CineFitMaxFov, then the camera backs off along its look line. Pure (tests pass points).
-M.CineFitMaxFov = 50
-M.CineFitMargin = 1.12
-function M._fitShot(pos: Vector3, look: Vector3, fov: number, points: { Vector3 }, aspect: number?): (Vector3, number)
-	if #points == 0 then return pos, fov end
-	local delta = look - pos
-	if delta.Magnitude < 1e-3 then return pos, fov end
-	local dir = delta.Unit
-	local right = dir:Cross(Vector3.yAxis)
-	right = if right.Magnitude < 1e-3 then Vector3.xAxis else right.Unit
-	local up = right:Cross(dir)
-	local asp = aspect or (16 / 9)
-	local function need(back: number): number
-		local eye = pos - dir * back
-		local worst = 0
-		for _, p in points do
-			local v = p - eye
-			local z = math.max(v:Dot(dir), 0.3)
-			worst = math.max(worst, math.abs(v:Dot(up)) * M.CineFitMargin / z, math.abs(v:Dot(right)) * M.CineFitMargin / (z * asp))
-		end
-		return worst
+local function modelsOf(parts: { BasePart }): { Instance }
+	local seen: { [Instance]: boolean } = {}
+	local out: { Instance } = {}
+	for _, part in parts do
+		local m = if typeof(part) == "Instance" then part:FindFirstAncestorOfClass("Model") else nil
+		if m and not seen[m] then seen[m] = true; table.insert(out, m) end
 	end
-	local tanNow = math.tan(math.rad(fov) * 0.5)
-	local tanNeed = need(0)
-	if tanNeed <= tanNow then return pos, fov end
-	local tanMax = math.tan(math.rad(math.max(fov, M.CineFitMaxFov)) * 0.5)
-	if tanNeed <= tanMax then return pos, 2 * math.deg(math.atan(tanNeed)) end
-	local back = 0
-	for _ = 1, 30 do
-		back += 0.5
-		if need(back) <= tanMax then break end
-	end
-	return pos - dir * back, 2 * math.deg(math.atan(tanMax))
+	return out
 end
 
--- Heads and feet of both fighters (posed rigs; else the views: feet on the root, head 6.3 studs up).
-local function framingPoints(f: RenderFrame): { Vector3 }
-	local out: { Vector3 } = {}
-	for _, part in bodyParts() do
-		local n = part.Name
-		if n == "Head" then
-			table.insert(out, part.Position + Vector3.new(0, part.Size.Y * 0.6, 0))
-		elseif n == "LeftFoot" or n == "RightFoot" then
-			table.insert(out, part.Position - Vector3.new(0, part.Size.Y * 0.6, 0))
+-- Safe picture areas (normalised viewport, y down) that framing keeps whole bodies inside (heads, hands and feet).
+-- CineSafe, the Ultimate: below the HUD band (health bars, names and chips; it covers the top letterbox bar, 0-0.13),
+-- above the bottom letterbox bar (0.89-1), in from the sides. FightSafe, the fight: below the HUD band, above the
+-- bottom edge (the controls hint sits in the bottom-left corner).
+export type SafeArea = { top: number, bottom: number, left: number, right: number }
+M.CineSafe = { top = 0.215, bottom = 0.87, left = 0.04, right = 0.96 } :: SafeArea
+M.FightSafe = { top = 0.215, bottom = 0.93, left = 0.03, right = 0.97 } :: SafeArea
+M.CineFitMaxFov = 50
+M.FightFitMaxFov = 44
+-- The last word on every fight and cinematic frame (after smoothing, shake and the slow-motion narrowing): the lens widens
+-- up to GuardMaxFov when a body still reaches out of its safe area.
+M.GuardMaxFov = 70
+
+-- Camera-space tangents of the points in front of the lens `cf` (x right, y up): their bounds and how many there are.
+local function tangentBounds(cf: CFrame, points: { Vector3 }): (number, number, number, number, number)
+	local x0, x1, y0, y1, n = math.huge, -math.huge, math.huge, -math.huge, 0
+	for _, p in points do
+		local l = cf:PointToObjectSpace(p)
+		local z = -l.Z
+		if z > 0.3 then
+			local tx, ty = l.X / z, l.Y / z
+			x0, x1, y0, y1 = math.min(x0, tx), math.max(x1, tx), math.min(y0, ty), math.max(y1, ty)
+			n += 1
 		end
 	end
+	return x0, x1, y0, y1, n
+end
+
+-- The smallest tan(vertical fov / 2) that puts every one of those tangents inside `safe`.
+local function needTan(x0: number, x1: number, y0: number, y1: number, n: number, aspect: number, safe: SafeArea): number
+	if n == 0 then return 0 end
+	return math.max(0, y1 / (2 * (0.5 - safe.top)), -y0 / (2 * (safe.bottom - 0.5)), x1 / (2 * aspect * (safe.right - 0.5)), -x0 / (2 * aspect * (0.5 - safe.left)))
+end
+
+local function lens(pos: Vector3, dir: Vector3, roll: number): CFrame
+	return CFrame.lookAt(pos, pos + dir) * CFrame.Angles(0, 0, roll)
+end
+
+-- The narrowest vertical field of view (degrees) that keeps `points` inside `safe` for the camera `cf` (roll included);
+-- nil when no point is in front of it. Pure.
+function M._safeFov(cf: CFrame, points: { Vector3 }, aspect: number, safe: SafeArea?): number?
+	local x0, x1, y0, y1, n = tangentBounds(cf, points)
+	if n == 0 then return nil end
+	return 2 * math.deg(math.atan(needTan(x0, x1, y0, y1, n, aspect, safe or M.CineSafe)))
+end
+
+-- Framing of a shot: `points` (whole bodies) inside the safe area (opts.safe, default CineSafe). The shot first turns as
+-- little as it can (pitch and yaw about its own axes, roll kept) to bring the bodies inside the window of the lens they
+-- need; a body span too large for the current lens is centred. Then the lens widens up to opts.maxFov (default
+-- CineFitMaxFov). Then the camera moves back along opts.away (default: straight back along its look line), turning
+-- again at every step, to the nearest place where the widest lens fits (opts.back = false: no move, the lens widens as
+-- far as needed). A point behind the lens never fits. A framing that already fits is returned unchanged; every step is
+-- continuous in the points, so a moving body never makes the shot jump. Pure (tests pass points). Returns the camera
+-- position, the field of view and the look point.
+function M._fitShot(pos: Vector3, look: Vector3, fov: number, points: { Vector3 }, aspect: number?, opts: { safe: SafeArea?, roll: number?, maxFov: number?, back: boolean?, away: Vector3? }?): (Vector3, number, Vector3)
+	local o = opts or {}
+	local delta = look - pos
+	if #points == 0 or delta.Magnitude < 1e-3 then return pos, fov, look end
+	local s = o.safe or M.CineSafe
+	local asp = aspect or (16 / 9)
+	local roll = o.roll or 0
+	local lookDist = delta.Magnitude
+	local tanNow = math.tan(math.rad(fov) * 0.5)
+	local tanMax = math.tan(math.rad(math.max(fov, o.maxFov or M.CineFitMaxFov)) * 0.5)
+	-- The angle to turn (towards +) so the tangent span [lo, hi] lies inside the window [wLo, wHi]; centred if it is wider.
+	local function turn(lo: number, hi: number, wLo: number, wHi: number): number
+		if hi - lo >= wHi - wLo then return math.atan((lo + hi) * 0.5) - math.atan((wLo + wHi) * 0.5) end
+		if hi > wHi then return math.atan(hi) - math.atan(wHi) end
+		if lo < wLo then return math.atan(lo) - math.atan(wLo) end
+		return 0
+	end
+	local function aim(eye: Vector3, from: Vector3): Vector3
+		local dir = from
+		for _ = 1, 4 do
+			local cf = lens(eye, dir, roll)
+			local x0, x1, y0, y1, n = tangentBounds(cf, points)
+			if n == 0 then break end
+			local tanSpan = math.max((y1 - y0) / (2 * (s.bottom - s.top)), (x1 - x0) / (2 * asp * (s.right - s.left)))
+			local T = math.clamp(tanSpan, tanNow, tanMax)
+			local pitch = turn(y0, y1, -(s.bottom - 0.5) * 2 * T, (0.5 - s.top) * 2 * T)
+			local yaw = turn(x0, x1, -(0.5 - s.left) * 2 * T * asp, (s.right - 0.5) * 2 * T * asp)
+			if math.abs(pitch) < 1e-4 and math.abs(yaw) < 1e-4 then break end
+			local d = CFrame.fromAxisAngle(cf.RightVector, pitch):VectorToWorldSpace(dir)
+			d = CFrame.fromAxisAngle(cf.UpVector, -yaw):VectorToWorldSpace(d)
+			-- Never look straight up or down.
+			if math.abs(d.Unit.Y) > 0.95 then break end
+			dir = d.Unit
+		end
+		return dir
+	end
+	local function need(eye: Vector3, dir: Vector3): number
+		local x0, x1, y0, y1, n = tangentBounds(lens(eye, dir, roll), points)
+		if n < #points then return math.huge end
+		return needTan(x0, x1, y0, y1, n, asp, s)
+	end
+	local dir = aim(pos, delta.Unit)
+	local tanNeed = need(pos, dir)
+	if tanNeed <= tanNow then return pos, fov, pos + dir * lookDist end
+	if tanNeed <= tanMax or o.back == false then
+		return pos, 2 * math.deg(math.atan(math.min(tanNeed, 1e3))), pos + dir * lookDist
+	end
+	local away = if o.away and o.away.Magnitude > 1e-3 then o.away.Unit else -dir
+	-- The nearest place along `away` where the widest lens fits (bisection, so it changes smoothly from frame to frame).
+	local lo, hi = 0, 40
+	local hiDir = aim(pos + away * hi, dir)
+	if need(pos + away * hi, hiDir) <= tanMax then
+		for _ = 1, 20 do
+			local mid = (lo + hi) * 0.5
+			local d = aim(pos + away * mid, hiDir)
+			if need(pos + away * mid, d) <= tanMax then hi, hiDir = mid, d else lo = mid end
+		end
+	end
+	local eye = pos + away * hi
+	local tanEye = math.clamp(need(eye, hiDir), tanNow, tanMax)
+	return eye, 2 * math.deg(math.atan(tanEye)), eye + hiDir * (lookDist + hi)
+end
+-- Framing points of posed bodies: the top of each head (hair included), the soles and, with `hands`, the hands. Pure.
+function M._framingPointsOf(parts: { BasePart }, hands: boolean?): { Vector3 }
+	local out: { Vector3 } = {}
+	for _, part in parts do
+		local n = part.Name
+		if n == "Head" then
+			table.insert(out, part.Position + Vector3.new(0, part.Size.Y * 0.62, 0))
+		elseif n == "LeftFoot" or n == "RightFoot" then
+			table.insert(out, part.Position - Vector3.new(0, part.Size.Y * 0.6, 0))
+		elseif hands and (n == "LeftHand" or n == "RightHand") then
+			table.insert(out, part.Position)
+		end
+	end
+	return out
+end
+
+-- Both fighters' framing points (posed rigs; else the views: feet on the root, head 6.3 studs up).
+local function framingPoints(f: RenderFrame, hands: boolean?, parts: { BasePart }?): { Vector3 }
+	local out = M._framingPointsOf(parts or bodyParts(), hands)
 	if #out > 0 then return out end
 	for i = 1, 2 do
 		local v = f.fighters and f.fighters[i]
@@ -463,6 +579,32 @@ local function framingPoints(f: RenderFrame): { Vector3 }
 	return out
 end
 
+-- One frame of an Ultimate's cinematic camera: the clip's camera key for the attacker at `attackerPos` (world, on the
+-- floor) facing `facing` (`mirrored` for the defender's player), out of the bodies (`parts`) and the walls, then turned,
+-- widened or backed off so `points` (both whole bodies) stay inside CineSafe. When backing off put the lens into a wall
+-- or a body, it is pushed out again and the lens widens from there instead. Pure apart from the wall raycasts: the
+-- runtime (M.update) and the framing tests share it.
+function M._cinematicShot(aId: string, throw: any, cineFrame: number, attackerPos: Vector3, facing: Vector3, mirrored: boolean, parts: { BasePart }, points: { Vector3 }, aspect: number?): { pos: Vector3, look: Vector3, fov: number, roll: number, shot: number, slow: boolean }
+	local tl = Cinematic.timeline(aId, throw)
+	local shot = Cinematic.cameraShot(Cinematic.clip(aId), tl, cineFrame, attackerPos, facing, mirrored)
+	local models = modelsOf(parts)
+	local pos = safeShotFor(parts, models, shot.look, shot.pos)
+	-- Backing off moves away from the bodies' middle (and a little up), never through the fighter next to the lens.
+	local centre = Vector3.zero
+	for _, p in points do centre += p end
+	centre /= math.max(1, #points)
+	local off = pos - centre
+	local flat = Vector3.new(off.X, 0, off.Z)
+	local away = if flat.Magnitude > 0.3 then (flat.Unit + Vector3.new(0, 0.3, 0)).Unit else nil
+	local fitPos, fitFov, fitLook = M._fitShot(pos, shot.look, shot.fov, points, aspect, { roll = shot.roll, away = away })
+	if (fitPos - pos).Magnitude > 1e-3 then
+		local clear = safeShotFor(parts, models, fitLook, fitPos)
+		if (clear - fitPos).Magnitude > 1e-3 then
+			fitPos, fitFov, fitLook = M._fitShot(clear, fitLook, fitFov, points, aspect, { roll = shot.roll, maxFov = M.GuardMaxFov, back = false })
+		end
+	end
+	return { pos = fitPos, look = fitLook, fov = fitFov, roll = shot.roll, shot = shot.shot, slow = Cinematic.slowMotion(tl, cineFrame) }
+end
 -- Slot 1 watches from the side where P1 is on the left; slot 2 from the opposite side (its fighter on the left).
 local function initialSide(slot: number): Vector3
 	return if slot == 2 then Vector3.new(0, 0, 1) else Vector3.new(0, 0, -1)
@@ -485,7 +627,7 @@ function M.beginFight(newOrigin: Vector3, slot: number?)
 		camera = cam
 		if not active then savedFov = cam.FieldOfView end
 		-- Glide from the lobby view into the intro shot, looking at the fight centre from the first frame.
-		focus = origin + Vector3.new(0, 2.75, 0)
+		focus = origin + Vector3.new(0, M.FightFocusHeight, 0)
 		camPos = cam.CFrame.Position
 		camLook = focus
 		cam.CameraType = Enum.CameraType.Scriptable
@@ -556,6 +698,12 @@ function M.update(f: RenderFrame)
 	local plan = M._plan(a, b, effectiveMode, f.now + orbit, f.dt, side, airborneBias(f), hasThrow(f), winner)
 	plan.focus += origin
 	plan.position += origin
+	local vp = cam.ViewportSize
+	local aspect = if vp.Y > 1 then vp.X / vp.Y else 16 / 9
+	-- Both posed bodies, once per frame; their framing points: heads and feet (the fight), plus hands (the Ultimate).
+	local parts = bodyParts()
+	local bodyPoints = framingPoints(f, false, parts)
+	local wholePoints = framingPoints(f, true, parts)
 	if f.hitstop and f.hitstop > 0 and effectiveMode == "Fight" then
 		plan.fov = math.min(plan.fov, 33)
 	end
@@ -586,13 +734,23 @@ function M.update(f: RenderFrame)
 			frozen = el < M.UltFreeze
 			local w = smoothstep((el - M.UltFreeze) / 0.22) * (1 - smoothstep((el - M.UltFreeze - M.UltPushIn) / 0.6))
 			if w > 0 then
+				-- (A gentle move: the headroom fit below keeps both whole bodies inside the letterboxed picture.)
 				local head = (if us.attacker == 1 then p1 else p2) + origin + Vector3.new(0, 4.2, 0)
 				local away = plan.position - head
-				plan.focus = plan.focus:Lerp(head, 0.5 * w)
-				plan.position = clippedPosition(plan.focus, plan.position:Lerp(head + (if away.Magnitude > 0.01 then away.Unit else -side) * 10.5, 0.5 * w))
-				plan.fov -= 6 * w
+				plan.focus = plan.focus:Lerp(head, 0.35 * w)
+				plan.position = clippedPosition(plan.focus, plan.position:Lerp(head + (if away.Magnitude > 0.01 then away.Unit else -side) * 10.5, 0.3 * w))
+				plan.fov -= 3 * w
 			end
 		end
+	end
+	-- Headroom: both whole bodies (real posed heads and feet) inside FightSafe, under the HUD band (CineSafe from the
+	-- Ultimate's activation: the letterbox is in). Standing fighters of every height already are on the plan; a jump, a
+	-- juggle, a tall pose, a throw's close orbit or the push-in turns the shot as little as needed and widens the lens.
+	if effectiveMode == "Fight" then
+		local fitPos, fitFov, fitLook = M._fitShot(plan.position, plan.focus, plan.fov, if ultStart then wholePoints else bodyPoints, aspect,
+			{ safe = if ultStart then M.CineSafe else M.FightSafe, maxFov = M.FightFitMaxFov })
+		if (fitPos - plan.position).Magnitude > 1e-3 then fitPos = clippedPosition(fitLook, fitPos) end
+		plan.position, plan.fov, plan.focus = fitPos, fitFov, fitLook
 	end
 	if reset then
 		-- Hard cut, the same frame the bodies cut: the camera starts the new round on its shot instead of gliding across.
@@ -613,28 +771,21 @@ function M.update(f: RenderFrame)
 	-- following its own plan underneath so the return after the cinematic glides onto a live shot.
 	local aSlot, aId, cineFrame, aView = Cinematic.active(f)
 	if aSlot and aView and effectiveMode == "Fight" and typeof(aView.pos) == "Vector3" and typeof(aView.facing) == "Vector3" then
-		local tl = Cinematic.timeline(aId, aView.throw)
-		local shot = Cinematic.cameraShot(Cinematic.clip(aId), tl, cineFrame :: number, origin + Vector3.new(aView.pos.X, 0, aView.pos.Z), aView.facing, aSlot ~= viewSlot)
-		local pos = safeShot(shot.look, shot.pos)
-		-- Both fighters whole in the frame (a designed close-up never crops a head or the feet).
-		local vp = cam.ViewportSize
-		local fitPos, fitFov = M._fitShot(pos, shot.look, shot.fov, framingPoints(f), if vp.Y > 1 then vp.X / vp.Y else nil)
-		if (fitPos - pos).Magnitude > 1e-3 then fitPos = safeShot(shot.look, fitPos) end
-		pos = fitPos
-		shot.fov = fitFov
+		-- Both fighters whole inside the letterboxed picture under the HUD band (a designed close-up never crops a head).
+		local shot = M._cinematicShot(aId :: string, aView.throw, cineFrame :: number, origin + Vector3.new(aView.pos.X, 0, aView.pos.Z), aView.facing, aSlot ~= viewSlot, parts, wholePoints, aspect)
 		local current = cineShot
 		if current == nil or cineWeight < 1 or shot.shot ~= cineShotIndex then
 			if current ~= nil and cineWeight >= 1 then cineCuts += 1 end
-			cineShot = { pos = pos, look = shot.look, fov = shot.fov, roll = shot.roll }
+			cineShot = { pos = shot.pos, look = shot.look, fov = shot.fov, roll = shot.roll }
 		else
-			-- The keyed path is smooth already; the light filter only absorbs the body/wall corrections.
+			-- The keyed path is smooth already; the light filter only absorbs the body/wall/framing corrections.
 			local k = 1 - math.exp(-f.dt * 30)
-			current.pos, current.look = current.pos:Lerp(pos, k), current.look:Lerp(shot.look, k)
+			current.pos, current.look = current.pos:Lerp(shot.pos, k), current.look:Lerp(shot.look, k)
 			current.fov += (shot.fov - current.fov) * k
 			current.roll += (shot.roll - current.roll) * k
 		end
 		cineShotIndex = shot.shot
-		cineSlow = Cinematic.slowMotion(tl, cineFrame :: number)
+		cineSlow = shot.slow
 		cineWeight, cineExitAt, ultStart = 1, nil, nil
 	else
 		cineSlow = false
@@ -659,12 +810,20 @@ function M.update(f: RenderFrame)
 		outPos, outLook = camPos:Lerp(cs.pos, w), camLook:Lerp(cs.look, w)
 		outFov, outRoll = fightFov + (cs.fov - fightFov) * w, tiltShown + (cs.roll - tiltShown) * w
 		-- The glide back from the last cinematic shot never passes through a fighter.
-		if w < 1 then outPos = M._clearOfBodies(outPos, bodyParts()) end
+		if w < 1 then outPos = M._clearOfBodies(outPos, parts) end
 	end
 	-- The final hit's slow motion: the lens narrows a little.
 	outFov -= 4 * slowShown
+	local outCFrame = CFrame.lookAt(outPos + s, outLook + s * 0.35) * CFrame.Angles(0, 0, outRoll)
+	-- Last word (after the smoothing lag, shake, lean and slow motion): a body still reaching out of the safe area widens
+	-- the lens. The KO and victory shots are the presentation's own.
+	if effectiveMode == "Fight" then
+		local cine = cs ~= nil and cineWeight > 0.5
+		local need = M._safeFov(outCFrame, if cine then wholePoints else bodyPoints, aspect, if cine or ultStart then M.CineSafe else M.FightSafe)
+		if need then outFov = math.max(outFov, math.min(need, M.GuardMaxFov)) end
+	end
 	cam.FieldOfView = outFov
-	cam.CFrame = CFrame.lookAt(outPos + s, outLook + s * 0.35) * CFrame.Angles(0, 0, outRoll)
+	cam.CFrame = outCFrame
 	local c = ctx
 	if c then
 		c.gui:SetAttribute("CameraMode", effectiveMode)

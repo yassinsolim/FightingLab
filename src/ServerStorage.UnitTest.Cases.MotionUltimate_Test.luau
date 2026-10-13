@@ -119,6 +119,79 @@ return function(t)
 		end
 	end)
 
+	t.test("a lifted or carried Ultimate defender never asks for floor support (the ground solver would pull it down)", function()
+		-- Round 6 follow-up (Goran's Landslide): lifted defender keys built from a lying pose inherited its floor-support
+		-- weight (ground 1), so MotionPlayer's ground solver pulled the carried body down onto the floor at the attacker's
+		-- feet: the knee slam and the shoulder carry never showed, his legs passed through it and once it sank under the
+		-- floor. On every frame of every Ultimate's defender track the support weight times the body's height above its
+		-- own lying height (the last frame) stays small (a body getting up may still blend out of the floor support).
+		local LEG, ROOT = 3.1, 4.0
+		for _, id in FIGHTERS do
+			local tc = ClipLibrary.forThrow(id, "Ultimate") :: any
+			if not tc then continue end
+			local track = tc.defender
+			local opts = { mirror = track.mirror, legLength = LEG, scale = ROOT / 3 }
+			local lying = ClipPlayer.sample(track, track.duration, opts).rootOffset.Y
+			local worst, at, height, ground = 0, 0, 0, 0
+			for f = 0, track.frames - 1 do
+				local pose = ClipPlayer.sample(track, f / track.fps, opts)
+				local above = pose.rootOffset.Y - lying
+				local pull = (pose.ground or 0) * math.max(0, above - 0.5)
+				if pull > worst then worst, at, height, ground = pull, f, above, pose.ground or 0 end
+			end
+			t.expect.truthy(worst <= 0.8, string.format("%s defender frame %d: floor support %.2f on a body %.2f studs above its lying height", id, at, ground, height))
+		end
+	end)
+
+	t.test("in Play a fighter's root moves only with the step that shows its joints (no frame mixes two poses)", function()
+		-- Round 6 follow-up (Goran's Landslide: Nia's body under the floor for one frame). The engine draws the Motor6D
+		-- transforms written the frame before (it moves the parts to them after the picture) but a root part moved this
+		-- frame at once, so a frame whose root jumped showed the old pose on the new root. The presenter poses on the new
+		-- root, then puts it back where the shown joints belong and moves it on in PreAnimation (here: _flushRoots); a frame
+		-- drawn without that step keeps showing the last whole pose.
+		local CP = require(Lab.Client.CharacterPresenter)
+		local gui = Instance.new("ScreenGui")
+		MotionPlayer.reset(1); MotionPlayer.reset(2)
+		CP._setContext({ gui = gui, config = Config, modules = {} })
+		CP._forceDefer = true
+		local ok, err = pcall(function()
+			CP.setCharacters("Goran", "Nia")
+			local root = CP.getRoot(2) :: BasePart
+			local tl = Cinematic.timeline("Goran", nil)
+			local function frame(f: number): any
+				local _, _, fr = ultimateFrame("Goran", "Nia", f)
+				fr.dt, fr.phase, fr.winner, fr.origin = 1 / 60, "Fight", 0, Vector3.zero
+				return fr
+			end
+			CP.update(frame(1))
+			CP._flushRoots()
+			local shown = root.CFrame
+			local biggest, skips = 0, 0
+			local f = 2
+			while f <= tl.duration do
+				CP.update(frame(f))
+				t.expect.truthy((root.Position - shown.Position).Magnitude < 1e-4, string.format("frame %d: the picture keeps the root its joints belong to", f))
+				if f % 20 == 0 and f < tl.duration then
+					-- No animation step between two pictures: still the last whole pose.
+					f += 1
+					CP.update(frame(f))
+					t.expect.truthy((root.Position - shown.Position).Magnitude < 1e-4, string.format("frame %d: a picture without an animation step keeps the last pose", f))
+					skips += 1
+				end
+				CP._flushRoots()
+				biggest = math.max(biggest, (root.Position - shown.Position).Magnitude)
+				shown = root.CFrame
+				f += 1
+			end
+			t.expect.truthy(skips >= 5, "frames without an animation step were checked")
+			t.expect.truthy(biggest > 0.3, string.format("the defender's root moves between frames (largest step %.2f studs)", biggest))
+		end)
+		CP._forceDefer = nil
+		CP._resetForTests()
+		gui:Destroy()
+		if not ok then error(err, 0) end
+	end)
+
 	t.test("missing or malformed cinematic data never errors", function()
 		local tl = Cinematic.timeline("Nobody", nil)
 		t.expect.equal(tl.source, "default", "an unknown attacker uses the contract template")

@@ -1,5 +1,6 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 local MotionPlayer = require(script.Parent.MotionPlayer)
@@ -12,7 +13,8 @@ type Ctx = any
 type RenderFrame = any
 type CharacterInfo = { id: string, displayName: string, tagline: string }
 type PreviewPose = "Stance" | "Intro" | "Victory" | "Defeat" | "Guard"
-type LiveRig = { model: Model, root: BasePart, rig: MotionPlayer.RigInfo, flash: number, highlight: Highlight, characterId: string, mirrorOutline: boolean, serial: number, use: string?, aimHeights: { [string]: number }? }
+type LiveRig = { model: Model, root: BasePart, rig: MotionPlayer.RigInfo, flash: number, highlight: Highlight, characterId: string, mirrorOutline: boolean, serial: number, use: string?, aimHeights: { [string]: number }?,
+	surgeColor: Color3?, flareAt: number?, shown: boolean? }
 
 local M = {}
 local ctx: Ctx? = nil
@@ -24,6 +26,31 @@ local selectedIds = { "Kael", "Sierra" }
 local lastPreviewSignature = ""
 local updateCostMs = 0
 local updateCostPeakMs = 0
+-- Root placement after the picture (round 6 follow-up). The engine draws a frame with the Motor6D transforms written
+-- in the frame before (it moves the parts to them after the picture) but with a root part moved this frame at once, so
+-- a frame whose root offset changes a lot (a lifted, carried or dropped body, a cinematic's first frame) showed the
+-- old pose on the new root: a Play capture had Nia's head 1.2 studs below the floor during Goran's Ultimate while no
+-- posed frame went below it. In Play each fighter is posed on this frame's root as before (grips, contact and the
+-- ground solver read it), then the root goes back where the picture's joints belong and moves on in PreAnimation,
+-- after the picture: every shown frame is one whole pose (the body a frame behind, as the joints always were). A frame
+-- drawn without an animation step in between (Studio does that now and then) keeps showing the last whole pose: the
+-- root moves only with the step that applies its joints (or after RootFlushFrames such frames in a row, a fallback).
+M.DeferRootToPicture = true
+M.RootFlushFrames = 4
+local pendingRoots: { [number]: { rec: LiveRig, cf: CFrame }? } = {}
+local framesSinceFlush = 0
+local function flushRoots()
+	framesSinceFlush = 0
+	for i = 1, 2 do
+		local pending = pendingRoots[i]
+		pendingRoots[i] = nil
+		if pending and localRigs[i] == pending.rec and pending.rec.root.Parent then pending.rec.root.CFrame = pending.cf end
+	end
+end
+-- Test hooks: the animation step's flush, and the deferral outside the Play client (`_forceDefer = true`).
+M._flushRoots = flushRoots
+M._forceDefer = nil :: boolean?
+local function playClient(): boolean return RunService:IsRunning() and RunService:IsClient() end
 -- Preview clones (viewport/UI models) keep their rig info so per-frame posePreview calls do not rescan descendants.
 local previewRigs: { [Model]: MotionPlayer.RigInfo } = setmetatable({} :: any, { __mode = "k" })
 local REQUIRED_PARTS = { "HumanoidRootPart", "LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
@@ -182,6 +209,9 @@ local function release(record: LiveRig)
 	record.use = nil
 	record.flash = 0
 	record.mirrorOutline = false
+	record.surgeColor = nil
+	record.flareAt = nil
+	record.shown = nil
 	record.highlight.Enabled = false
 	record.highlight.OutlineTransparency = 1
 	record.model.Name = "Pool_" .. record.characterId .. "_" .. record.serial
@@ -269,6 +299,21 @@ function M.setCharacters(p1Id: string, p2Id: string)
 	M.poolStats()
 end
 
+-- Test hooks: a context without init's side effects; forget every rig (the pool's clones and the render folder are
+-- destroyed) and the context.
+function M._setContext(c: Ctx?) ctx = c end
+function M._resetForTests()
+	for i = 1, 2 do localRigs[i] = nil end
+	table.clear(pendingRoots)
+	for _, list in pool do for _, record in list do record.model:Destroy() end end
+	table.clear(pool)
+	if renderFolder then renderFolder:Destroy() end
+	renderFolder = nil
+	ctx = nil
+	MotionPlayer.reset(1)
+	MotionPlayer.reset(2)
+end
+
 -- Returns the fight rigs to the pool (lobby mode: no fight rig visible).
 function M.endFight()
 	for i = 1, 2 do
@@ -302,6 +347,41 @@ function M.getLimbPart(i: number, limb: string): BasePart?
 	return part
 end
 function M.setFlash(i: number, frames: number) local rig = localRigs[i]; if rig then rig.flash = math.max(rig.flash, frames) end end
+-- Surge glow (round 6 follow-up): EffectsController names the fighter's surge colour every frame (nil = no Surge); the
+-- Surge event flares it once.
+function M.setSurgeGlow(i: number, color: Color3?) local rig = localRigs[i]; if rig then rig.surgeColor = color end end
+function M.surgeFlare(i: number) local rig = localRigs[i]; if rig then rig.flareAt = os.clock() end end
+
+-- The rig's Highlight carries three looks: the hit flash (a light white fill for a few frames), the Surge glow (an
+-- outline around the whole body in the surge colour pulsing at SurgeGlow.hz with a faint fill of the same colour, faces
+-- stay readable; DepthMode Occluded: never drawn through walls or the other fighter) and the mirror match's P2 outline.
+M.SurgeGlow = { hz = 1.3, outline = { 0.0, 0.35 }, fill = { 0.74, 0.88 }, flareSeconds = 0.7, flareFill = 0.45 }
+local MIRROR_OUTLINE = Color3.fromRGB(255, 188, 85)
+local function updateHighlight(rig: LiveRig, now: number)
+	local hl = rig.highlight
+	local g = M.SurgeGlow
+	local surge = rig.surgeColor
+	local flareK = 0
+	if surge and rig.flareAt then flareK = math.clamp(1 - (now - rig.flareAt) / g.flareSeconds, 0, 1) end
+	if surge then
+		local pulse = 0.5 + 0.5 * math.sin(now * math.pi * 2 * g.hz)
+		hl.OutlineColor = surge
+		hl.OutlineTransparency = g.outline[2] + (g.outline[1] - g.outline[2]) * math.max(pulse, flareK)
+		hl.FillColor = surge
+		hl.FillTransparency = g.fill[2] + (g.fill[1] - g.fill[2]) * pulse + (g.flareFill - g.fill[1]) * flareK
+	else
+		hl.OutlineColor = MIRROR_OUTLINE
+		hl.OutlineTransparency = if rig.mirrorOutline then 0.35 else 1
+		hl.FillTransparency = 1
+	end
+	-- Hit flash (round 6: lighter and shorter; a strong white fill washed the fighters out in still frames).
+	if rig.flash > 0 then
+		rig.flash -= 1
+		hl.FillColor = Color3.new(1, 1, 1)
+		hl.FillTransparency = math.clamp(1 - (rig.flash / 4) * 0.3, 0.7, 0.92)
+	end
+	hl.Enabled = surge ~= nil or rig.flash > 0 or rig.mirrorOutline or hl.FillTransparency < 1
+end
 
 local function idFromFrame(f: RenderFrame, slot: number): string?
 	local view = f.fighters and f.fighters[slot]
@@ -457,15 +537,34 @@ function M.update(f: RenderFrame)
 	end
 	-- Sample, place and pose both fighters, then the throw grips (gripping hands/feet reach the partner's real body
 	-- point once both bodies are posed; the attacker's grips first).
+	local defer = M.DeferRootToPicture and (playClient() or M._forceDefer == true)
+	framesSinceFlush += 1
+	if not defer or framesSinceFlush > M.RootFlushFrames then flushRoots() end
+	local shownRoots: { [number]: CFrame } = {}
+	if defer then
+		for i = 1, 2 do
+			local rig = localRigs[i]
+			-- (a rig's first frame in a fight goes straight to its spot: it has no shown pose to keep yet)
+			if rig and entries[i] and rig.shown then shownRoots[i] = rig.root.CFrame end
+		end
+	end
 	local poses = MotionPlayer.presentFrame(entries, f, origin, c.config)
+	for i = 1, 2 do
+		local rig = localRigs[i]
+		local shown = shownRoots[i]
+		if rig and entries[i] then rig.shown = true end
+		if rig and shown then
+			pendingRoots[i] = { rec = rig, cf = rig.root.CFrame }
+			rig.root.CFrame = shown
+		end
+	end
 	for i = 1, 2 do
 		local rig = localRigs[i]
 		local view = f.fighters[i]
 		framePoses[i] = poses[i]
 		if rig and view and poses[i] then
 			if Face then Face.updateFromView(rig.model, view, if typeof(f.dt) == "number" then f.dt else 1 / 60, { phase = f.phase, winner = f.winner, slot = i }) end
-			-- Hit flash (round 6: lighter and shorter; a strong white fill washed the fighters out in still frames).
-			if rig.flash > 0 then rig.flash -= 1; rig.highlight.Enabled = true; rig.highlight.FillTransparency = math.clamp(1 - (rig.flash / 4) * 0.3, 0.7, 0.92) else rig.highlight.Enabled = rig.mirrorOutline; rig.highlight.FillTransparency = 1 end
+			updateHighlight(rig, os.clock())
 		end
 	end
 	-- Rolling cost of posing both fighters (sample + IK + ground solver), for the performance budget.
@@ -476,9 +575,14 @@ function M.update(f: RenderFrame)
 	c.gui:SetAttribute("PresenterCostPeakMs", updateCostPeakMs)
 end
 
+local rootConn: RBXScriptConnection? = nil
 function M.init(newCtx: Ctx)
 	ctx = newCtx
 	ensureFolder()
+	if not rootConn and playClient() then
+		local ok, signal = pcall(function() return (RunService :: any).PreAnimation end)
+		rootConn = (if ok and signal then signal else RunService.Stepped):Connect(flushRoots)
+	end
 	local serverFighters = Workspace:FindFirstChild("FightingLabFighters")
 	if serverFighters then for _, d in serverFighters:GetDescendants() do hideServerPart(d) end; serverFighters.DescendantAdded:Connect(hideServerPart) end
 end

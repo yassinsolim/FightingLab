@@ -23,14 +23,15 @@ end
 return function(t)
 	local test, expect = t.test, t.expect
 
-	test("the cinematic camera frames both fighters from outside their bodies, inside the arena, and hands back", function()
-		local cam = workspace.CurrentCamera
-		expect.truthy(cam ~= nil, "a camera to drive")
-		if not cam then return end
-		local savedCFrame, savedType, savedFov = cam.CFrame, cam.CameraType, cam.FieldOfView
-		local origin = Vector3.new(0, 900, 0)
-		local ok, err = pcall(function()
-			for _, id in FIGHTERS do
+	-- One test per fighter (each waits CineReturn of real time for the hand-back; well inside the runner's 5 s).
+	for _, id in FIGHTERS do
+		test(id .. ": the cinematic camera frames both fighters from outside their bodies, inside the arena, and hands back", function()
+			local cam = workspace.CurrentCamera
+			expect.truthy(cam ~= nil, "a camera to drive")
+			if not cam then return end
+			local savedCFrame, savedType, savedFov = cam.CFrame, cam.CameraType, cam.FieldOfView
+			local origin = Vector3.new(0, 900, 0)
+			local ok, err = pcall(function()
 				local tl = Cinematic.timeline(id, nil)
 				local defender = if id == "Goran" then "Nia" else "Goran"
 				local aPos, dPos = Vector3.new(-tl.endDistance * 0.5, 0, 0), Vector3.new(tl.endDistance * 0.5, 0, 0)
@@ -79,12 +80,12 @@ return function(t)
 				for _ = 1, 5 do now += 1 / 60; CameraDirector.update(frame(now, nil)) end
 				expect.truthy((CameraDirector._state() :: any).cinematic.weight < 0.05, id .. " camera hands back to the fight camera")
 				CameraDirector.endFight()
-			end
+			end)
+			CameraDirector.endFight()
+			cam.CameraType, cam.CFrame, cam.FieldOfView = savedType, savedCFrame, savedFov
+			if not ok then error(err, 0) end
 		end)
-		CameraDirector.endFight()
-		cam.CameraType, cam.CFrame, cam.FieldOfView = savedType, savedCFrame, savedFov
-		if not ok then error(err, 0) end
-	end)
+	end
 
 	test("Surge and Ultimate events never error, complete or bare, and have sounds", function()
 		local origin = Vector3.new(0, 900, 0)

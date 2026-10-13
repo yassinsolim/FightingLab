@@ -257,17 +257,19 @@ function M._specForEvent(e: CombatEvent): EffectSpec
 end
 
 -- Surge and Ultimate (round 6, docs/design/ultimates.md) -------------------------------------------------------------
--- Surge aura: a fighter with `surge = true` stands in a slowly pulsing floor ring in its own surge colour, with low
--- flames and a few sparks rising to the waist (never past the shoulders: faces stay clear) and a warm light on the
--- body. The Surge event adds a one-time burst; UltStart gathers energy into the attacker under a screen flash; every
+-- Surge aura: a fighter with `surge = true` glows (CharacterPresenter's Highlight: an outline around the whole body in
+-- its own surge colour, pulsing, with a faint fill; faces stay readable) and stands in a slowly pulsing floor ring of
+-- that colour, with low flames and sparks rising to the waist (never past the shoulders) and a warm light on the body.
+-- When Surge ends or a round resets, every aura particle is cleared at once. The Surge event adds a one-time burst (a
+-- glow flare, a floor shockwave, a column of flames and sparks); UltStart gathers energy into the attacker under a screen flash; every
 -- UltHit bursts at the striking limb, the last one with a floor shockwave and a full-screen flash; the defender's
 -- landing inside the cinematic raises dust. Everything lives in FightingLabLocalEffects (never inside the rigs).
-type Aura = { base: Part, flames: ParticleEmitter, sparks: ParticleEmitter, rings: ParticleEmitter, burstRing: ParticleEmitter,
+type Aura = { base: Part, body: Part, flames: ParticleEmitter, sparks: ParticleEmitter, rings: ParticleEmitter, wisps: ParticleEmitter, burstRing: ParticleEmitter,
 	burstFlames: ParticleEmitter, gather: ParticleEmitter, light: PointLight, on: boolean, color: Color3, id: string? }
 local auras: { [number]: Aura } = {}
 local lastIds: { [number]: string? } = {}
 local cineGround: { key: string, last: number }? = nil
-M.AuraRates = { flames = 26, sparks = 9, rings = 1.4 }
+M.AuraRates = { flames = 34, sparks = 14, rings = 1.6, wisps = 24 }
 M.AuraLight = { brightness = 1.4, range = 8 }
 
 local function seq(points: { { number } }): NumberSequence
@@ -311,7 +313,7 @@ local function newAura(i: number): Aura
 	flames.SpreadAngle = Vector2.new(8, 8)
 	flames.Drag = 1.5
 	flames.Size = seq({ { 0, 0.85 }, { 0.6, 0.55 }, { 1, 0.08 } })
-	flames.Transparency = seq({ { 0, 0.34 }, { 0.25, 0.28 }, { 1, 1 } })
+	flames.Transparency = seq({ { 0, 0.26 }, { 0.25, 0.2 }, { 1, 1 } })
 	flames.RotSpeed = NumberRange.new(-40, 40)
 	flames.Rotation = NumberRange.new(0, 360)
 	local sparks = emitter("SurgeSparks", SPARK_TEXTURE)
@@ -328,16 +330,40 @@ local function newAura(i: number): Aura
 	rings.LockedToPart = true
 	rings.Size = seq({ { 0, 1.8 }, { 1, 4.8 } })
 	rings.Transparency = seq({ { 0, 0.38 }, { 0.3, 0.46 }, { 1, 1 } })
+	-- Motes of light rising off the whole body from the knees to the chest (they fade out below the chin: faces stay
+	-- clear). Their emitter box follows the body (M.update), outside the rig.
+	local body = Instance.new("Part")
+	body.Name = "SurgeBody" .. tostring(i)
+	body.Anchored, body.CanCollide, body.CanQuery, body.CanTouch, body.CastShadow = true, false, false, false, false
+	body.Transparency = 1
+	body.Size = Vector3.new(1.7, 2.4, 1.0)
+	body.Parent = folder()
+	local wisps = Instance.new("ParticleEmitter")
+	wisps.Name = "SurgeWisps"
+	wisps.Texture = GLOW_TEXTURE
+	wisps.LightEmission = 1
+	wisps.LightInfluence = 0
+	wisps.Rate = 0
+	wisps.Shape = Enum.ParticleEmitterShape.Box
+	wisps.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	wisps.EmissionDirection = Enum.NormalId.Top
+	wisps.Lifetime = NumberRange.new(0.4, 0.7)
+	wisps.Speed = NumberRange.new(0.8, 1.6)
+	wisps.Drag = 1
+	wisps.SpreadAngle = Vector2.new(25, 25)
+	wisps.Size = seq({ { 0, 0.2 }, { 0.5, 0.16 }, { 1, 0.02 } })
+	wisps.Transparency = seq({ { 0, 0.5 }, { 0.2, 0.18 }, { 1, 1 } })
+	wisps.Parent = body
 	local burstRing = emitter("SurgeBurstRing", SHOCKWAVE_TEXTURE)
 	burstRing.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
 	burstRing.Speed = NumberRange.new(0.01)
 	burstRing.Lifetime = NumberRange.new(0.55)
 	burstRing.LockedToPart = true
-	burstRing.Size = seq({ { 0, 1.2 }, { 1, 10 } })
-	burstRing.Transparency = seq({ { 0, 0.2 }, { 1, 1 } })
+	burstRing.Size = seq({ { 0, 1.2 }, { 1, 13 } })
+	burstRing.Transparency = seq({ { 0, 0.12 }, { 1, 1 } })
 	local burstFlames = emitter("SurgeBurstFlames", FLAME_TEXTURE)
-	burstFlames.Lifetime = NumberRange.new(0.35, 0.6)
-	burstFlames.Speed = NumberRange.new(6, 10)
+	burstFlames.Lifetime = NumberRange.new(0.4, 0.7)
+	burstFlames.Speed = NumberRange.new(7, 13)
 	burstFlames.SpreadAngle = Vector2.new(14, 14)
 	burstFlames.Drag = 3
 	burstFlames.Size = seq({ { 0, 0.8 }, { 1, 0.1 } })
@@ -361,13 +387,14 @@ local function newAura(i: number): Aura
 	lightAt.Position = Vector3.new(0, 2.6, 0)
 	lightAt.Parent = base
 	light.Parent = lightAt
-	return { base = base, flames = flames, sparks = sparks, rings = rings, burstRing = burstRing, burstFlames = burstFlames, gather = gather, light = light, on = false, color = SURGE_GOLD, id = nil }
+	return { base = base, body = body, flames = flames, sparks = sparks, rings = rings, wisps = wisps, burstRing = burstRing, burstFlames = burstFlames, gather = gather, light = light, on = false, color = SURGE_GOLD, id = nil }
 end
 
 local function auraFor(i: number): Aura?
 	if not fxFolder then return nil end
 	local a = auras[i]
-	if a and a.base.Parent then return a end
+	if a and a.base.Parent and a.body.Parent then return a end
+	if a then a.base:Destroy(); a.body:Destroy() end
 	a = newAura(i)
 	auras[i] = a
 	return a
@@ -379,10 +406,15 @@ local function setAuraColor(a: Aura, id: string?)
 	local color = M.surgeColor(id)
 	a.color = color
 	local hot = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1):Lerp(color, 0.55)), ColorSequenceKeypoint.new(0.35, color), ColorSequenceKeypoint.new(1, color) })
-	for _, e in { a.flames, a.burstFlames, a.sparks, a.gather } do e.Color = hot end
+	for _, e in { a.flames, a.burstFlames, a.sparks, a.gather, a.wisps } do e.Color = hot end
 	a.rings.Color = ColorSequence.new(color)
 	a.burstRing.Color = ColorSequence.new(color)
 	a.light.Color = color
+end
+
+-- Every particle of an aura gone at once (Surge over, round reset): nothing lingers where the fighter stood.
+local function clearAura(a: Aura)
+	for _, e in { a.flames, a.sparks, a.rings, a.wisps, a.burstRing, a.burstFlames, a.gather } do e:Clear() end
 end
 
 local function setAura(a: Aura, on: boolean)
@@ -391,14 +423,22 @@ local function setAura(a: Aura, on: boolean)
 	a.flames.Rate = if on then M.AuraRates.flames else 0
 	a.sparks.Rate = if on then M.AuraRates.sparks else 0
 	a.rings.Rate = if on then M.AuraRates.rings else 0
+	a.wisps.Rate = if on then M.AuraRates.wisps else 0
 	a.light.Enabled = on
+	if not on then clearAura(a) end
+end
+
+local function setGlow(i: number, color: Color3?)
+	local c = ctx
+	local chars = c and c.modules and c.modules.Characters
+	if chars and chars.setSurgeGlow then chars.setSurgeGlow(i, color) end
 end
 
 -- Keeps every fighter's aura under its feet; `surge` comes from the render frame.
 local function updateAuras(f: RenderFrame)
 	local c = ctx
 	if not c then return end
-	local showing = f.phase ~= "MatchOver" and f.phase ~= "Lobby"
+	local showing = f.phase ~= "MatchOver" and f.phase ~= "Lobby" and f.phase ~= "Ready"
 	for i = 1, 2 do
 		local r = f.fighters[i]
 		local on = showing and r ~= nil and (r :: any).surge == true
@@ -408,11 +448,19 @@ local function updateAuras(f: RenderFrame)
 			if a then
 				local part = root(i)
 				setAuraColor(a, if r and type(r.characterId) == "string" then r.characterId else nil)
-				if part then a.base.CFrame = CFrame.new(Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)) end
+				if part then
+					local at = Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)
+					-- A fighter put back on its mark (training reset, new round) leaves no embers behind.
+					if (at - a.base.Position).Magnitude > 3 then clearAura(a) end
+					a.base.CFrame = CFrame.new(at)
+					-- (the root sits about two thirds up the body: the box spans the knees to the chest)
+					a.body.CFrame = CFrame.new(part.Position - Vector3.new(0, 1.3, 0)) * part.CFrame.Rotation
+				end
 				setAura(a, on and part ~= nil)
 				if a.on then a.light.Brightness = M.AuraLight.brightness * (0.75 + 0.25 * math.sin(f.now * 4.2 + i)) end
 			end
 		end
+		setGlow(i, if a and a.on then a.color else nil)
 	end
 	local active = 0
 	for _, a in auras do if a.on then active += 1 end end
@@ -498,11 +546,18 @@ local function surgeBurst(i: number)
 	if not a or not c then return end
 	local part = root(i)
 	if part then a.base.CFrame = CFrame.new(Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)) end
-	a.burstRing:Emit(2)
-	a.burstFlames:Emit(36)
-	a.sparks:Emit(24)
-	flash(edgeFrame, a.color, 0.6, 0.28)
-	c.modules.Characters.setFlash(i, 5)
+	a.burstRing:Emit(3)
+	a.burstFlames:Emit(64)
+	a.sparks:Emit(40)
+	if part then
+		local feet = Vector3.new(part.Position.X, origin.Y + 0.08, part.Position.Z)
+		floorShockwave(feet, a.color, 2)
+		emitWhoosh(feet + Vector3.new(0, 0.4, 0), Vector3.yAxis, a.color, 30)
+	end
+	flash(edgeFrame, a.color, 0.5, 0.36)
+	local chars = c.modules.Characters
+	if chars.surgeFlare then chars.surgeFlare(i) end
+	chars.setFlash(i, 5)
 end
 
 local function ultStartBurst(i: number)
@@ -581,9 +636,15 @@ local function clearRoundVisuals()
 	for _, rig in pool do
 		rig.ring.Transparency = 1
 		rig.activeRingUntil = 0
+		for _, e in { rig.core, rig.sparks, rig.dust, rig.embers, rig.whoosh } do e:Clear() end
 	end
 	for _, record in trails do record.trail.Enabled = false end
-	for _, a in auras do setAura(a, false) end
+	for i, a in auras do
+		setAura(a, false)
+		clearAura(a)
+		setGlow(i, nil)
+	end
+	if floorFx then floorFx.ring:Clear() end
 	cineGround = nil
 	activeEmitters = 0
 end
@@ -608,7 +669,7 @@ function M.clear()
 	table.clear(previousStates)
 	table.clear(impactTrackers)
 	table.clear(lastIds)
-	for _, a in auras do a.base:Destroy() end
+	for _, a in auras do a.base:Destroy(); a.body:Destroy() end
 	table.clear(auras)
 	if flashFrame then flashFrame.BackgroundTransparency = 1 end
 	if edgeFrame then edgeFrame.BackgroundTransparency = 1 end

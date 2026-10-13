@@ -925,3 +925,40 @@ Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 pu
 - Boxing gloves (`Motion.BodyShape.isGlove`): the boolean attribute `FightingLabGlove`, else a `FightingLabRole` of
   `Glove`/`BoxingGlove`, decides; the old "*glove*" name rule only applies without either.
 - The Ultimate camera frames both fighters whole (`CameraDirector._fitShot`, see `ultimates.md` section 4).
+
+### 15.7 Integration playtest follow-up (main @ a8cd197 merged into r6-motion)
+
+- Goran's Landslide: lifted defender keys said `ground = 0` (they inherited the lying source pose's floor support, so
+  the ground solver pulled the carried body down: no knee slam or carry, his legs through it, once under the floor).
+  Choreography as designed: he hauls it up from behind by the armpits (standing past its head), cradles it onto his
+  raised knee, swings it lengthwise onto his right shoulder (its body beside his head, its near arm raised clear of his
+  face, quarter-turn keys so it follows the arc round his head), turns, steps and drops forward onto his knee at its
+  hip. FLClip1 `rootRange` (ultimates.md section 2) keeps the suplexed body's root from clipping at 2 leg lengths.
+  `MotionUltimate_Test` checks every defender track for floor support on a lifted body.
+- Whole poses in Play (the body under the floor in run 1): Roblox draws a frame with the Motor6D transforms written
+  the frame before (it moves the parts to them after the picture) but with a root part moved this frame at once. Any
+  frame whose root offset jumps (a lifted, carried or dropped body, a cinematic's first frame) therefore showed the
+  last pose on the new root; a Play probe measured up to 4.7 studs between the drawn parts and the posed ones, and
+  Nia's head 1.2 studs under the floor while no posed frame went below it. A Play experiment (a clone whose root goes
+  up 3 studs on odd frames while its Root joint goes down 3) jumped every frame with the root set in RenderStepped and
+  stood still with the root set in PreAnimation or Stepped. `CharacterPresenter.DeferRootToPicture`: in Play each
+  fighter is posed on this frame's root as before (grips, contact and the ground solver read it), then the root goes
+  back where the shown joints belong and moves on in PreAnimation. Studio sometimes draws twice without an animation
+  step (about one frame in seven in the probe); such a frame keeps the last whole pose (the root moves only with the
+  step, or after `RootFlushFrames` frames as a fallback). Probe after the fix, 8 pairings: lowest drawn point -0.02
+  studs in every cinematic. `MotionUltimate_Test` checks the presenter keeps each root with its joints, also across a
+  frame without an animation step. Every body shows one frame later than it is posed, as its joints always did.
+- Kael's Final Bell: the defender glides onto its cinematic spot in `MotionPlayer.UltimateEntryGlide` (0.1 s) and the
+  catch straight holds a chest grip (the straight no longer passes through it, its head no longer folds onto his arm);
+  he steps in on his right of its folded head with his rear glove at his cheek, then rolls under to his left into the
+  liver hook. Strike grips clear gloves and forearms out of the partner (`StrikeGripClearance`, ultimates.md
+  section 3). The opening shots frame the catch and the clinch in profile from his right (from behind his right
+  shoulder his guard glove hid its folded face and read as pushed into its head even with the bodies clear).
+- Nia's Monsoon: the final two-palm push lands beside the falling body (turned 42 degrees, 0.85 m to the side), so its
+  legs come down past her shins.
+- Camera: whole bodies inside the safe picture area under the HUD band, in the Ultimate (`CineSafe`) and in the fight
+  (`FightSafe`, a higher aim from the same lens height); `CameraFraming_Test` projects the real posed bodies of every
+  pairing. `VfxUltimate_Test` runs one camera test per fighter, `MotionGround_Test` splits its throw sweeps in thirds
+  (each test well under the runner's 5 s).
+- Surge: a pulsing body glow (Highlight outline in the surge colour) over the floor aura, a stronger Surge burst, and
+  every aura particle cleared at once when Surge ends, a fighter is put back on its mark or a round resets.

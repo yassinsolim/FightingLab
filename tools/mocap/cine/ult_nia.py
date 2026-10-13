@@ -135,15 +135,17 @@ def build(tl: dict) -> dict:
         pk(i5 + 18, C.lowered(C.pose_at(stance, dz5 * 0.6), 0.12), lift=(0.02, 0.02)),
     ]
     H.add(i5, "RightFoot", "High", C.chest())
-    # lands, sinks low, the two-palm push into the falling body
+    # lands, sinks low beside the falling body and blasts the two-palm push into its belly from the side: its legs
+    # come down past her (round 6 follow-up: from straight in front she knelt over its thighs)
     low = C.lowered(stance, 0.30)
-    dz6 = C.reach_dz(C.lowered(C.pose_at(C.at(PALM, "contact")), 0.46), "RightHand", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.2)
+    side6, turn6 = 0.85, 42.0
+    dz6 = C.reach_dz(C.lowered(C.pose_at(C.at(PALM, "contact")), 0.40), "RightHand", C.belly(), dtrack, i6, 0.03, clear=0.0, arm_tol=-0.2, dx=side6 - 0.30)
     A += [
-        pk(i6 - 14, C.pose_at(low, dz6), lift=(0.04, 0.04)),
-        pk(i6 - 6, C.lowered(C.pose_at(C.at(PALM, "windup"), dz6), 0.40), rot_plus=[-12, 0, 0]),
-        pk(i6, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.46), "snap", rot_plus=[-24, 0, 0],
+        pk(i6 - 14, C.pose_at(low, dz6 * 0.8, side6), lift=(0.04, 0.04)),
+        pk(i6 - 6, C.yawed(C.lowered(C.pose_at(C.at(PALM, "windup"), dz6, side6), 0.36), turn6 * 0.6), rot_plus=[-10, 0, 0]),
+        pk(i6, C.yawed(C.lowered(C.pose_at(C.at(PALM, "contact"), dz6, side6), 0.40), turn6), "snap", rot_plus=[-16, 0, 0],
            RightHand={"grip": C.belly(dx=-0.06), "w": 1.0}, LeftHand={"grip": C.belly(dx=0.06), "w": 1.0}),
-        pk(i6 + 8, C.lowered(C.pose_at(C.at(PALM, "contact"), dz6), 0.40), rot_plus=[-18, 0, 0]),
+        pk(i6 + 8, C.yawed(C.lowered(C.pose_at(C.at(PALM, "contact"), dz6, side6), 0.34), turn6), rot_plus=[-12, 0, 0]),
         # low stance, palms forward, breathing out (back onto her spot)
         pk(D - 4, C.lowered(stance, 0.08), lift=(0.04, 0.04), rot_plus=[3, 0, 0]),
         pk(D, stance),
