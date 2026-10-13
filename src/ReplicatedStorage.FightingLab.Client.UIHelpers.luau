@@ -644,45 +644,61 @@ function M.moveDescription(move: any): string
 	return table.concat(bits, " · ")
 end
 
--- Four readable 0..1 attributes for the fighter select bars. Raw numbers come from the roster (move damage, walk and
--- dash speed, fastest startup, reach, health and weight) and are ranked against the whole cast, so the bars always
--- separate the six fighters whatever units the roster uses. REACH is the designer spacing (stats.preferredRange)
--- when the roster has it, else the longest threat range (range + advance); a move's own range alone is not reach
--- (step-in moves start short and travel).
-local function rawAttributes(def: any): { number }
+-- Four readable 0..1 attributes for the fighter select bars, from the roster data, each ranked against the whole cast
+-- so the bars always separate the six fighters whatever units the roster uses:
+--   POWER    damage of the fighter's real attacks (average, plus a share of the hardest hit)
+--   SPEED    movement (walk, back-walk, dash) and attack tempo (mean startup of the real attacks), each ranked against
+--            the cast and averaged
+--   REACH    the designer spacing (stats.preferredRange) when the roster has it, else the longest threat range
+--            (range + advance); a move's own range alone is not reach (step-in moves start short and travel)
+--   DEFENSE  health plus the fighter's defensive tools: armored moves, parries, the catch, stances that guard or parry
+-- A real attack strikes and deals damage: not a throw, a stance entry (3+4), a parry, the catch or the Ultimate (round
+-- 6: those utility moves start in 3-10 frames and used to read as the "fastest startup", so Goran outran Kael).
+function M.isAttack(mv: any): boolean
+	if typeof(mv) ~= "table" or mv.height == "Throw" or mv.noHit == true or mv.toStance ~= nil or mv.cinematic ~= nil then return false end
+	local props = mv.props
+	if typeof(props) == "table" and (props.parry ~= nil or props.catch ~= nil) then return false end
+	return typeof(mv.damage) == "number" and mv.damage > 0
+end
+
+local function rawAttributes(def: any): { [string]: number }
 	local stats = def.stats or {}
-	local total, count, reach, best, fastest = 0, 0, 0, 0, math.huge
+	local total, count, reach, best, startupSum, startupCount = 0, 0, 0, 0, 0, 0
+	local tools = 0
 	for _, key in def.moveOrder or {} do
-		local mv = def.moves[key]
-		if mv and mv.height ~= "Throw" then
-			total += mv.damage or 0; count += 1
+		local mv = def.moves and def.moves[key]
+		if M.isAttack(mv) then
+			total += mv.damage; count += 1
 			reach = math.max(reach, (mv.range or 0) + (if typeof(mv.advance) == "number" then mv.advance else 0))
-			best = math.max(best, mv.damage or 0)
-			if typeof(mv.startup) == "number" and typeof(mv.chainFrom) ~= "string" then fastest = math.min(fastest, mv.startup) end
+			best = math.max(best, mv.damage)
+			if typeof(mv.startup) == "number" and mv.startup > 0 then startupSum += mv.startup; startupCount += 1 end
+		end
+		local props = mv and mv.props
+		if typeof(props) == "table" and mv.cinematic == nil and (props.armor ~= nil or props.parry ~= nil or props.catch ~= nil) then tools += 1 end
+	end
+	if typeof(def.stances) == "table" then
+		for _, st in def.stances do
+			if typeof(st) == "table" and (st.guard ~= nil or (typeof(st.props) == "table" and st.props.parry ~= nil)) then tools += 1 end
 		end
 	end
 	local avg = if count > 0 then total / count else 10
 	local walk = stats.walkSpeed or 10
 	local dash = if typeof(stats.dashDistance) == "number" and typeof(stats.dashFrames) == "number" and stats.dashFrames > 0
 		then stats.dashDistance / stats.dashFrames * 60 else (stats.dashSpeed or 24) * 0.25
-	local quick = if fastest < math.huge then 1 / fastest else 0.1
-	local guards = 0
-	for _, key in def.moveOrder or {} do
-		local props = def.moves[key] and def.moves[key].props
-		if typeof(props) == "table" and (props.armor or props.parry) then guards += 1 end
-	end
 	if typeof(stats.preferredRange) == "number" then reach = stats.preferredRange end
 	return {
-		avg * 0.7 + best * 0.3,
-		walk + (stats.backSpeed or walk * 0.8) * 0.5 + dash * 0.25 + quick * 40,
-		reach,
-		(stats.maxHealth or 100) + guards * 3,
+		power = avg * 0.7 + best * 0.3,
+		move = walk + (stats.backSpeed or walk * 0.8) * 0.5 + dash * 0.25,
+		tempo = if startupCount > 0 then startupCount / startupSum else 1 / 12,
+		reach = reach,
+		defense = (stats.maxHealth or 100) + tools * 4,
 	}
 end
 M.ATTRIBUTE_NAMES = { "POWER", "SPEED", "REACH", "DEFENSE" }
+local ATTRIBUTE_FIELDS = { "power", "speed", "reach", "defense" }
 function M.attributes(def: any, roster: any?): { { name: string, value: number } }
 	local mine = rawAttributes(def)
-	local lows, highs = table.clone(mine), table.clone(mine)
+	local all = { mine }
 	local cast = roster
 	if cast == nil then
 		local module = LabFolder:FindFirstChild("Roster")
@@ -694,18 +710,28 @@ function M.attributes(def: any, roster: any?): { { name: string, value: number }
 	if typeof(cast) == "table" and typeof(cast.order) == "table" and typeof(cast.get) == "function" then
 		for _, id in cast.order do
 			local ok, other = pcall(cast.get, id)
-			if ok and typeof(other) == "table" then
-				for i, v in rawAttributes(other) do
-					lows[i] = math.min(lows[i], v)
-					highs[i] = math.max(highs[i], v)
-				end
-			end
+			if ok and typeof(other) == "table" then table.insert(all, rawAttributes(other)) end
 		end
+	end
+	local function range(field: string): (number, number)
+		local lo, hi = math.huge, -math.huge
+		for _, r in all do lo = math.min(lo, r[field]); hi = math.max(hi, r[field]) end
+		return lo, hi
+	end
+	-- SPEED: movement and attack tempo count the same (each ranked against the cast first)
+	local mlo, mhi = range("move")
+	local tlo, thi = range("tempo")
+	for _, r in all do
+		local m = if mhi - mlo > 1e-9 then (r.move - mlo) / (mhi - mlo) else 0.5
+		local q = if thi - tlo > 1e-9 then (r.tempo - tlo) / (thi - tlo) else 0.5
+		r.speed = (m + q) * 0.5
 	end
 	local out = {}
 	for i, name in M.ATTRIBUTE_NAMES do
-		local span = highs[i] - lows[i]
-		local value = if span > 1e-6 then 0.3 + 0.65 * (mine[i] - lows[i]) / span else 0.6
+		local field = ATTRIBUTE_FIELDS[i]
+		local lo, hi = range(field)
+		local span = hi - lo
+		local value = if span > 1e-6 then 0.3 + 0.65 * (mine[field] - lo) / span else 0.6
 		table.insert(out, { name = name, value = math.clamp(value, 0.12, 1) })
 	end
 	return out

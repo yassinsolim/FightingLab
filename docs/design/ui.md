@@ -347,3 +347,46 @@ motion and characters tests that the new movesets break until the motion clips l
   combo counter's damage line is small (about 7 px).
 - During the Ultimate, the camera and the poses come from the motion branch. With r6-combat alone, the fallback
   camera is very close.
+
+## Round 6 follow-up (integrated build, main @ a8cd197)
+
+Fixes from the integrator's playtest. Evidence: `OV6\handoff\look-shots\round6\followup\`.
+
+- **Ultimate key on the opponent's side.** In Free Training the dummy reaches Surge after a few Ultimates, and its
+  side showed the player's "[L] ULTIMATE". The key now shows only on the local player's own side, which is always
+  drawn on the left (`HudController.OWN_SIDE`). The opponent gets a plain ULTIMATE tag, and the chip carries a
+  `KeyShown` attribute.
+- **Tags over tall fighters' heads.** The SURGE, ULTIMATE and stance chips are now 17 px (were 22-24) and sit right
+  under the bar's accent edge (`LAYOUT.statusY` = 51). They never reach below the name row, so Goran's eyes stay
+  clear at the Free Training start. The fight camera's headroom belongs to motion (CameraDirector).
+- **ROSTER label.** It was ember text on the studio's ember light pillar. It is now white on its own dark plate with an
+  ember outline (contrast at least 7:1).
+- **Select stat bars.** Only real attacks count (`UIHelpers.isAttack`): damage above 0, and not a throw, stance
+  entry, parry, catch or the Ultimate. The round-6 utility moves start in 3-10 frames and had become the "fastest
+  startup", so Goran showed SPEED 6 and Kael 4.
+  - SPEED averages movement and attack tempo (mean startup), each ranked against the cast.
+  - DEFENSE adds every defensive tool: armor, parries, the catch, guarding or parrying stances.
+
+  | fighter | POWER | SPEED | REACH | DEFENSE |
+  |---|---|---|---|---|
+  | Kael | 4 | 8 | 5 | 4 |
+  | Sierra | 4 | 8 | 10 | 4 |
+  | Goran | 10 | 3 | 3 | 10 |
+  | Lumi | 3 | 10 | 8 | 3 |
+  | Rhys | 4 | 7 | 7 | 6 |
+  | Nia | 3 | 8 | 6 | 4 |
+
+- **Lobby camera after a return** (new `Client.LobbyCamera`, driven by FrontEnd). After a fight, a practice or a
+  quick travel, once the character stands on its exit or Arrival, the camera is framed once over the player's
+  shoulder toward the arena. Before, it kept the fight camera's direction and could start behind a lamp post. See
+  world.md for the moved exits.
+
+**Tests**
+- HudController_Test (15): own-side key as P1 and P2; status row geometry.
+- UITheme_Test (8): ROSTER contrast.
+- UIFrontend_Test (8): the stats follow the design.
+- LobbyCamera_Test (4, new).
+- ClientModules_Test: the new APIs.
+
+Full suite on the integrated build with these fixes: `[SUMMARY] 601 run, 600 passed, 1 failed`. The one failure is
+the known VfxUltimate_Test timeout, which motion is fixing.

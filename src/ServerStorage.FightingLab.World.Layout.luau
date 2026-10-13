@@ -50,8 +50,12 @@ Layout.PAD_X = 7.5
 Layout.PAD_Z = 41
 Layout.PAD_RADIUS = 3.5
 Layout.PAD_TOP = 0.25 -- pad top above the plaza floor
-Layout.EXIT_X = 7.5 -- exits just behind their pads (towards the stage), facing FightOrigin
-Layout.EXIT_Z = 34.5
+-- Exits (where a fight returns its players) stand on the plaza side of their pads, either side of the wayfinding line,
+-- facing FightOrigin. Round 6: they used to stand towards the stage, 8 studs from the street lamp in the gap between
+-- two stages, and the lobby camera behind a returning player had the lamp post in the middle of the view; now the
+-- client frames the return over the player's shoulder (Client.LobbyCamera) along an open line across the plaza.
+Layout.EXIT_X = 3
+Layout.EXIT_Z = 45
 Layout.ARRIVAL_Z = 41 -- between the two pads, facing the ring (quick travel drops players here)
 Layout.FLOOR_CLEAR_RADIUS = 25 -- floor is flat to here (bodies knocked down at the edge still lie on it)
 Layout.OCCLUDER_RADIUS = 46 -- taller than 1.5 inside this radius => tagged FightingLabCameraOccluder

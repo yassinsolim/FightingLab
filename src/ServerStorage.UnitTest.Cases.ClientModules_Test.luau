@@ -33,11 +33,13 @@ return function(t)
 		FlashDetector = { "inventory", "contentIds", "allContent", "pendingTextures", "check", "fetchStatus", "templateInventory", "poseOf", "maxJointDelta", "newRecorder", "observe", "start", "summary" },
 		-- Round 5: lobby sprint (Controls.lobby.sprint), driven by LobbyUI.
 		LobbySprint = { "new", "bindInput", "stepAlpha", "speedFor", "fovFor" },
+		-- Round 6: the lobby camera framed over the player's shoulder after a fight, a practice or a quick travel.
+		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers" },
 		SpectatorPresenter = { "init", "onSnapshot", "update", "clear" },
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
 		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).
 		LobbyPrompts = { "worldPrompts" },
-		UIHelpers = { "holdPlayerList" },
+		UIHelpers = { "holdPlayerList", "attributes", "isAttack" },
 		StationBoards = { "viewModel", "build", "render", "buildPadTag", "renderPadTag", "bind", "start" },
 		Leaderboard = { "sortEntries", "entryFor", "collect", "build", "render", "start" },
 		FighterSelect = { "mount", "acquireModel", "newViewport", "frame", "templatesReady", "awaitTemplates", "gatePreview" },

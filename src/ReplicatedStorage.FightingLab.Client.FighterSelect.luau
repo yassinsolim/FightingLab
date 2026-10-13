@@ -376,7 +376,15 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		local TILE_W, TILE_H, GAP = 104, 120, 10
 		local cols = 2
 		local rows = math.ceil(#Roster.order / cols)
-		local gridTitle = text(body, "RosterTitle", "ROSTER", T.heavy, 12, T.ember, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -52, 0, 70), Size = UDim2.fromOffset(cols * TILE_W + (cols - 1) * GAP, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		-- The grid's label sits on its own dark plate: the studio's accent light pillar (orange, red...) can stand right
+		-- behind it, and ember text on an ember pillar disappears.
+		local gridTitle = text(body, "RosterTitle", "ROSTER", T.heavy, 12, T.text, {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -52, 0, 68), Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X,
+			TextXAlignment = Enum.TextXAlignment.Center, BackgroundColor3 = T.bg, BackgroundTransparency = 0.04,
+		})
+		make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = gridTitle })
+		UIHelpers.corner(gridTitle, 2)
+		UIHelpers.outline(gridTitle, T.ember, 1, 0.15)
 		refs.gridTitle = gridTitle
 		local strip: Frame = make("Frame", { Name = "Roster", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -52, 0, 92), Size = UDim2.fromOffset(cols * TILE_W + (cols - 1) * GAP, rows * (TILE_H + GAP)), Parent = body })
 		refs.strip = strip

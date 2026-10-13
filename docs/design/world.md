@@ -502,3 +502,14 @@ credit.
 - No MaterialVariants or SurfaceAppearance: no new textures were uploaded.
 - In a still frame, the hit flash (CharacterPresenter's white Highlight, owned by motion) can make a fighter look
   washed out for a few frames.
+
+### Round 6 follow-up: clear view after a return
+
+After a CPU fight, the player came back to the arena's exit, 8 studs from the street lamp in the gap between two
+stages. The camera kept the fight camera's direction, so the lamp post filled the middle of the view.
+
+- **Exits** (`Layout.EXIT_X` 7.5 ? 3, `EXIT_Z` 34.5 ? 45): they now stand on the plaza side of their pads, either side
+  of the wayfinding line, still facing FightOrigin and 6 studs from their pad.
+- **Camera:** the client frames the return over the player's shoulder toward the arena (`Client.LobbyCamera`).
+- **World_Test** (29): "the camera view from every return point is clear" checks that nothing solid stands between
+  that camera and the player, at every exit and Arrival.
