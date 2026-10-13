@@ -43,18 +43,8 @@
       "Puffiness": 0.2
     },
     {
-      "AssetId": 103417751582989,
-      "AccessoryType": "Hair",
-      "Scale": [
-        1.0,
-        1.25,
-        1.04
-      ],
-      "Position": [
-        0,
-        0.02,
-        0
-      ]
+      "AssetId": 107360538839863,
+      "AccessoryType": "Hair"
     },
     {
       "AssetId": 16362208023,
@@ -63,9 +53,9 @@
       "Order": 4,
       "Puffiness": 0.3,
       "Tint": [
+        30,
         40,
-        52,
-        86
+        80
       ]
     },
     {
@@ -144,14 +134,14 @@
       "kind": "Layered hand wraps"
     },
     {
-      "id": 103417751582989,
-      "name": "Brown Man Bun - Millennial",
-      "creator": "Looe UGC",
+      "id": 107360538839863,
+      "name": "Black Man Bun",
+      "creator": "Cornlit's UGC",
       "kind": "Hair"
     }
   ],
   "mood": 14618207727,
-  "look": "Adult karate counter-striker with light realistic face and dark-brown hair tied back in a bun; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
+  "look": "Adult karate counter-striker with light realistic face and black hair tied in a loose top bun with two free front strands; deep-indigo karate gi over a grey training tee, black belt, white cloth hand wraps, barefoot, no headband, open blade hands.",
   "bodyColors": {
     "Head": [
       255,
@@ -192,5 +182,11 @@
     1.0,
     1.0,
     0.88
-  ]
+  ],
+  "signature": {
+    "label": "black top bun with two loose front strands",
+    "assetIds": [
+      107360538839863
+    ]
+  }
 }

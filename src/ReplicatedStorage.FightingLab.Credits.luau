@@ -11,14 +11,16 @@ return {
 			{ name = "Model Man - Left Leg", creator = "angelshefford", kind = "LeftLeg", id = 116349841260868 },
 			{ name = "Model Man - Right Leg", creator = "angelshefford", kind = "RightLeg", id = 71235686557283 },
 			{ name = "Default Mood", creator = "Roblox", kind = "Mood", id = 14618207727 },
-			{ name = "Cornrows", creator = "EstheKing", kind = "Hair", id = 17750359523 },
 			{ name = "Grey Sleeveless Boxing Hoodie Layered Vest", creator = "Zen.Studio", kind = "Layered sleeveless hoodie", id = 108264643648437 },
-			{ name = "Red Boxing Shorts", creator = "Dockery", kind = "Layered boxing trunks", id = 9726891755 },
 			{ name = "Boxing Glove Right White", creator = "VochtigDoekje", kind = "Rigid boxing glove", id = 14775127400 },
 			{ name = "Boxing Glove Left White", creator = "VochtigDoekje", kind = "Rigid boxing glove", id = 14775131832 },
 			{ name = "High Cut Sneakers Black", creator = "The 67 UGC", kind = "Shoes bundle", id = 203322574255359 },
 			{ name = "High Cut Sneakers Black - Left Shoe Accessory", creator = "The 67 UGC", kind = "Rigid shoe", id = 70716256524989 },
 			{ name = "High Cut Sneakers Black - Right Shoe Accessory", creator = "The 67 UGC", kind = "Rigid shoe", id = 129737407945021 },
+			{ name = "Cornrows", creator = "EstheKing", kind = "Hair", id = 17750325511 },
+			{ name = "White Boxing Shorts", creator = "Dockery", kind = "Layered boxing trunks", id = 9726900805 },
+			{ name = "[R6 & 1.0] White Wrist Tape [Left]", creator = "M A K O", kind = "Rigid wrist tape", id = 131563942024521 },
+			{ name = "[R6 & 1.0] White Wrist Tape [Right]", creator = "M A K O", kind = "Rigid wrist tape", id = 140209841353665 },
 		} },
 		{ name = "SIERRA", items = {
 			{ name = "Realistic Model Woman Doll", creator = "iAngel", kind = "Body bundle", id = 64276026698783 },
@@ -35,6 +37,8 @@ return {
 			{ name = "Boxing Glove Right White", creator = "VochtigDoekje", kind = "Rigid boxing glove", id = 14775127400 },
 			{ name = "Boxing Glove Left White", creator = "VochtigDoekje", kind = "Rigid boxing glove", id = 14775131832 },
 			{ name = "Doll High Ponytail (Platinum)", creator = "Ellzd", kind = "Hair", id = 5227532062 },
+			{ name = "White Muay thai armband Prajied (Left Shoulder)", creator = "Olympus", kind = "Rigid braided armband", id = 14777057611 },
+			{ name = "White Muay thai armband Prajied (Right Shoulder)", creator = "Olympus", kind = "Rigid braided armband", id = 14777046729 },
 		} },
 		{ name = "GORAN", items = {
 			{ name = "January Model Man", creator = "iAngel", kind = "Body bundle", id = 272889456128840 },
@@ -52,8 +56,9 @@ return {
 			{ name = "Light Brown Combat Boots - Left Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Rigid shoe", id = 140700617127197 },
 			{ name = "Light Brown Combat Boots - Right Shoe Accessory", creator = "FATAL ARCHIVE", kind = "Rigid shoe", id = 100014109264125 },
 			{ name = "Weight Lifting Belt", creator = "AUZL", kind = "Welded gear", id = 18883135935 },
-			{ name = "Light Brown Full Trimmed Beard", creator = "The Barber Shoppe", kind = "3D beard", id = 13631074853 },
 			{ name = "Tight Muscle Tank Top (Dark Red)", creator = "GALLIANO", kind = "Layered muscle tank", id = 135571447604238 },
+			{ name = "Brown Full Trimmed Beard", creator = "The Barber Shoppe", kind = "3D beard", id = 13631062181 },
+			{ name = "Left Wrist Chains", creator = "Eternos Digital", kind = "Layered wrist chain", id = 11790893653 },
 		} },
 		{ name = "LUMI", items = {
 			{ name = "January Model Doll", creator = "iAngel", kind = "Body bundle", id = 75057502474636 },
@@ -71,6 +76,7 @@ return {
 			{ name = "Tabi Suede Boots in Black", creator = "creepertDev", kind = "Shoes bundle", id = 199239061768347 },
 			{ name = "Tabi Suede Boots in Black - Left Shoe Accessory", creator = "creepertDev", kind = "Rigid shoe", id = 109971937853096 },
 			{ name = "Tabi Suede Boots in Black - Right Shoe Accessory", creator = "creepertDev", kind = "Rigid shoe", id = 111746619334138 },
+			{ name = "Fingerless Gloves", creator = "Blizzei", kind = "Layered fingerless grip gloves", id = 72553576375381 },
 		} },
 		{ name = "RHYS", items = {
 			{ name = "Fashion Model Man Bundle", creator = "angelshefford", kind = "Body bundle", id = 148843544796522 },
@@ -84,7 +90,7 @@ return {
 			{ name = "male compression t-shirt grey", creator = "Dolla", kind = "Layered training tee", id = 16454695769 },
 			{ name = "White/Black Belt Judo Kungfu Outfit", creator = "Dubit", kind = "Layered karate gi", id = 16362208023 },
 			{ name = "Hand Wraps", creator = "Maximum_ADHD", kind = "Layered hand wraps", id = 131531879662841 },
-			{ name = "Brown Man Bun - Millennial", creator = "Looe UGC", kind = "Hair", id = 103417751582989 },
+			{ name = "Black Man Bun", creator = "Cornlit's UGC", kind = "Hair", id = 107360538839863 },
 		} },
 		{ name = "NIA", items = {
 			{ name = "Woman Fashion Model Doll", creator = "angelshefford", kind = "Body bundle", id = 181282816119101 },
@@ -102,6 +108,7 @@ return {
 			{ name = "Casual Slip On Dude Shoes ... - Right Shoe Accessory", creator = "SOLE ARCHIVE", kind = "Rigid shoe", id = 78935764733147 },
 			{ name = "White Slim fit tracksuit pants", creator = "Blue infinity studios", kind = "Layered tapered training pants", id = 80566106375297 },
 			{ name = "Elegant Waist Wrap Drape (Purple)", creator = "GAULTIER", kind = "Layered waist wrap", id = 93954966441244 },
+			{ name = "Boho Gold Thick Arm Cuff", creator = "Mind & Beauty", kind = "Rigid armlet", id = 73260183475840 },
 		} },
 	},
 	external = {

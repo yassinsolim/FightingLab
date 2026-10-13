@@ -14,14 +14,16 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Model Man - Left Leg | angelshefford | LeftLeg | https://www.roblox.com/catalog/116349841260868 |
 | Model Man - Right Leg | angelshefford | RightLeg | https://www.roblox.com/catalog/71235686557283 |
 | Default Mood | Roblox | Mood | https://www.roblox.com/catalog/14618207727 |
-| Cornrows | EstheKing | Hair | https://www.roblox.com/catalog/17750359523 |
 | Grey Sleeveless Boxing Hoodie Layered Vest | Zen.Studio | Layered sleeveless hoodie | https://www.roblox.com/catalog/108264643648437 |
-| Red Boxing Shorts | Dockery | Layered boxing trunks | https://www.roblox.com/catalog/9726891755 |
 | Boxing Glove Right White | VochtigDoekje | Rigid boxing glove | https://www.roblox.com/catalog/14775127400 |
 | Boxing Glove Left White | VochtigDoekje | Rigid boxing glove | https://www.roblox.com/catalog/14775131832 |
 | High Cut Sneakers Black | The 67 UGC | Shoes bundle | https://www.roblox.com/bundles/203322574255359 |
 | High Cut Sneakers Black - Left Shoe Accessory | The 67 UGC | Rigid shoe | https://www.roblox.com/catalog/70716256524989 |
 | High Cut Sneakers Black - Right Shoe Accessory | The 67 UGC | Rigid shoe | https://www.roblox.com/catalog/129737407945021 |
+| Cornrows | EstheKing | Hair | https://www.roblox.com/catalog/17750325511 |
+| White Boxing Shorts | Dockery | Layered boxing trunks | https://www.roblox.com/catalog/9726900805 |
+| [R6 & 1.0] White Wrist Tape [Left] | M A K O | Rigid wrist tape | https://www.roblox.com/catalog/131563942024521 |
+| [R6 & 1.0] White Wrist Tape [Right] | M A K O | Rigid wrist tape | https://www.roblox.com/catalog/140209841353665 |
 
 ## SIERRA
 
@@ -41,6 +43,8 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Boxing Glove Right White | VochtigDoekje | Rigid boxing glove | https://www.roblox.com/catalog/14775127400 |
 | Boxing Glove Left White | VochtigDoekje | Rigid boxing glove | https://www.roblox.com/catalog/14775131832 |
 | Doll High Ponytail (Platinum) | Ellzd | Hair | https://www.roblox.com/catalog/5227532062 |
+| White Muay thai armband Prajied (Left Shoulder) | OlympusϞ | Rigid braided armband | https://www.roblox.com/catalog/14777057611 |
+| White Muay thai armband Prajied (Right Shoulder) | OlympusϞ | Rigid braided armband | https://www.roblox.com/catalog/14777046729 |
 
 ## GORAN
 
@@ -61,8 +65,9 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Light Brown Combat Boots - Left Shoe Accessory | FATAL ARCHIVE | Rigid shoe | https://www.roblox.com/catalog/140700617127197 |
 | Light Brown Combat Boots - Right Shoe Accessory | FATAL ARCHIVE | Rigid shoe | https://www.roblox.com/catalog/100014109264125 |
 | Weight Lifting Belt | AUZL | Welded gear | https://www.roblox.com/catalog/18883135935 |
-| Light Brown Full Trimmed Beard | The Barber Shoppe | 3D beard | https://www.roblox.com/catalog/13631074853 |
 | Tight Muscle Tank Top (Dark Red) | GALLIANO | Layered muscle tank | https://www.roblox.com/catalog/135571447604238 |
+| Brown Full Trimmed Beard | The Barber Shoppe | 3D beard | https://www.roblox.com/catalog/13631062181 |
+| Left Wrist Chains | Eternos Digital | Layered wrist chain | https://www.roblox.com/catalog/11790893653 |
 
 ## LUMI
 
@@ -83,6 +88,7 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Tabi Suede Boots in Black | creepertDev | Shoes bundle | https://www.roblox.com/bundles/199239061768347 |
 | Tabi Suede Boots in Black - Left Shoe Accessory | creepertDev | Rigid shoe | https://www.roblox.com/catalog/109971937853096 |
 | Tabi Suede Boots in Black - Right Shoe Accessory | creepertDev | Rigid shoe | https://www.roblox.com/catalog/111746619334138 |
+| Fingerless Gloves | Blizzei | Layered fingerless grip gloves | https://www.roblox.com/catalog/72553576375381 |
 
 ## RHYS
 
@@ -99,7 +105,7 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | male compression t-shirt grey | Dolla ֆ | Layered training tee | https://www.roblox.com/catalog/16454695769 |
 | White/Black Belt Judo Kungfu Outfit | Dubit | Layered karate gi | https://www.roblox.com/catalog/16362208023 |
 | Hand Wraps | Maximum_ADHD | Layered hand wraps | https://www.roblox.com/catalog/131531879662841 |
-| Brown Man Bun - Millennial | Looe UGC | Hair | https://www.roblox.com/catalog/103417751582989 |
+| Black Man Bun | Cornlit's UGC | Hair | https://www.roblox.com/catalog/107360538839863 |
 
 ## NIA
 
@@ -120,6 +126,7 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Casual Slip On Dude Shoes … - Right Shoe Accessory | SOLE ARCHIVE | Rigid shoe | https://www.roblox.com/catalog/78935764733147 |
 | White Slim fit tracksuit pants | Blue infinity studios | Layered tapered training pants | https://www.roblox.com/catalog/80566106375297 |
 | Elegant Waist Wrap Drape (Purple) | GAULTIER | Layered waist wrap | https://www.roblox.com/catalog/93954966441244 |
+| ☆ Boho Gold Thick Arm Cuff | Mind & Beauty | Rigid armlet | https://www.roblox.com/catalog/73260183475840 |
 
 ## Models and files from outside Roblox
 
@@ -166,17 +173,19 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Woman Fashion Model Doll - Torso | angelshefford | NIA | https://www.roblox.com/catalog/122831550366162 |
 | Olive Tank Top | ANGVLI | LUMI | https://www.roblox.com/catalog/90430205270040 |
 | Weight Lifting Belt | AUZL | GORAN | https://www.roblox.com/catalog/18883135935 |
+| Fingerless Gloves | Blizzei | LUMI | https://www.roblox.com/catalog/72553576375381 |
 | White Slim fit tracksuit pants | Blue infinity studios | LUMI, NIA | https://www.roblox.com/catalog/80566106375297 |
+| Black Man Bun | Cornlit's UGC | RHYS | https://www.roblox.com/catalog/107360538839863 |
 | Tabi Suede Boots in Black | creepertDev | LUMI | https://www.roblox.com/bundles/199239061768347 |
 | Tabi Suede Boots in Black - Left Shoe Accessory | creepertDev | LUMI | https://www.roblox.com/catalog/109971937853096 |
 | Tabi Suede Boots in Black - Right Shoe Accessory | creepertDev | LUMI | https://www.roblox.com/catalog/111746619334138 |
-| Red Boxing Shorts | Dockery | KAEL | https://www.roblox.com/catalog/9726891755 |
-| White Boxing Shorts | Dockery | SIERRA | https://www.roblox.com/catalog/9726900805 |
+| White Boxing Shorts | Dockery | KAEL, SIERRA | https://www.roblox.com/catalog/9726900805 |
 | male compression t-shirt grey | Dolla ֆ | RHYS | https://www.roblox.com/catalog/16454695769 |
 | Y2K Active Shorts (Grey Camo) | dont look down | GORAN | https://www.roblox.com/catalog/135168322016429 |
 | White/Black Belt Judo Kungfu Outfit | Dubit | RHYS | https://www.roblox.com/catalog/16362208023 |
 | Doll High Ponytail (Platinum) | Ellzd | SIERRA | https://www.roblox.com/catalog/5227532062 |
-| Cornrows | EstheKing | KAEL | https://www.roblox.com/catalog/17750359523 |
+| Cornrows | EstheKing | KAEL | https://www.roblox.com/catalog/17750325511 |
+| Left Wrist Chains | Eternos Digital | GORAN | https://www.roblox.com/catalog/11790893653 |
 | Light Brown Combat Boots | FATAL ARCHIVE | GORAN | https://www.roblox.com/bundles/148454237701358 |
 | Light Brown Combat Boots - Left Shoe Accessory | FATAL ARCHIVE | GORAN | https://www.roblox.com/catalog/140700617127197 |
 | Light Brown Combat Boots - Right Shoe Accessory | FATAL ARCHIVE | GORAN | https://www.roblox.com/catalog/100014109264125 |
@@ -205,10 +214,14 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Realistic Model Woman Doll - Torso | iAngel | SIERRA | https://www.roblox.com/catalog/74203867041109 |
 | Realistic Model Woman Doll v2 | iAngel | SIERRA | https://www.roblox.com/bundles/214055257893779 |
 | Realistic Model Woman Doll v2  - Dynamic Head | iAngel | SIERRA | https://www.roblox.com/catalog/75113716867572 |
-| Brown Man Bun - Millennial | Looe UGC | RHYS | https://www.roblox.com/catalog/103417751582989 |
 | Techwear Sleeves (Jet) | Luka's Workshop | LUMI | https://www.roblox.com/catalog/13048594874 |
+| [R6 & 1.0] White Wrist Tape [Left] | M A K O | KAEL | https://www.roblox.com/catalog/131563942024521 |
+| [R6 & 1.0] White Wrist Tape [Right] | M A K O | KAEL | https://www.roblox.com/catalog/140209841353665 |
 | Hand Wraps | Maximum_ADHD | RHYS | https://www.roblox.com/catalog/131531879662841 |
+| ☆ Boho Gold Thick Arm Cuff | Mind & Beauty | NIA | https://www.roblox.com/catalog/73260183475840 |
 | Red Sports Wrist Sweatbands | NINET9 Clothing | GORAN | https://www.roblox.com/catalog/17697195879 |
+| White Muay thai armband Prajied (Left Shoulder) | OlympusϞ | SIERRA | https://www.roblox.com/catalog/14777057611 |
+| White Muay thai armband Prajied (Right Shoulder) | OlympusϞ | SIERRA | https://www.roblox.com/catalog/14777046729 |
 | Default Mood | Roblox | KAEL, SIERRA, GORAN, LUMI, RHYS, NIA | https://www.roblox.com/catalog/14618207727 |
 | Casual Slip On Dude Shoes (Dark Grey) | SOLE ARCHIVE | NIA | https://www.roblox.com/bundles/198808991844647 |
 | Casual Slip On Dude Shoes (… - Left Shoe Accessory | SOLE ARCHIVE | NIA | https://www.roblox.com/catalog/120192598736981 |
@@ -217,7 +230,7 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | High Cut Sneakers Black | The 67 UGC | KAEL | https://www.roblox.com/bundles/203322574255359 |
 | High Cut Sneakers Black - Left Shoe Accessory | The 67 UGC | KAEL | https://www.roblox.com/catalog/70716256524989 |
 | High Cut Sneakers Black - Right Shoe Accessory | The 67 UGC | KAEL | https://www.roblox.com/catalog/129737407945021 |
-| Light Brown Full Trimmed Beard | The Barber Shoppe | GORAN | https://www.roblox.com/catalog/13631074853 |
+| Brown Full Trimmed Beard | The Barber Shoppe | GORAN | https://www.roblox.com/catalog/13631062181 |
 | Boxing Glove Left White | VochtigDoekje | KAEL, SIERRA | https://www.roblox.com/catalog/14775131832 |
 | Boxing Glove Right White | VochtigDoekje | KAEL, SIERRA | https://www.roblox.com/catalog/14775127400 |
 | black leggings | WhoseTouz | GORAN | https://www.roblox.com/catalog/15824475572 |

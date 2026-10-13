@@ -36,7 +36,7 @@
   },
   "accessories": [
     {
-      "AssetId": 17750359523,
+      "AssetId": 17750325511,
       "AccessoryType": "Hair",
       "Scale": [
         1.02,
@@ -56,17 +56,22 @@
       "Order": 10,
       "Puffiness": 0.4,
       "Tint": [
-        96,
-        110,
-        128
+        74,
+        82,
+        94
       ]
     },
     {
-      "AssetId": 9726891755,
+      "AssetId": 9726900805,
       "AccessoryType": "Shorts",
       "IsLayered": true,
       "Order": 3,
-      "Puffiness": 0.3
+      "Puffiness": 0.3,
+      "Tint": [
+        34,
+        34,
+        38
+      ]
     }
   ],
   "sourceAssets": [
@@ -119,22 +124,10 @@
       "kind": "Mood"
     },
     {
-      "id": 17750359523,
-      "name": "Cornrows",
-      "creator": "EstheKing",
-      "kind": "Hair"
-    },
-    {
       "id": 108264643648437,
       "name": "Grey Sleeveless Boxing Hoodie Layered Vest",
       "creator": "Zen.Studio",
-      "kind": "Layered sleeveless hoodie (tinted)"
-    },
-    {
-      "id": 9726891755,
-      "name": "Red Boxing Shorts",
-      "creator": "Dockery",
-      "kind": "Layered boxing trunks"
+      "kind": "Layered sleeveless hoodie (tinted charcoal)"
     },
     {
       "id": 14775127400,
@@ -165,6 +158,30 @@
       "name": "High Cut Sneakers Black - Right Shoe Accessory",
       "creator": "The 67 UGC",
       "kind": "Rigid shoe (catalog mesh welded to the foot)"
+    },
+    {
+      "id": 17750325511,
+      "name": "Cornrows",
+      "creator": "EstheKing",
+      "kind": "Hair"
+    },
+    {
+      "id": 9726900805,
+      "name": "White Boxing Shorts",
+      "creator": "Dockery",
+      "kind": "Layered boxing trunks (tinted black)"
+    },
+    {
+      "id": 131563942024521,
+      "name": "[R6 & 1.0] White Wrist Tape [Left]",
+      "creator": "M A K O",
+      "kind": "Rigid wrist tape (catalog mesh welded around the glove cuff)"
+    },
+    {
+      "id": 140209841353665,
+      "name": "[R6 & 1.0] White Wrist Tape [Right]",
+      "creator": "M A K O",
+      "kind": "Rigid wrist tape (catalog mesh welded around the glove cuff)"
     }
   ],
   "mood": 14618207727,
@@ -258,9 +275,41 @@
         48
       ],
       "hideTarget": true
+    },
+    {
+      "assetId": 131563942024521,
+      "name": "LeftCuffTape",
+      "target": "LeftHand",
+      "role": "tape",
+      "scale": [
+        0.3516,
+        0.5592,
+        0.3177
+      ],
+      "offset": [
+        0.019,
+        0.49,
+        0.002
+      ]
+    },
+    {
+      "assetId": 140209841353665,
+      "name": "RightCuffTape",
+      "target": "RightHand",
+      "role": "tape",
+      "scale": [
+        0.3516,
+        0.5592,
+        0.3177
+      ],
+      "offset": [
+        -0.019,
+        0.49,
+        0.002
+      ]
     }
   ],
-  "look": "Adult street boxer with medium-olive realistic face and tight cornrows down to the nape; slate heather sleeveless training hoodie with white trim, red satin boxing trunks with black waistband, burnt-orange leather boxing gloves, sleek black leather high-top boxing boots.",
+  "look": "Adult street boxer with medium-olive realistic face and side-swept cornrows over a low fade; charcoal sleeveless training hoodie with pale trim, black satin boxing trunks, burnt-orange leather boxing gloves with white-taped cuffs, sleek black leather high-top boxing boots.",
   "bodyColors": {
     "Head": [
       255,
@@ -295,5 +344,12 @@
   },
   "face": 0,
   "hideHands": true,
-  "shoeStyle": "high"
+  "shoeStyle": "high",
+  "signature": {
+    "label": "white tape wrapped over the cuffs of his burnt-orange gloves",
+    "assetIds": [
+      131563942024521,
+      140209841353665
+    ]
+  }
 }
