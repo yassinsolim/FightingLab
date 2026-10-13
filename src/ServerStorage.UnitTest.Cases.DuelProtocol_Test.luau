@@ -231,6 +231,73 @@ return function(t)
 		t.expect.truthy(buffer.len(NetProtocol.encodeEntry(rawB, "m#2").b) < 260, "binary entry stays small")
 	end)
 
+	t.test("round 6 (codec v3): Surge, ultUsed, tumble, the signature stance and the Ultimate cinematic survive both codecs", function()
+		t.expect.truthy(NetProtocol.validFightCommand("Attack", "Ultimate", 5), "1+2 (Ultimate) is a fight input")
+		t.expect.truthy(NetProtocol.validFightCommand("Attack", "Kicks", 6), "3+4 (signature) is a fight input")
+		local runner = MatchRunner.new()
+		runner:configure({ mode = "Match", p1Id = "Kael", p2Id = "Goran", stageId = "SnowSummit", human1 = true, human2 = true })
+		for _ = 1, Config.ReadyFrames + 1 do runner:step() end
+		local m = runner.match
+		local a, b = m.fighters[1], m.fighters[2]
+		a.pos = Vector3.new(0, 0, 0); b.pos = Vector3.new(3, 0, 0); a.facing = Vector3.xAxis; b.facing = -Vector3.xAxis
+		a.health = 20
+		-- P2 holds forward (no guard) so the Ultimate lands.
+		runner:command("Move", 1, 0, 2)
+		local surgeEntry: any = runner:step()
+		local sawSurge = false
+		for _, e in surgeEntry.events do if e.kind == "Surge" and e.attacker == 1 then sawSurge = true end end
+		t.expect.truthy(sawSurge, "Surge event on entering Surge")
+		runner:command("Attack", "Ultimate", 900, 1)
+		local cinematic: any = nil
+		for _ = 1, 60 do
+			local raw: any = runner:step()
+			if raw.fighters[1].state == "Ultimate" and raw.fighters[1].throw and raw.fighters[1].throw.frame >= 5 then cinematic = raw; break end
+		end
+		assert(cinematic, "the Ultimate lands and its cinematic starts")
+		for _, codec in { "binary", "packed" } do
+			local wire = if codec == "binary" then NetProtocol.encodeEntry(cinematic, "m#6") else NetProtocol.packEntry(cinematic, "m#6")
+			local parsed = RenderBuffer.parse(NetProtocol.unpackEntry(wire))
+			assert(parsed, codec .. " parses")
+			local pa, pb = parsed.fighters[1] :: any, parsed.fighters[2] :: any
+			t.expect.equal(pa.state, "Ultimate", codec .. " attacker state")
+			t.expect.equal(pb.state, "Ultimate", codec .. " defender state")
+			t.expect.equal(pa.surge, false, codec .. " Surge ends when the Ultimate starts")
+			t.expect.equal(pa.ultUsed, true, codec .. " ultUsed")
+			t.expect.equal(pb.ultUsed, false, codec .. " defender ultUsed")
+			t.expect.equal(pa.throw.archetype, "ultimate", codec .. " cinematic archetype")
+			t.expect.equal(pa.throw.move, "Ultimate", codec .. " cinematic move")
+			t.expect.equal(pa.throw.role, "Attacker", codec .. " attacker role")
+			t.expect.equal(pb.throw.role, "Defender", codec .. " defender role")
+			t.expect.equal(pa.throw.duration, cinematic.fighters[1].throw.duration, codec .. " duration")
+			t.expect.equal(pa.throw.frame, cinematic.fighters[1].throw.frame, codec .. " cinematic frame")
+			t.expect.equal(pa.throw.impactFrame, cinematic.fighters[1].throw.impactFrame, codec .. " first impact")
+		end
+		local stanceEntry: any = runner:buildEntry({
+			{ kind = "Hit", attacker = 1, target = 2, move = "RibRoller", damage = 6, advantage = 0, frame = m.frame, point = Vector3.new(1, 3, 0), combo = 3, air = true, tumble = true, tier = "Medium", archetype = "hook", height = "Mid", limb = "LeadArm" } :: any,
+			{ kind = "Hit", attacker = 2, target = 1, move = "Jab", damage = 6, advantage = 8, frame = m.frame, point = Vector3.new(1, 3, 0), combo = 1, air = false, punish = true, tier = "Light", archetype = "straight", height = "High", limb = "LeadArm" } :: any,
+		})
+		stanceEntry.fighters[1].state = "Stance"; stanceEntry.fighters[1].stance = "Pocket"; stanceEntry.fighters[1].stanceFrame = 7
+		stanceEntry.fighters[1].surge = true; stanceEntry.fighters[1].ultUsed = false; stanceEntry.fighters[1].throw = nil
+		stanceEntry.fighters[2].state = "Airborne"; stanceEntry.fighters[2].tumble = true; stanceEntry.fighters[2].throw = nil
+		for _, codec in { "binary", "packed" } do
+			local wire = if codec == "binary" then NetProtocol.encodeEntry(stanceEntry, "m#7") else NetProtocol.packEntry(stanceEntry, "m#7")
+			local parsed = RenderBuffer.parse(NetProtocol.unpackEntry(wire))
+			assert(parsed, codec .. " parses")
+			local pa, pb = parsed.fighters[1] :: any, parsed.fighters[2] :: any
+			t.expect.equal(pa.state, "Stance", codec .. " stance state")
+			t.expect.equal(pa.stance, "Pocket", codec .. " stance key")
+			t.expect.equal(pa.stanceFrame, 7, codec .. " stanceFrame")
+			t.expect.equal(pa.surge, true, codec .. " surge flag")
+			t.expect.equal(pb.tumble, true, codec .. " tumble flag")
+			t.expect.equal(pb.stance, nil, codec .. " no stance")
+			t.expect.equal(parsed.events[1].tumble, true, codec .. " tumble hit event")
+			t.expect.equal(parsed.events[1].punish, nil, codec .. " no punish flag")
+			t.expect.equal(parsed.events[2].punish, true, codec .. " punish hit event")
+			t.expect.equal(parsed.events[2].tumble, nil, codec .. " no tumble flag")
+		end
+		t.expect.truthy(buffer.len(NetProtocol.encodeEntry(stanceEntry, "m#7").b) < 320, "binary entry with two hit events stays small")
+	end)
+
 	t.test("round 5 PLAY panel kinds: QuickPlay, CancelQueue and Travel are validated; the server's Teleport notice", function()
 		for _, k in { "QuickPlay", "CancelQueue", "Travel" } do t.expect.truthy(NetProtocol.LobbyKinds[k], k .. " is a lobby kind") end
 		t.expect.truthy(NetProtocol.DuelKinds.Teleport, "Teleport is a server -> client kind")

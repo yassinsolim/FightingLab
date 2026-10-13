@@ -181,6 +181,7 @@ local function packFighter(f: { [string]: any }): { any }
 		f.velocityY or 0, f.airFrames or 0, f.airHits or 0, opt(f.knockdown), f.dashDirection or 0, f.characterId or "",
 		opt(f.guard), f.stepDir or 0, f.stepFrame or 0, f.dashFrame or 0, f.dashTotal or 0, f.stringIndex or 0,
 		f.crouchFrames or 0, opt(f.getupKind), f.rollDir or 0,
+		f.surge == true, f.ultUsed == true, opt(f.stance), f.stanceFrame or 0, f.tumble == true,
 	}
 end
 
@@ -202,6 +203,7 @@ local function unpackFighter(t: unknown): { [string]: any }?
 		guard = unopt(a[25]), stepDir = numberOr(a[26], 0), stepFrame = numberOr(a[27], 0), dashFrame = numberOr(a[28], 0),
 		dashTotal = numberOr(a[29], 0), stringIndex = numberOr(a[30], 0), crouchFrames = numberOr(a[31], 0),
 		getupKind = unopt(a[32]), rollDir = numberOr(a[33], 0),
+		surge = a[34] == true, ultUsed = a[35] == true, stance = unopt(a[36]), stanceFrame = numberOr(a[37], 0), tumble = a[38] == true,
 	}
 end
 
@@ -209,7 +211,7 @@ local function packEvent(e: { [string]: any }): { any }
 	return {
 		e.kind, e.attacker, e.target, opt(e.move), e.damage or 0, e.advantage or 0, e.frame, opt(e.point), e.combo or 0,
 		e.air == true, e.counter == true, e.launch == true, e.knockdown == true, opt(e.tier), opt(e.archetype), opt(e.height), opt(e.limb),
-		e.evaded == true,
+		e.evaded == true, e.tumble == true, e.punish == true,
 	}
 end
 
@@ -222,6 +224,8 @@ local function unpackEvent(t: unknown): { [string]: any }?
 		launch = if a[12] == true then true else nil, knockdown = if a[13] == true then true else nil,
 		tier = unopt(a[14]), archetype = unopt(a[15]), height = unopt(a[16]), limb = unopt(a[17]),
 		evaded = if a[18] == true then true else nil,
+		tumble = if a[19] == true then true else nil,
+		punish = if a[20] == true then true else nil,
 	}
 end
 
@@ -291,7 +295,7 @@ end
 -- as { matchId, b = buffer }): floats as f32, counters as small integers, and strings through a shared table built
 -- the same way on server and client from Roster/CombatConfig (unknown strings are written literally).
 
-local CODEC_VERSION = 2
+local CODEC_VERSION = 3
 local STRINGS: { string } = {}
 local STRING_INDEX: { [string]: number } = {}
 local function addString(s: string?)
@@ -307,6 +311,8 @@ for _, s in {
 	"Light", "Medium", "Heavy", "Launch", "High", "Mid", "Low", "LeadArm", "RearArm", "LeadLeg", "RearLeg", "Body", "Head",
 	"Torso", "Attacker", "Defender", "FaceUp", "FaceDown",
 	"Sidestep", "Stand", "All", "BackRoll", "SideRoll", "Throw2", "LeadPunch", "RearPunch",
+	-- codec v3 (round 6): stances, Surge / Ultimate events and states, the catch.
+	"Stance", "Ultimate", "ultimate", "Surge", "UltStart", "UltHit", "Catch", "Kicks",
 } do addString(s) end
 for _, id in Roster.order do
 	addString(id)
@@ -316,6 +322,13 @@ for _, id in Roster.order do
 		local def: any = character.moves[key]
 		if def and typeof(def.anim) == "table" then addString(def.anim.archetype) end
 		if def then addString(def.limb) end
+	end
+	local stances: any = (character :: any).stances
+	if typeof(stances) == "table" then
+		local keys = {}
+		for key in stances do table.insert(keys, key) end
+		table.sort(keys)
+		for _, key in keys do addString(key) end
 	end
 end
 for _, stage in Roster.stages do addString(stage.id) end
@@ -383,6 +396,7 @@ local function writeFighter(w: Writer, f: { [string]: any })
 	local throw, hit = f.throw, f.lastHit
 	local flags = (if f.crouched == true then 1 else 0) + (if f.armorActive == true then 2 else 0)
 		+ (if typeof(throw) == "table" then 4 else 0) + (if typeof(hit) == "table" then 8 else 0) + (if typeof(hit) == "table" and hit.counter == true then 16 else 0)
+		+ (if f.surge == true then 32 else 0) + (if f.ultUsed == true then 64 else 0) + (if f.tumble == true then 128 else 0)
 	wu8(w, flags)
 	wvec(w, if typeof(f.pos) == "Vector3" then f.pos else Vector3.zero)
 	local facing = if typeof(f.facing) == "Vector3" then f.facing else Vector3.xAxis
@@ -395,6 +409,8 @@ local function writeFighter(w: Writer, f: { [string]: any })
 	-- OV6 additions (codec v2): guard, sidestep, dash frames, string index, crouch frames, getup.
 	wstr(w, f.guard); wi8(w, num(f.stepDir, 0)); wu8(w, num(f.stepFrame, 0)); wu8(w, num(f.dashFrame, 0)); wu8(w, num(f.dashTotal, 0))
 	wu8(w, num(f.stringIndex, 0)); wu16(w, num(f.crouchFrames, 0)); wstr(w, f.getupKind); wi8(w, num(f.rollDir, 0))
+	-- codec v3 (round 6): signature stance (flags carry surge / ultUsed / tumble).
+	wstr(w, f.stance); wu16(w, num(f.stanceFrame, 0))
 	if typeof(throw) == "table" then
 		wstr(w, throw.role); wstr(w, throw.archetype); wu16(w, num(throw.frame, 0)); wu16(w, num(throw.duration, 0)); wu16(w, num(throw.impactFrame, 0))
 		wstr(w, throw.move); wu8(w, num(throw.breakWindow, 0)); wu8(w, if throw.broken == true then math.clamp(num(throw.breakFrame, 0) + 1, 1, 255) else 0)
@@ -421,8 +437,12 @@ local function readFighter(r: Reader): { [string]: any }
 	f.maxHealth = if maxHealth > 0 then maxHealth else nil
 	f.guard = rstr(r); f.stepDir = ri8(r); f.stepFrame = ru8(r); f.dashFrame = ru8(r); f.dashTotal = ru8(r)
 	f.stringIndex = ru8(r); f.crouchFrames = ru16(r); f.getupKind = rstr(r); f.rollDir = ri8(r)
+	f.stance = rstr(r); f.stanceFrame = ru16(r)
 	f.crouched = bit32.band(flags, 1) ~= 0
 	f.armorActive = bit32.band(flags, 2) ~= 0
+	f.surge = bit32.band(flags, 32) ~= 0
+	f.ultUsed = bit32.band(flags, 64) ~= 0
+	f.tumble = bit32.band(flags, 128) ~= 0
 	if bit32.band(flags, 4) ~= 0 then
 		f.throw = { role = rstr(r), archetype = rstr(r), frame = ru16(r), duration = ru16(r), impactFrame = ru16(r), move = rstr(r), breakWindow = ru8(r) }
 		local broken = ru8(r)
@@ -437,6 +457,7 @@ end
 local function writeEvent(w: Writer, e: { [string]: any })
 	local flags = (if e.air == true then 1 else 0) + (if e.counter == true then 2 else 0) + (if e.launch == true then 4 else 0)
 		+ (if e.knockdown == true then 8 else 0) + (if typeof(e.point) == "Vector3" then 16 else 0) + (if e.evaded == true then 32 else 0)
+		+ (if e.tumble == true then 64 else 0) + (if e.punish == true then 128 else 0)
 	wu8(w, flags)
 	wstr(w, e.kind); wu8(w, num(e.attacker, 1)); wu8(w, num(e.target, 2)); wstr(w, e.move); wf32(w, num(e.damage, 0))
 	wi16(w, num(e.advantage, 0)); wu32(w, num(e.frame, 0)); wu8(w, num(e.combo, 0))
@@ -456,6 +477,8 @@ local function readEvent(r: Reader): { [string]: any }
 	e.launch = if bit32.band(flags, 4) ~= 0 then true else nil
 	e.knockdown = if bit32.band(flags, 8) ~= 0 then true else nil
 	e.evaded = if bit32.band(flags, 32) ~= 0 then true else nil
+	e.tumble = if bit32.band(flags, 64) ~= 0 then true else nil
+	e.punish = if bit32.band(flags, 128) ~= 0 then true else nil
 	return e
 end
 

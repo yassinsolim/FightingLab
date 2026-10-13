@@ -1,7 +1,8 @@
 # combat.md — OV6 combat handoff (sim, controls, movesets, CPU, balance)
 
-Exports: `OV6\handoff\combat-src\` (UTF-8, LF, no BOM). Details: `combat-states.md` (states, snapshot fields, every
-move with frame data + animation intent), `combat-balance.md` (exploit search, frame data, CPU numbers).
+Exports: `OV6\handoff\combat-src\` (UTF-8, LF, no BOM). Details: `movesets.md` (round 6: every move, stance,
+Ultimate timeline and combo route, generated from the Roster), `combat-states.md` (states, snapshot fields, rules),
+`combat-balance.md` (exploit search, frame data, CPU numbers), `CONTRACTS-v6.md` (Surge and the Ultimate).
 
 ## Files
 
@@ -15,6 +16,69 @@ move with frame data + animation intent), `combat-balance.md` (exploit search, f
 | tests `CombatSim_Test`, `CombatRoster_Test`, `Difficulty_Test`, `MatchRunner_Test`, `DuelProtocol_Test`, `RenderBuffer_Test` (updated), `Controls_Test`, `CombatAI_Test`, `Balance_Test` (NEW; round 2 updated `CombatAI_Test` and `Balance_Test`; the step-in round updated `CombatRoster_Test` and `CombatAI_Test`; round 4 updated `CombatAI_Test` and `Difficulty_Test`) | |
 
 `SnapshotTiming` is unchanged (not exported).
+
+## Round 6 (`r6-combat`): six distinct movesets, signatures, combos, Surge and the Ultimate — latest
+
+The user asked for "each character have different movesets and combos, also at low hp there should be an ult".
+Everything below is original (names, moves, the Surge / Ultimate system); genre conventions only.
+
+**Movesets (Roster, `movesets.md`).** 16-17 template moves per fighter became 23-26 distinct moves: three 3-hit strings
+with different enders, two launchers (a standard one and a unique one: from the stance, on counter hit, a low or a
+string ender), one **tumble** juggle extender, a good low and a power low, an i10-12 punisher, the **3+4 signature**
+and the **1+2 Ultimate**. Signatures: Kael **Pocket** (bob-and-weave crouch, crushes highs, +1 body shovel, uppercut
+launcher), Sierra **Southpaw** (switch stance that guards highs/mids, long head kick, tumble body kick, low kick),
+Goran **Bear Trap** (catches a high or mid strike into an unbreakable Belly Suplex; plus armored power moves and the
+f+1+3 command grab), Lumi **Aerial** (committed no-hands cartwheel travel, airborne over lows, three kicks out of
+it), Rhys **Still Water** (parries every high or mid while held) plus Deflect / Low Deflect parries, Nia **Coil**
+(three-kick whirl with delayable 2nd/3rd hits, a coil sweep). Ultimates: Kael *Final Bell*, Sierra *Eight Limbs*,
+Goran *Landslide*, Lumi *Skyline*, Rhys *Last Kata*, Nia *Monsoon* (190-260 frame cinematics, 4-6 impacts, beats in
+movesets.md). Template sameness (same archetype, height, hit and counter-hit result and property on a shared input):
+**33 of 113 shared inputs (29.2 %) → 6 of 118 (5.1 %)**, the 6 being the plain i10 jab on 1 (`CombatCombo_Test`).
+
+**Sim (`CombatSim`, `CombatConfig`).** State `Stance` (3+4 entry or a stance cancel from a `stanceCancel` move's
+recovery; follow-ups by the stance tag, buffered until `cancelFrom`; exits by back, 3+4 again, timeout; travel /
+drift; guard, crush and parry windows; open stances take counter hits). Tumble (once per juggle: lift, +1 air hit,
+face-down ending). Bear Trap catch (event `Catch`, unbreakable throw). Parries free the parrying fighter at once.
+Ground combo scaling from the 4th consecutive hit. Juggle physics: launch 16 → 19, re-lift 7.5 → 9, tumble lift 12,
+air time 86 → 110 frames (launchers carry 4-6 hits; juggles stay under 45 % of the smallest bar, `Balance_Test`).
+Chords: 1+2 within 1 frame (the Ultimate, only while it is ready) and 3+4 within 2 frames; a typed 1,2 or 3,4 stays a
+string. **Surge and the Ultimate exactly per Contract A** (CONTRACTS-v6.md, Surge and the Ultimate): Surge at ≤ 25 %
+(× 1.1 damage, event `Surge`), the Ultimate once per round in Surge, armored startup (throws beat it; parries and the
+catch do not), on hit both fighters in state `Ultimate` for the cinematic with the defender `endDistance` in front,
+damage per impact (`UltHit`), KO declared at the end, the round clock waits, × 0.7 when it ends a combo; Free
+Training keeps the player in Surge with the Ultimate refilled. `Sim.comboRun / comboTick` play a combo route.
+
+**Combos as data.** `Roster.get(id).combos` (4-5 per fighter: launch bread-and-butter, signature / counter-hit / low
+route, max damage, Ultimate ender) with frame-timed inputs; `CombatCombo_Test` drives every combo against all six
+fighters (true combo, damage ±1). Damage 31-40 on a 100 HP bar (≤ 44 % of Lumi's 90), Ultimate enders 35-44
+(table in combat-balance.md R6).
+
+**Netcode.** Codec v3 (`surge` bit 32, `ultUsed` bit 64, `tumble` bit 128, `stance`, `stanceFrame`, the cinematic
+`throw` table, event `tumble`, and `punish` on hits that land in the opponent's recovery or parry stagger); MatchRunner / RenderBuffer fields; debug attributes `LearnerSurge`, `LearnerUltUsed`,
+`LearnerStance`.
+
+**Controls / input.** `fight.keyboard.ultimate = "L"`, `fight.gamepad.ultimate = "ButtonR2"`, notation
+`ultimate = "1+2"`, `stance = "3+4"`, action texts "Ultimate (1+2)" / "Signature (3+4)", legend rows; L / RT send the
+Ultimate button, U+I together reach the sim as the 1+2 chord, J+K is the 3+4 chord; an ULT touch button.
+
+**CPU (`CombatAI`).** New skills per level (Easy / Normal / Hard): `signature` 0.25 / 0.6 / 0.85 (stance entries,
+stance follow-ups chosen by reads, stance cancels, Bear Trap / Still Water as reads), `routeSkill` 0 / 0.45 / 0.95
+(listed combo routes after launches), `ultimateUse` 0.03 / 0.6 / 0.9 (juggle ender, punish, Hard's armored answer to
+a seen attack that lasts past its impact, Normal's comeback gamble under pressure; Hard throws an opponent's
+Ultimate). Stagger punish after parries, stance reads (no highs into Pocket, no highs/mids into Still Water). One
+retune with justification: a pressured CPU now also takes a turn after 2 × patience free frames in range (the old
+rule needed a quiet opponent; with the new movesets Easy guarded 6.5 s under steady pokes and failed the passivity
+test). Numbers in combat-balance.md R6.
+
+**Move list (`Client.MoveList`).** `fillList` groups the moves (signature, strings, launchers, lows, other strikes,
+throws, Ultimate) with property chips (LAUNCH, CH LAUNCH, TUMBLE, STANCE, CATCH, PARRY, CRUSH, ULTIMATE) and frame
+numbers, then a COMBOS section (name, kind, notation, damage, difficulty) reached by scrolling or the "COMBOS" jump
+button; `fillCombos(scroll, def)` renders the combo page alone (`opts.combos = false` leaves it out of `fillList`),
+`groups(def)`, `describe(move, def)`; the fighter-select highlights are the signature, a launcher and the Ultimate.
+
+**Tests.** New: `CombatCombo_Test`, `CombatUltimate_Test`, `CombatSignature_Test`, `CombatAIRound6_Test`,
+`CombatMoveList_Test`; updated: `CombatRoster_Test`, `CombatSim_Test`, `Controls_Test`, `DuelProtocol_Test`,
+`RenderBuffer_Test`, `MatchRunner_Test`.
 
 ## Integrator requests done
 
@@ -149,11 +213,13 @@ pairing). **No move, frame data, Roster or protocol change.**
 
 ## Controls (contract §2) — `RF.Controls`
 
-`Controls.fight.keyboard/gamepad` (forward, back, sidestepIn, sidestepOut, crouch, lp, rp, lk, rk, throw, guide),
+`Controls.fight.keyboard/gamepad` (forward, back, sidestepIn, sidestepOut, crouch, lp, rp, lk, rk, throw, guide, and
+round 6 `ultimate` = L / ButtonR2),
 `Controls.practice.keyboard/gamepad` (reset, switchMode, easy, normal, hard, dummy, pause, leave),
 `Controls.lobby` (interact, menu, jump), `Controls.notation` (lp = "1" …), `Controls.buttons` (sim button names),
 `Controls.label(group, action, device?)` (also "dash" = "D D", "backdash", "throw1" = "U+J", "throw2" = "I+K",
-"breakThrow" = "U / I", "guard"), `Controls.legend(group, device?)` rows `{action, keys, text}`,
+"breakThrow" = "U / I", "guard", round 6 "stance" = "J+K"), `Controls.legend(group, device?)` rows `{action, keys, text}`
+(round 6 adds the fight rows `stance` and `ultimate`),
 `Controls.formatMoveInput(rosterInput, device?)` ("df+RP" → "S+D+I" / "↘+Y"), `Controls.notationOf(input)`,
 `Controls.keyCode(s)`, `Controls.actionText`, `Controls.tapMs` (150).
 

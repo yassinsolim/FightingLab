@@ -14,6 +14,8 @@ export type ThrowInfo = {
 	breakButton: string, impactDone: boolean, breakTried: boolean, breakPress: string?,
 	-- Set when the defender broke the grab: both stay locked for Config.ThrowBreakFrames after `breakFrame`.
 	broken: boolean?, breakFrame: number?,
+	-- The Ultimate's cinematic reuses the throw lock (archetype "ultimate"): next impact index and damage scale.
+	ultimate: boolean?, nextImpact: number?, scale: number?,
 }
 export type LastHit = { kind: "Hit"|"Counter"|"Block"|"Crush"|"Armor"|"Parry"|"Throw", height: "High"|"Mid"|"Low"|"Throw", tier: "Light"|"Medium"|"Heavy"|"Launch", counter: boolean, frame: number, move: string, limb: string, side: number }
 export type Press = { button: string, frame: number, move: string? }
@@ -32,8 +34,11 @@ export type Fighter = {
 	aiNextAttack: number, aiPressureUntil: number, aiLastLauncherFrame: number, chainMove: string?, armorUsed: boolean, throwInfo: ThrowInfo?, lastDefendedMove: string?,
 	aiIntent: string?, aiIntentUntil: number, aiIntentX: number, aiIntentZ: number, aiIntentBlock: boolean, aiIntentCrouch: boolean,
 	ai: any,
+	-- Round 6: signature stance (state "Stance"), Surge / Ultimate, tumble.
+	stance: string?, stanceFrame: number, surge: boolean, surgeFree: boolean, ultUsed: boolean, ultStartPending: boolean,
+	tumbled: boolean, tumbling: boolean,
 }
-export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean? }
+export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean?, tumble: boolean?, punish: boolean? }
 export type TrainerDifficulty = "Easy" | "Normal" | "Hard"
 export type AISnapshot = { state: string, move: string?, moveFrame: number, pos: Vector3, health: number, crouched: boolean, hasHit: boolean, lastDefendedMove: string?, stepFrame: number, guard: string?, velocityY: number }
 export type Match = {
@@ -47,7 +52,7 @@ local Sim = {}
 -- active frame (it then starts right after those active frames, cancelling the recovery).
 Sim.ChainLate = 14
 -- States in which a fighter cannot start an action on its own.
-local LOCKED = { Startup=true, Active=true, Recovery=true, Hitstun=true, Blockstun=true, Airborne=true, Landing=true, Getup=true, Dash=true, Backdash=true, Sidestep=true, KO=true, Throw=true, Stagger=true }
+local LOCKED = { Startup=true, Active=true, Recovery=true, Hitstun=true, Blockstun=true, Airborne=true, Landing=true, Getup=true, Dash=true, Backdash=true, Sidestep=true, KO=true, Throw=true, Stagger=true, Stance=true, Ultimate=true }
 local FREE = { Idle=true, Walk=true, Backwalk=true, Crouch=true }
 Sim.LockedStates = LOCKED
 Sim.FreeStates = FREE
@@ -108,6 +113,7 @@ function Sim.newFighter(name: string, pos: Vector3, facing: Vector3, characterId
 		lastPress=nil, evaded=false, wasSidestepping=false,
 		aiNextAttack=0, aiPressureUntil=0, aiLastLauncherFrame=-1000, chainMove=nil, armorUsed=false, throwInfo=nil, lastDefendedMove=nil,
 		aiIntent=nil, aiIntentUntil=0, aiIntentX=0, aiIntentZ=0, aiIntentBlock=false, aiIntentCrouch=false, ai=nil,
+		stance=nil, stanceFrame=0, surge=false, surgeFree=false, ultUsed=false, ultStartPending=false, tumbled=false, tumbling=false,
 	}
 end
 
@@ -186,6 +192,36 @@ function Sim.setDifficulty(m: Match, level: string)
 end
 function Sim.isLocked(f: Fighter): boolean return f.health<=0 or LOCKED[f.state]==true end
 function Sim.isFree(f: Fighter): boolean return f.health>0 and FREE[f.state]==true and f.move==nil end
+
+-- Round 6: stances, Surge and the Ultimate ----------------------------------------------------------------------------
+
+local function stanceOf(f: Fighter): Roster.StanceDef?
+	local key = f.stance
+	if key == nil then return nil end
+	return f.character.stances[key]
+end
+Sim.stanceOf = stanceOf
+
+-- Free Training (practice with a standing or guarding dummy): the player is always in Surge and the Ultimate refills.
+function Sim.isFreeTraining(m: Match): boolean
+	return m.mode == "Training" and m.dummy ~= "Fight"
+end
+
+-- The Ultimate can start: in Surge, not used this round, alive.
+function Sim.ultimateReady(f: Fighter): boolean
+	return f.surge and not f.ultUsed and f.health > 0 and f.character.moves.Ultimate ~= nil
+end
+
+local function cinematicInfo(f: Fighter): ThrowInfo?
+	local info = f.throwInfo
+	if info and info.ultimate then return info end
+	return nil
+end
+-- True while an Ultimate cinematic plays (both fighters locked, the round clock paused).
+function Sim.cinematicActive(m: Match): boolean
+	for _, f in m.fighters do if cinematicInfo(f) then return true end end
+	return false
+end
 function Sim.totalFramesFor(f: Fighter, name: string): number return total(moveDef(f, name)) end
 function Sim.totalFrames(name: string): number
 	local character = Roster.get(Config.DefaultP1)
@@ -212,7 +248,7 @@ end
 Sim.lastToken = lastToken
 
 -- Direction contexts tried in order when a button is pressed (most specific first, "n" = neutral).
-local function directionContexts(f: Fighter): { string }
+local function baseContexts(f: Fighter): { string }
 	local x = f.input.moveX
 	if f.state == "Dash" or (f.dashRequest > 0 and f.move == nil) then return { "dash", "f", "n" } end
 	if f.state == "Sidestep" or (f.stepRequest ~= 0 and f.move == nil) then return { "ss", "n" } end
@@ -225,6 +261,21 @@ local function directionContexts(f: Fighter): { string }
 	if x > 0 then return { "f", "n" } end
 	if x < 0 then return { "b", "n" } end
 	return { "n" }
+end
+-- In a stance the stance follow-ups come first ("PKT+d+LP", "PKT+LP"), then the normal moves (which leave it).
+local function directionContexts(f: Fighter): { string }
+	local base = baseContexts(f)
+	if f.state == "Stance" and f.stance then
+		local st = f.character.stances[f.stance]
+		if st then
+			local out = {}
+			for _, d in base do if d ~= "n" then table.insert(out, st.tag .. "+" .. d) end end
+			table.insert(out, st.tag)
+			for _, d in base do table.insert(out, d) end
+			return out
+		end
+	end
+	return base
 end
 Sim.directionContexts = directionContexts
 
@@ -245,16 +296,22 @@ local function chainWindowOpen(f: Fighter, source: Roster.MoveDef): boolean
 	return f.moveFrame >= 1 and f.moveFrame <= source.startup + source.active + Sim.ChainLate
 end
 Sim.chainWindowOpen = chainWindowOpen
+-- Window for one follow-up: delayable follow-ups (`delay`) can be input later, up to the end of the source's recovery.
+function Sim.chainWindowOpenFor(f: Fighter, source: Roster.MoveDef, follow: Roster.MoveDef): boolean
+	local late = source.startup + source.active + Sim.ChainLate + (follow.delay or 0)
+	return f.moveFrame >= 1 and f.moveFrame <= math.min(late, total(source) - 1)
+end
 
 -- Resolves a button press (Config.Buttons) to a move key for the fighter's current context.
 function Sim.selectMove(f: Fighter, button: string): string
 	local notation = Config.ButtonNotation[button]
 	assert(notation ~= nil, "unknown button " .. tostring(button))
 	local current = f.move
-	if current and chainWindowOpen(f, moveDef(f, current)) then
+	if current then
+		local source = moveDef(f, current)
 		for _, key in f.character.moveOrder do
 			local def = f.character.moves[key]
-			if def.chainFrom == current and lastToken(def.input) == notation then return key end
+			if def.chainFrom == current and lastToken(def.input) == notation and Sim.chainWindowOpenFor(f, source, def) then return key end
 		end
 	end
 	local index = inputIndex(f.character)
@@ -272,7 +329,7 @@ function Sim.queueAttack(f: Fighter, name: string)
 	if f.move ~= nil then
 		local source = moveDef(f, f.move)
 		local queuedDef = (f.character.moves[name] or Config.Moves[name]) :: any
-		if queuedDef.chainFrom == f.move and chainWindowOpen(f, source) then
+		if queuedDef.chainFrom == f.move and Sim.chainWindowOpenFor(f, source, queuedDef) then
 			f.chainMove = name
 			return
 		end
@@ -280,22 +337,28 @@ function Sim.queueAttack(f: Fighter, name: string)
 	f.input.attack=name; f.input.attackAge=0
 end
 
--- Button press from a player or the CPU. Handles throw breaks, 1+3 / 2+4 chords (upgrading a move started by the
--- first button of the chord in place), strings and buffering. Returns the move key it queued (nil if none).
+-- Button press from a player or the CPU. Handles throw breaks, chords (1+3 / 2+4 throws, 1+2 the Ultimate while it
+-- is available, 3+4 the signature; a move started by the first button of the chord is upgraded in place), strings
+-- and buffering. Returns the move key it queued (nil if none).
 function Sim.press(m: Match, index: number, button: string): string?
 	local f = m.fighters[index]
 	if Config.ButtonNotation[button] == nil then return nil end
 	if m.phase ~= "Fight" or f.health <= 0 then return nil end
 	local info = f.throwInfo
 	if info then
-		if info.role == "Defender" and not info.breakTried then
+		if info.role == "Defender" and not info.breakTried and not info.ultimate then
 			info.breakTried = true
 			info.breakPress = button
 		end
 		return nil
 	end
+	if button == "Ultimate" and not Sim.ultimateReady(f) then return nil end
 	local last = f.lastPress
 	local chord = if last and m.frame - last.frame <= Config.ChordFrames then Config.Chords[last.button .. "+" .. button] else nil
+	-- 1+2 and 3+4 need both presses closer together (Config.ChordWindow) so quickly typed 1,2 / 3,4 strings stay
+	-- strings; 1+2 is only the Ultimate while it can start, otherwise the two presses stay a 1,2 string.
+	if chord and last and Config.ChordWindow[chord] and m.frame - last.frame > Config.ChordWindow[chord] then chord = nil end
+	if chord == "Ultimate" and not Sim.ultimateReady(f) then chord = nil end
 	if chord and last then
 		f.lastPress = nil
 		if last.move ~= nil and f.input.attack == last.move then f.input.attack = nil end
@@ -308,8 +371,7 @@ function Sim.press(m: Match, index: number, button: string): string?
 			f.move = nil
 			local key = Sim.selectMove(f, chord)
 			f.move = prev
-			Sim.startMoveNow(f, key)
-			f.moveFrame = elapsed
+			if Sim.startMoveNow(f, key) and f.move == key then f.moveFrame = elapsed end
 			return key
 		end
 		local key = Sim.selectMove(f, chord)
@@ -422,19 +484,45 @@ Sim.guardFor = guardFor
 local function clearMovement(f: Fighter)
 	f.dash = 0; f.dashFrame = 0; f.dashTotal = 0; f.dashRequest = 0
 	f.stepFrame = 0; f.stepDir = 0; f.stepRequest = 0
+	f.stance = nil; f.stanceFrame = 0
 end
 
 local function toIdle(f: Fighter)
 	f.state = "Idle"; f.dash = 0; f.dashFrame = 0; f.dashTotal = 0; f.stepFrame = 0; f.stepDir = 0
+	f.stance = nil; f.stanceFrame = 0
 end
 
-local function startMove(f: Fighter, key: string)
+-- Enters a signature stance (state "Stance", stanceFrame 1). Called by a 3+4 entry or a stance cancel.
+local function enterStance(f: Fighter, key: string)
+	f.move = nil; f.moveName = nil; f.moveFrame = 0; f.hasHit = false; f.chainMove = nil; f.stringIndex = 0
+	f.dash = 0; f.dashFrame = 0; f.dashTotal = 0; f.stepFrame = 0; f.stepDir = 0
+	f.state = "Stance"; f.stance = key; f.stanceFrame = 1
+	f.crouched = false; f.crouchFrames = 0; f.evaded = false; f.armorUsed = false
+	local st = f.character.stances[key]
+	f.guard = if st then st.guard else nil
+end
+Sim.enterStance = enterStance
+
+-- Starts a move by key (the stance entries enter their stance; the Ultimate only starts while it is ready).
+-- Returns false when nothing started.
+local function startMove(f: Fighter, key: string): boolean
 	local def = moveDef(f, key)
+	if def.toStance then
+		enterStance(f, def.toStance)
+		return true
+	end
+	if def.cinematic then
+		if not Sim.ultimateReady(f) then return false end
+		-- Starting the Ultimate ends Surge and uses it for the round (event UltStart, emitted by Sim.step).
+		f.surge = false; f.ultUsed = true; f.ultStartPending = true
+	end
 	local prev = f.move
 	f.stringIndex = if def.chainFrom ~= nil and prev == def.chainFrom then f.stringIndex + 1 else 1
 	f.move=key; f.moveName=def.name; f.moveFrame=1; f.hasHit=false; f.state="Startup"; f.crouched=def.crouching
 	f.chainMove=nil; f.armorUsed=false; f.guard=nil; f.evaded=false; f.crouchFrames=0
 	f.dash=0; f.dashFrame=0; f.dashTotal=0; f.stepFrame=0; f.stepDir=0
+	f.stance=nil; f.stanceFrame=0
+	return true
 end
 Sim.startMoveNow = startMove
 
@@ -490,10 +578,36 @@ end
 
 local function becomeFree(f: Fighter, o: Fighter)
 	f.state="Idle"; f.chain=0; f.stagger=0; f.knockdown=nil; f.airFrames=0; f.airHits=0; f.extensions=0; f.airLocked=false
-	f.getupKind=nil; f.rollDir=0
+	f.getupKind=nil; f.rollDir=0; f.stance=nil; f.stanceFrame=0; f.tumbled=false; f.tumbling=false
 	face(f, o)
 	f.crouched = f.input.crouch
 	f.guard = guardFor(f)
+end
+
+-- Leaves the stance into a guarding Idle (back held, 3+4 again, or the stance timed out).
+local function leaveStance(f: Fighter, o: Fighter)
+	f.state = "Idle"; f.stance = nil; f.stanceFrame = 0
+	face(f, o)
+	f.crouched = f.input.crouch
+	f.guard = guardFor(f)
+end
+
+-- One frame in a stance: forward travel (eased over travelFrames) and drift, facing the opponent.
+local function stanceTick(f: Fighter, o: Fighter, st: Roster.StanceDef)
+	f.stanceFrame += 1
+	face(f, o)
+	local moved = false
+	if st.travel > 0 then
+		local T = math.max(1, st.travelFrames)
+		local t1 = math.clamp((f.stanceFrame - 1) / T, 0, 1)
+		local t0 = math.clamp((f.stanceFrame - 2) / T, 0, 1)
+		local step = st.travel * (easeOut(t1) - easeOut(t0))
+		if step > 0 then f.pos += f.facing * step; moved = true end
+	end
+	if st.drift > 0 then f.pos += f.facing * st.drift; moved = true end
+	if moved then keepApart(f, o); f.walkPhase = (f.walkPhase + 9 / Config.FPS) % (math.pi * 2) end
+	f.guard = st.guard
+	f.crouched = false
 end
 
 local function koFall(f: Fighter)
@@ -515,6 +629,8 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 	if f.stepRequest ~= 0 and frame - f.stepRequestFrame > Config.StepBuffer then f.stepRequest = 0 end
 	if f.dashRequest ~= 0 and frame - f.dashRequestFrame > 4 then f.dashRequest = 0 end
 	f.dashCooldown=math.max(0,f.dashCooldown-1)
+	-- The Ultimate's cinematic locks both fighters (health may already be 0: the KO is declared when it ends).
+	if f.throwInfo and f.throwInfo.ultimate then f.state="Ultimate"; f.guard=nil; return end
 	if f.health<=0 then
 		f.health=0; f.state="KO"; f.move=nil; f.moveFrame=0; input.attack=nil; f.throwInfo=nil; f.guard=nil; f.chainMove=nil
 		clearMovement(f)
@@ -530,6 +646,7 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 		f.pos+=Vector3.new(0,f.velocityY/Config.FPS,0)
 		if f.pos.Y<=0 then
 			f.pos=flat(f.pos); f.velocityY=0; f.state="Landing"; f.stun=Config.LandingFrames; f.chain=0; f.knockdown=f.knockdown or "FaceUp"; f.getupKind=nil; f.airLocked=false
+			f.tumbled=false; f.tumbling=false
 		elseif f.airFrames>=Config.MaxAirFrames and not f.airLocked then
 			-- Air time is up: no more juggle hits, the body drops to the floor (never snapped down).
 			f.airLocked=true; f.knockdown=f.knockdown or "FaceUp"; f.velocityY=math.min(f.velocityY, -6)
@@ -608,6 +725,28 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 			return
 		end
 	end
+	if f.state == "Stance" then
+		local st = stanceOf(f)
+		if not st then
+			leaveStance(f, o)
+		else
+			if input.attack and f.stanceFrame >= st.cancelFrom then
+				local queued = input.attack :: string
+				input.attack = nil
+				-- Presses during the entry are kept until the stance can act on them.
+				if input.attackAge <= math.max(Config.AttackBuffer, st.cancelFrom + 2) then
+					local qdef = moveDef(f, queued)
+					if qdef.toStance == f.stance then leaveStance(f, o); return end
+					face(f, o)
+					if startMove(f, queued) then return end
+				end
+			end
+			if st.backExit and f.stanceFrame >= st.backExit and input.moveX < 0 then leaveStance(f, o); return end
+			if f.stanceFrame >= st.maxFrames then leaveStance(f, o); return end
+			stanceTick(f, o, st)
+			return
+		end
+	end
 	local moveName=f.move
 	if moveName then
 		local v=moveDef(f, moveName); f.moveFrame+=1
@@ -616,6 +755,16 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 			if f.state=="Active" and not f.hasHit then whiffEvent(events, index, f, moveName, v, frame) end
 			startMove(f, f.chainMove :: string)
 			return
+		end
+		-- Stance cancel: the stance entry (3+4) pressed during the recovery of a `stanceCancel` move.
+		if v.stanceCancel and input.attack and f.moveFrame > activeEnd and input.attackAge <= Config.AttackBuffer then
+			local qdef = moveDef(f, input.attack :: string)
+			if qdef.toStance == v.stanceCancel then
+				input.attack = nil
+				if f.state=="Active" and not f.hasHit then whiffEvent(events, index, f, moveName, v, frame) end
+				enterStance(f, v.stanceCancel)
+				return
+			end
 		end
 		if f.moveFrame <= v.startup or (v.homing and f.moveFrame <= activeEnd) then turnToward(f, o, v.track) end
 		if v.advance > 0 and f.moveFrame <= v.startup + 1 then
@@ -701,6 +850,14 @@ local function rememberHit(target: Fighter, kind: string, def: Roster.MoveDef, m
 end
 
 local function crushState(f: Fighter): string?
+	if f.state == "Stance" then
+		local st = stanceOf(f)
+		if st then
+			if inWindow(st.props.highCrush, f.stanceFrame) then return "High" end
+			if inWindow(st.props.lowCrush, f.stanceFrame) then return "Low" end
+		end
+		return nil
+	end
 	if not f.move then return nil end
 	local def = moveDef(f, f.move)
 	if inWindow(def.props.highCrush, f.moveFrame) then return "High" end
@@ -708,15 +865,32 @@ local function crushState(f: Fighter): string?
 	return nil
 end
 function Sim.currentCrush(f: Fighter): string? return crushState(f) end
+-- Armor: absorbs one strike (armorUsed), or every strike for `armorMulti` moves (the Ultimate).
 function Sim.armorActive(f: Fighter): boolean
-	return f.move ~= nil and inWindow(moveDef(f, f.move :: string).props.armor, f.moveFrame) and not f.armorUsed
+	if f.move == nil then return false end
+	local def = moveDef(f, f.move :: string)
+	return inWindow(def.props.armor, f.moveFrame) and (def.props.armorMulti == true or not f.armorUsed)
+end
+
+-- Parry window of the defender right now: its move's parry (moveFrame) or its stance's parry (stanceFrame).
+local function activeParry(t: Fighter): Roster.Parry?
+	if t.state == "Stance" then
+		local st = stanceOf(t)
+		local p = st and st.props.parry
+		if p and inWindow(p.window, t.stanceFrame) then return p end
+		return nil
+	end
+	if not t.move then return nil end
+	local p = moveDef(t, t.move).props.parry
+	if p and inWindow(p.window, t.moveFrame) then return p end
+	return nil
 end
 
 local function canGuard(t: Fighter, def: Roster.MoveDef): boolean
 	if def.height == "Throw" then return false end
 	local g = t.guard
 	if g == nil or t.move ~= nil then return false end
-	if not (FREE[t.state] or t.state == "Blockstun") then return false end
+	if not (FREE[t.state] or t.state == "Blockstun" or t.state == "Stance") then return false end
 	if g == "All" then return true end
 	if def.smid then return g == "Stand" or g == "Crouch" end
 	if g == "Crouch" then return def.height == "Low" end
@@ -728,11 +902,11 @@ local function throwEvent(kind: string, attackerIndex: number, targetIndex: numb
 	return { kind=kind, attacker=attackerIndex, target=targetIndex, move=move, damage=damage or 0, advantage=0, frame=frame, point=point, combo=0, air=false, tier=def.tier, archetype=def.anim.archetype, knockdown=if kind=="ThrowHit" then true else nil, height=def.height, limb=def.limb }
 end
 
-local function startThrow(m: Match, i: number, moveName: string, def: Roster.MoveDef, events: { Event })
+local function startThrow(m: Match, i: number, moveName: string, def: Roster.MoveDef, events: { Event }, unbreakable: boolean?)
 	local a=m.fighters[i]; local t=m.fighters[3-i]
 	a.hasHit=true
 	local function info(role: string): ThrowInfo
-		return { role=role, move=moveName, archetype=def.anim.archetype, frame=0, duration=def.duration or 46, impactFrame=def.impactFrame or 30, breakWindow=def.breakWindow or 20, breakButton=def.breakButton or "LeadPunch", impactDone=false, breakTried=false, breakPress=nil }
+		return { role=role, move=moveName, archetype=def.anim.archetype, frame=0, duration=def.duration or 46, impactFrame=def.impactFrame or 30, breakWindow=if unbreakable then 0 else (def.breakWindow or 20), breakButton=def.breakButton or "LeadPunch", impactDone=false, breakTried=false, breakPress=nil }
 	end
 	a.throwInfo=info("Attacker")
 	t.throwInfo=info("Defender")
@@ -767,7 +941,7 @@ Sim.throwBreakMatches = throwBreakMatches
 local function processThrows(m: Match, events: { Event })
 	for i, f in m.fighters do
 		local info = f.throwInfo
-		if info and info.role == "Attacker" then
+		if info and info.role == "Attacker" and not info.ultimate then
 			local targetIndex = 3 - i
 			local target = m.fighters[targetIndex]
 			local def = moveDef(f, info.move)
@@ -801,15 +975,113 @@ end
 
 local function applyKnockdown(t: Fighter, faceDown: boolean?)
 	t.state="Landing"; t.stun=Config.LandingFrames; t.velocityY=0; t.pos=flat(t.pos); t.knockdown=if faceDown then "FaceDown" else "FaceUp"; t.getupKind=nil
+	t.tumbling=false; t.tumbled=false
+end
+
+-- The Ultimate's cinematic ------------------------------------------------------------------------------------------
+
+local function ultimateEvent(kind: string, attackerIndex: number, targetIndex: number, def: Roster.MoveDef, frame: number, point: Vector3, damage: number, combo: number, knockdown: boolean): Event
+	return { kind=kind, attacker=attackerIndex, target=targetIndex, move="Ultimate", damage=damage, advantage=0, frame=frame, point=point, combo=combo, air=false, tier=def.tier, archetype="ultimate", knockdown=if knockdown then true else nil, height=def.height, limb=def.limb }
+end
+
+-- On hit both fighters lock into state "Ultimate" for cinematic.duration frames, the defender `endDistance` studs in
+-- front of the attacker on the floor (the pair slides inward together when that spot is outside the arena).
+local function startUltimate(m: Match, i: number, scale: number)
+	local a = m.fighters[i]; local t = m.fighters[3 - i]
+	local def = moveDef(a, "Ultimate")
+	local cin = def.cinematic :: Roster.Cinematic
+	a.hasHit = true
+	local dir = flat(a.facing)
+	dir = if dir.Magnitude > 1e-4 then dir.Unit else Vector3.xAxis
+	local ap = flat(a.pos)
+	local tp = ap + dir * cin.endDistance
+	for _ = 1, 2 do
+		for _, p in { ap, tp } do
+			local over = p.Magnitude - Config.ArenaRadius
+			if over > 0 then
+				local shift = p.Unit * over
+				ap -= shift; tp -= shift
+			end
+		end
+	end
+	a.pos = ap; t.pos = tp; a.facing = dir; t.facing = -dir
+	t.move = nil; t.moveName = nil; t.moveFrame = 0; t.input.attack = nil; t.chainMove = nil; t.hasHit = false; t.stringIndex = 0
+	clearMovement(t)
+	t.velocityY = 0; t.airFrames = 0; t.airHits = 0; t.extensions = 0; t.airLocked = false; t.tumbling = false; t.tumbled = false
+	t.stun = 0; t.stagger = 0; t.crouched = false; t.knockdown = nil; t.guard = nil; t.getupKind = nil
+	a.stun = 0; a.guard = nil; a.chainMove = nil
+	local first = cin.impacts[1].frame
+	local function info(role: string): ThrowInfo
+		return { role = role, move = "Ultimate", archetype = "ultimate", frame = 0, duration = cin.duration, impactFrame = first, breakWindow = 0, breakButton = "", impactDone = false, breakTried = false, breakPress = nil, ultimate = true, nextImpact = 1, scale = scale }
+	end
+	a.throwInfo = info("Attacker"); t.throwInfo = info("Defender")
+	a.state = "Ultimate"; t.state = "Ultimate"
+	t.lastDefendedMove = "Ultimate"
+	rememberHit(t, "Hit", def, "Ultimate", m.frame, false)
+end
+
+-- End of the cinematic: the defender lies down (endKind) or the KO is declared now; the attacker is free.
+local function endUltimate(m: Match, i: number, events: { Event })
+	local a = m.fighters[i]; local t = m.fighters[3 - i]
+	local def = moveDef(a, "Ultimate")
+	local cin = def.cinematic :: Roster.Cinematic
+	a.throwInfo = nil; t.throwInfo = nil
+	a.move = nil; a.moveName = nil; a.moveFrame = 0; a.hasHit = false; a.chainMove = nil; a.stringIndex = 0
+	a.state = "Idle"; a.stun = 0; a.input.attack = nil
+	a.crouched = a.input.crouch; a.guard = guardFor(a)
+	t.move = nil; t.moveFrame = 0; t.input.attack = nil; t.chain = 0
+	t.knockdown = cin.endKind
+	t.pos = flat(t.pos); t.velocityY = 0
+	if t.health <= 0 then
+		t.health = 0; t.state = "KO"; t.stun = 0; m.koFrame = m.frame
+		table.insert(events, ultimateEvent("KO", i, 3 - i, def, m.frame, t.pos + Vector3.new(0, 1.2, 0), 0, #cin.impacts, true))
+		m.hitstop = math.max(m.hitstop, Config.Hitstop.KO)
+	else
+		t.state = "Landing"; t.stun = Config.LandingFrames; t.getupKind = nil
+	end
+end
+
+-- One cinematic frame: damage on each impact (share x damage x scaling, the parts sum exactly to the scaled total).
+local function processUltimates(m: Match, events: { Event })
+	for i, f in m.fighters do
+		local info = f.throwInfo
+		if info and info.ultimate and info.role == "Attacker" then
+			local ti = 3 - i
+			local t = m.fighters[ti]
+			local tInfo = t.throwInfo
+			local def = moveDef(f, "Ultimate")
+			local cin = def.cinematic :: Roster.Cinematic
+			info.frame += 1
+			if tInfo then tInfo.frame = info.frame end
+			local k = info.nextImpact or 1
+			local imp = cin.impacts[k]
+			if imp and info.frame >= imp.frame then
+				info.nextImpact = k + 1
+				if tInfo then tInfo.nextImpact = k + 1 end
+				local cum = 0
+				for j = 1, k do cum += cin.impacts[j].share end
+				local scaled = def.damage * (info.scale or 1)
+				local damage = math.floor(scaled * cum + 0.5) - math.floor(scaled * (cum - imp.share) + 0.5)
+				t.health = math.clamp(t.health - damage, 0, t.maxHealth)
+				t.lastHit = { kind = "Hit", height = (def.height :: any), tier = (def.tier :: any), counter = false, frame = m.frame, move = "Ultimate", limb = def.limb, side = 0 }
+				table.insert(events, ultimateEvent("UltHit", i, ti, def, m.frame, (f.pos + t.pos) / 2 + Vector3.new(0, 2.5, 0), damage, k, k == #cin.impacts))
+			end
+			if info.frame >= cin.duration then endUltimate(m, i, events) end
+		end
+	end
 end
 
 local function hits(m: Match, events: { Event })
 	local active: { { index: number, name: string } }={}
-	for i,f in m.fighters do if f.health>0 and f.state=="Active" and not f.hasHit and f.move then table.insert(active,{index=i,name=f.move}) end end
+	for i,f in m.fighters do
+		if f.health>0 and f.state=="Active" and not f.hasHit and f.move and not moveDef(f, f.move).noHit then table.insert(active,{index=i,name=f.move}) end
+	end
 	for _,entry in active do
 		local i=entry.index; local a=m.fighters[i]; local t=m.fighters[3-i]; local def=moveDef(a, entry.name)
+		-- An earlier entry of this frame may already have changed this attacker (an Ultimate cinematic, a catch, a parry).
+		if a.state ~= "Active" or a.move ~= entry.name or a.hasHit then continue end
 		local air=t.state=="Airborne"
-		local eligible=t.state~="KO" and t.state~="Landing" and t.state~="Getup" and t.state~="Throw" and not (t.state=="Airborne" and t.airLocked)
+		local eligible=t.state~="KO" and t.state~="Landing" and t.state~="Getup" and t.state~="Throw" and t.state~="Ultimate" and not (t.state=="Airborne" and t.airLocked)
 		if def.height=="Throw" then
 			if eligible and not air and not t.crouched and t.state~="Hitstun" and t.state~="Blockstun" and Sim.reach(a,t,entry.name) then startThrow(m, i, entry.name, def, events) end
 			continue
@@ -822,15 +1094,36 @@ local function hits(m: Match, events: { Event })
 			if t.state == "Sidestep" and along > 0 and along <= def.range + 0.6 and side > def.width then a.evaded = true end
 			continue
 		end
-		local tDef = if t.move then moveDef(t, t.move) else nil
-		local parry = if tDef then tDef.props.parry else nil
-		if parry and inWindow(parry.window, t.moveFrame) and (def.height == "High" or def.height == "Mid") then
+		local isUltimate = def.cinematic ~= nil
+		-- Parries (a parry move's window or a parry stance; never the Ultimate): the attacker staggers and the parrying
+		-- fighter is free at once, so the stagger is the punish window.
+		local parry = if isUltimate or air then nil else activeParry(t)
+		if parry then
 			local ok=false; for _, h in parry.heights do if h == def.height then ok=true end end
 			if ok then
+				local parryMove = t.move or t.stance or ""
 				a.hasHit=true; a.move=nil; a.moveFrame=0; a.chainMove=nil; a.state="Stagger"; a.stun=parry.stagger; a.stagger=parry.stagger
 				rememberHit(t, "Parry", def, entry.name, m.frame, false)
-				table.insert(events,{kind="Parry",attacker=3-i,target=i,move=t.move or "",damage=0,advantage=parry.stagger,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,3,0),combo=0,air=false,tier=def.tier,height=def.height,limb=def.limb})
+				table.insert(events,{kind="Parry",attacker=3-i,target=i,move=parryMove,damage=0,advantage=parry.stagger,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,3,0),combo=0,air=false,tier=def.tier,height=def.height,limb=def.limb})
 				m.hitstop=math.max(m.hitstop, Config.Hitstop.Parry)
+				t.move=nil; t.moveName=nil; t.moveFrame=0; t.chainMove=nil; t.input.attack=nil; t.hasHit=false; t.stringIndex=0
+				becomeFree(t, a)
+				continue
+			end
+		end
+		-- The catch (Goran's Bear Trap; never the Ultimate): a strike of a caught height touching him inside the window
+		-- is absorbed and he starts the referenced throw on the striker, unbreakable.
+		local tDef = if t.move then moveDef(t, t.move) else nil
+		local catch = if tDef and not isUltimate then tDef.props.catch else nil
+		if catch and inWindow(catch.window, t.moveFrame) then
+			local ok=false; for _, h in catch.heights do if h == def.height then ok=true end end
+			local throwDef = t.character.moves[catch.throw]
+			if ok and throwDef then
+				local catchMove = t.move :: string
+				a.hasHit=true; a.move=nil; a.moveFrame=0; a.chainMove=nil; a.input.attack=nil
+				table.insert(events,{kind="Catch",attacker=3-i,target=i,move=catchMove,damage=0,advantage=0,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,2.6,0),combo=0,air=false,tier=def.tier,height=def.height,limb=def.limb})
+				t.move=catch.throw; t.moveName=throwDef.name; t.moveFrame=throwDef.startup+1; t.state="Active"; t.chainMove=nil
+				startThrow(m, 3-i, catch.throw, throwDef, events, true)
 				continue
 			end
 		end
@@ -838,22 +1131,45 @@ local function hits(m: Match, events: { Event })
 		if (crush == "High" and def.height == "High") or (crush == "Low" and def.height == "Low") then
 			a.hasHit=true
 			rememberHit(t, "Crush", def, entry.name, m.frame, false)
-			table.insert(events,{kind="Crush",attacker=3-i,target=i,move=t.move or "",damage=0,advantage=0,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,2.5,0),combo=0,air=false,tier=def.tier,height=def.height,limb=def.limb})
+			table.insert(events,{kind="Crush",attacker=3-i,target=i,move=t.move or t.stance or "",damage=0,advantage=0,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,2.5,0),combo=0,air=false,tier=def.tier,height=def.height,limb=def.limb})
 			m.hitstop=math.max(m.hitstop, Config.Hitstop.Crush)
 			continue
 		end
 		a.hasHit=true
 		local blocked=canGuard(t, def)
+		if isUltimate and not blocked then
+			-- The Ultimate is not absorbed by armor: on hit the cinematic starts (scaled when it ends a combo or juggle).
+			local inCombo = (t.state=="Hitstun" or air) and t.chain>0
+			startUltimate(m, i, if inCombo then Config.UltComboScale else 1)
+			continue
+		end
 		local armored = (not blocked) and Sim.armorActive(t)
-		local counter=not blocked and not armored and t.state=="Startup"
+		local stanceCounter = false
+		if t.state == "Stance" then
+			local st = stanceOf(t)
+			stanceCounter = st ~= nil and st.counterHit
+		end
+		local counter=not blocked and not armored and (t.state=="Startup" or stanceCounter)
+		-- Punish (HUD call-out): a clean ground hit while the opponent recovers from its own move (whiffed or blocked)
+		-- or staggers after a parry.
+		local punish = not blocked and not armored and not air and (t.state == "Recovery" or t.state == "Stagger")
 		local airScale = Config.AirDamageScale * ((Config.AirDamageDecay or 0.84) ^ math.max(0, t.airHits))
+		local continuing=(t.state=="Hitstun" or air) and t.chain>0
 		local damage=if blocked then math.floor(def.damage*Config.BlockMultiplier+0.5) elseif air then math.max(1,math.floor(def.damage*airScale+0.5)) else def.damage
 		if counter then damage=math.max(1,math.floor(damage*Config.CounterDamageMultiplier+0.5)) end
+		if not blocked then
+			if continuing and not air then
+				-- Ground combo scaling from the 4th consecutive hit (natural 3-hit strings stay unscaled).
+				local idx = t.chain + 1
+				local scale = if idx >= 4 then (Config.ComboScale[idx] or Config.ComboScaleMin) else 1
+				if scale < 1 then damage = math.max(1, math.floor(damage*scale+0.5)) end
+			end
+			if a.surge and not a.surgeFree then damage = math.max(1, math.floor(damage*Config.SurgeDamageMultiplier+0.5)) end
+		end
 		local remaining=total(def)-a.moveFrame
-		local continuing=(t.state=="Hitstun" or air) and t.chain>0
 		t.health=math.clamp(t.health-damage,0,t.maxHealth); t.lastDefendedMove=entry.name
 		local onHit: number | string = if counter and def.onCounter ~= nil then def.onCounter :: any else def.onHit
-		local kind="Hit"; local advantage=0; local launched=false; local knockdown=false
+		local kind="Hit"; local advantage=0; local launched=false; local knockdown=false; local tumbleNow=false
 		if blocked then
 			t.move=nil; t.moveFrame=0; t.input.attack=nil; t.chainMove=nil; clearMovement(t); t.state="Blockstun"; t.stun=blockStun(def); t.chain=0; kind="Block"; advantage=t.stun-remaining
 			t.guard = blockstunGuard(t)
@@ -864,17 +1180,24 @@ local function hits(m: Match, events: { Event })
 			t.move=nil; t.moveFrame=0; t.input.attack=nil; t.chainMove=nil; clearMovement(t); t.chain=if continuing then t.chain+1 else 1; a.combo=t.chain; t.crouched=false; t.guard=nil
 			if air then
 				t.airHits += 1
-				if onHit == "KND" or t.airHits >= (Config.MaxAirHits or 5) then
+				-- Tumble: the first tumble hit of a juggle spins the body (lifted again) and allows one more air hit.
+				tumbleNow = def.tumble and not t.tumbled
+				if tumbleNow then t.tumbled = true; t.tumbling = true end
+				local cap = (Config.MaxAirHits or 5) + (if t.tumbled then 1 else 0)
+				if (onHit == "KND" and not tumbleNow) or t.airHits >= cap then
 					knockdown=true
+					local faceDown = limbSide(def) > 0 or t.tumbled
 					if t.pos.Y > 0.05 then
 						-- The juggle ends: fall the rest of the way into the knockdown instead of snapping to the floor.
-						t.state="Airborne"; t.stun=0; t.airLocked=true; t.knockdown=if limbSide(def) > 0 then "FaceDown" else "FaceUp"
+						t.state="Airborne"; t.stun=0; t.airLocked=true; t.knockdown=if faceDown then "FaceDown" else "FaceUp"
 						t.velocityY=math.min(t.velocityY, 2)
 					else
-						applyKnockdown(t, limbSide(def) > 0)
+						applyKnockdown(t, faceDown)
 					end
 				else
-					if t.extensions<Config.MaxJuggleExtensions then
+					if tumbleNow then
+						t.velocityY=math.max(t.velocityY, Config.TumbleVelocity)
+					elseif t.extensions<Config.MaxJuggleExtensions then
 						t.extensions+=1
 						local liftScale = math.max(0.35, 1 - t.airHits * 0.14)
 						t.velocityY=math.max(t.velocityY,Config.JuggleVelocity * liftScale)
@@ -882,7 +1205,7 @@ local function hits(m: Match, events: { Event })
 					t.state="Airborne"; t.stun=0
 				end
 			elseif onHit == "LAUNCH" then
-				launched=true; t.state="Airborne"; t.stun=0; t.velocityY=Config.LaunchVelocity; t.airFrames=0; t.airHits=0; t.extensions=0; t.knockdown=nil; t.airLocked=false; t.pos+=Vector3.new(0,0.05,0); a.aiLastLauncherFrame=m.frame
+				launched=true; t.state="Airborne"; t.stun=0; t.velocityY=Config.LaunchVelocity; t.airFrames=0; t.airHits=0; t.extensions=0; t.knockdown=nil; t.airLocked=false; t.tumbled=false; t.tumbling=false; t.pos+=Vector3.new(0,0.05,0); a.aiLastLauncherFrame=m.frame
 			elseif onHit == "KND" then
 				knockdown=true; applyKnockdown(t, limbSide(def) > 0)
 			else
@@ -900,7 +1223,7 @@ local function hits(m: Match, events: { Event })
 		local airHit=not blocked and (air or launched)
 		if not armored then t.pos+=a.facing*(if blocked then def.push*0.35 elseif air then def.push*0.45 else def.push*0.75); clamp(t) end
 		m.hitstop=math.max(m.hitstop,hitstopFor(kind,def,counter))
-		table.insert(events,{kind=kind,attacker=i,target=3-i,move=entry.name,damage=damage,advantage=if airHit or knockdown then 0 else advantage,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,if def.height=="Low" then 1.2 else 3.5,0),combo=if blocked or armored then 0 else t.chain,air=airHit,counter=if counter then true else nil,launch=if launched then true else nil,knockdown=if knockdown then true else nil,tier=def.tier,archetype=def.anim.archetype,height=def.height,limb=def.limb})
+		table.insert(events,{kind=kind,attacker=i,target=3-i,move=entry.name,damage=damage,advantage=if airHit or knockdown then 0 else advantage,frame=m.frame,point=(a.pos+t.pos)/2+Vector3.new(0,if def.height=="Low" then 1.2 else 3.5,0),combo=if blocked or armored then 0 else t.chain,air=airHit,counter=if counter then true else nil,launch=if launched then true else nil,knockdown=if knockdown then true else nil,tier=def.tier,archetype=def.anim.archetype,height=def.height,limb=def.limb,tumble=if tumbleNow then true else nil,punish=if punish and (kind=="Hit" or kind=="KO") then true else nil})
 	end
 end
 
@@ -921,6 +1244,35 @@ local function settleBodies(m: Match)
 	for _, f in m.fighters do koFall(f) end
 end
 
+local function plainEvent(kind: string, attacker: number, target: number, move: string, f: Fighter, def: Roster.MoveDef?, frame: number): Event
+	return { kind=kind, attacker=attacker, target=target, move=move, damage=0, advantage=0, frame=frame, point=f.pos+Vector3.new(0,3,0), combo=0, air=false,
+		tier=if def then def.tier else nil, archetype=if def then "ultimate" else nil, height=if def then def.height else nil, limb=if def then def.limb else nil }
+end
+
+-- Surge: entered on the first frame a fighter is at or below SurgeThreshold of its max health (alive, its Ultimate not
+-- used this round); it lasts until the round ends or the Ultimate starts. Free Training keeps the player (slot 1) in
+-- Surge with the Ultimate ready again as soon as it is over (that permanent Surge adds no damage).
+local function updateSurge(m: Match, events: { Event })
+	local free = Sim.isFreeTraining(m)
+	for i, f in m.fighters do
+		local usingUlt = f.move == "Ultimate" or cinematicInfo(f) ~= nil
+		if free and i == 1 then
+			-- The permanent practice Surge is shown by the `surge` flag only (no Surge burst event).
+			if not usingUlt and f.health > 0 then
+				f.ultUsed = false
+				f.surgeFree = true
+				f.surge = true
+			end
+		else
+			if f.surgeFree then f.surge = false; f.surgeFree = false; f.ultUsed = false end
+			if not f.surge and not f.ultUsed and f.health > 0 and f.health <= Config.SurgeThreshold * f.maxHealth then
+				f.surge = true
+				table.insert(events, plainEvent("Surge", i, i, "", f, nil, m.frame))
+			end
+		end
+	end
+end
+
 function Sim.step(m: Match): { Event }
 	if m.hitstop>0 then
 		m.frame+=1; m.hitstop-=1
@@ -938,11 +1290,20 @@ function Sim.step(m: Match): { Event }
 	end
 	local events: { Event }={}; local a,b=m.fighters[1],m.fighters[2]
 	processThrows(m, events)
-	advance(m,a,b,events,1); advance(m,b,a,events,2); clamp(a); clamp(b); Sim.separate(a,b); hits(m,events)
+	processUltimates(m, events)
+	advance(m,a,b,events,1); advance(m,b,a,events,2)
+	for i, f in m.fighters do
+		if f.ultStartPending then
+			f.ultStartPending = false
+			table.insert(events, plainEvent("UltStart", i, 3 - i, "Ultimate", f, moveDef(f, "Ultimate"), m.frame))
+		end
+	end
+	clamp(a); clamp(b); Sim.separate(a,b); hits(m,events)
 	for i,f in m.fighters do if m.fighters[3-i].chain==0 then f.combo=0 end end
+	updateSurge(m, events)
 	if m.mode=="Match" then
 		if m.koFrame then finishRound(m)
-		elseif m.hitstop==0 then m.timer=math.max(0,m.timer-1); if m.timer==0 then finishRound(m) end end
+		elseif m.hitstop==0 and not Sim.cinematicActive(m) then m.timer=math.max(0,m.timer-1); if m.timer==0 then finishRound(m) end end
 	end
 	return events
 end
@@ -953,6 +1314,58 @@ end
 function Sim.trainerInput(m: Match, index: number)
 	local AI = require(script.Parent.CombatAI) :: any
 	AI.step(m, index)
+end
+
+-- Combos (Roster CharacterDef.combos) -------------------------------------------------------------------------------
+
+export type ComboAction = { x: number, crouch: boolean, button: string }
+local BUTTON_OF: { [string]: string } = { ["1"] = "LeadPunch", ["2"] = "RearPunch", ["3"] = "LeadKick", ["4"] = "RearKick",
+	["1+2"] = "Ultimate", ["3+4"] = "Kicks", ["1+3"] = "Throw", ["2+4"] = "Throw2" }
+local DIR_OF: { [string]: { number } } = { f = { 1, 0 }, b = { -1, 0 }, d = { 0, 1 }, df = { 1, 1 }, db = { -1, 1 } }
+
+-- One combo press in display notation: "df+2", "1", "1+2", "3+4", "PKT+1" (stance tags are dropped: the fighter is
+-- already in the stance), "SPW+d+4". Returns the held direction and the sim button to press.
+function Sim.parseNotation(notation: string): ComboAction
+	local s = string.gsub(notation, "%s+", "")
+	local tag, rest = string.match(s, "^(%u%u+)%+(.+)$")
+	if tag and rest then s = rest end
+	local x, crouch = 0, false
+	local dir, buttons = string.match(s, "^(%l+)%+(.+)$")
+	if dir and DIR_OF[dir] then
+		x = DIR_OF[dir][1]; crouch = DIR_OF[dir][2] == 1
+		s = buttons :: string
+	end
+	local button = BUTTON_OF[s]
+	assert(button ~= nil, "combo notation not understood: " .. notation)
+	return { x = x, crouch = crouch, button = button }
+end
+
+export type ComboRun = { m: Match, index: number, steps: { any }, step: number, wait: number, release: boolean, pressed: { string } }
+-- Plays a combo route frame by frame: call Sim.comboTick before every Sim.step; it presses each step `wait` frames
+-- after the previous press (holding the step's direction on that frame) and returns false once every step is pressed.
+function Sim.comboRun(m: Match, index: number, steps: { any }): ComboRun
+	return { m = m, index = index, steps = steps, step = 1, wait = (steps[1] and steps[1].wait) or 0, release = false, pressed = {} }
+end
+function Sim.comboTick(run: ComboRun): boolean
+	local m, i = run.m, run.index
+	local f = m.fighters[i]
+	if run.release then
+		run.release = false
+		if f.input.moveX ~= 0 then Sim.setMovement(m, i, 0, 0) end
+		f.input.crouch = false
+	end
+	local step = run.steps[run.step]
+	if not step then return false end
+	if run.wait > 0 then run.wait -= 1; return true end
+	local act = Sim.parseNotation(step.input)
+	if f.input.moveX ~= act.x then Sim.setMovement(m, i, act.x, 0) end
+	f.input.crouch = act.crouch
+	table.insert(run.pressed, Sim.press(m, i, act.button) or "")
+	run.release = true
+	run.step += 1
+	local nextStep = run.steps[run.step]
+	run.wait = if nextStep then math.max(0, (nextStep.wait or 0) - 1) else 0
+	return nextStep ~= nil
 end
 
 return Sim

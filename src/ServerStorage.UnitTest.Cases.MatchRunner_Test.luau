@@ -174,4 +174,46 @@ return function(t: Runner.T)
 		end
 		t.expect.truthy(started, "throw connects")
 	end)
+
+	t.test("round 6: U and I as two Attack commands start the Ultimate; entries and debug attributes carry Surge, ultUsed and the stance", function()
+		local folder = Instance.new("Folder")
+		local runner = MatchRunner.new({ publishFolder = folder })
+		runner:command("SetMode", "Training")
+		local m = runner.match
+		m.fighters[1].pos = Vector3.zero
+		m.fighters[2].pos = Vector3.new(3, 0, 0)
+		local entry = runner:step()
+		t.expect.equal(entry.fighters[1].surge, true, "Free Training: the player is always in Surge")
+		t.expect.equal(entry.fighters[2].surge, false)
+		t.expect.equal(folder:GetAttribute("LearnerSurge"), true)
+		t.expect.truthy(runner:command("Attack", "LeadPunch", 21))
+		t.expect.truthy(runner:command("Attack", "RearPunch", 22))
+		entry = runner:step()
+		t.expect.equal(m.fighters[1].move, "Ultimate", "1 and 2 together start the Ultimate")
+		t.expect.equal(entry.fighters[1].ultUsed, true)
+		t.expect.equal(entry.fighters[1].surge, false, "Surge ends when the Ultimate starts")
+		t.expect.equal(folder:GetAttribute("LearnerUltUsed"), true)
+		local sawCinematic, refilled = false, false
+		for _ = 1, 400 do
+			entry = runner:step()
+			if entry.fighters[1].state == "Ultimate" then
+				sawCinematic = true
+				t.expect.equal(entry.fighters[1].throw.archetype, "ultimate")
+			elseif sawCinematic and entry.fighters[1].ultUsed == false and entry.fighters[1].surge then
+				refilled = true
+				break
+			end
+		end
+		t.expect.truthy(sawCinematic, "the Ultimate lands on the standing dummy")
+		t.expect.truthy(refilled, "Free Training refills the Ultimate once it is over")
+		for _ = 1, 120 do runner:step() end
+		t.expect.truthy(runner:command("Attack", "LeadKick", 23))
+		t.expect.truthy(runner:command("Attack", "RearKick", 24))
+		entry = runner:step()
+		t.expect.equal(entry.fighters[1].state, "Stance", "3+4 enters Kael's Pocket")
+		t.expect.equal(entry.fighters[1].stance, "Pocket")
+		t.expect.equal(entry.fighters[1].stanceFrame, 1)
+		t.expect.equal(folder:GetAttribute("LearnerStance"), "Pocket")
+		folder:Destroy()
+	end)
 end
