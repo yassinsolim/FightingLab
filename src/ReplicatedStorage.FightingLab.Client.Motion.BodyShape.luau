@@ -182,4 +182,49 @@ function BodyShape.coreDistance(shape: Shape, frames: { [string]: CFrame }, p: V
 	return best, which
 end
 
+-- Face landmarks (round 5): the camera-side eye, the nose (bridge to tip) and the mouth, as offsets from the head's
+-- FaceFrontAttachment in units of the head's half size (x: + = toward the side the face is seen from, y up, z: + = back
+-- into the head), each then snapped onto the head's real surface by a ray cast from in front of the face (the nose and
+-- lips sit on the face whatever the head mesh). Used by the runtime's profile clearance (MotionPlayer.clearArms) and by
+-- MotionQA's face-visibility measure.
+BodyShape.FACE = {
+	{ "eye", 0.40, 0.18, 0.10 }, { "eye", 0.24, 0.18, 0.04 }, { "eye", 0.56, 0.17, 0.22 }, { "eye", 0.40, 0.25, 0.10 }, { "eye", 0.40, 0.11, 0.09 },
+	{ "nose", 0.0, 0.10, -0.02 }, { "nose", 0.0, -0.02, -0.08 }, { "nose", 0.0, -0.13, -0.12 }, { "nose", 0.12, -0.17, 0.0 },
+	{ "mouth", 0.0, -0.36, -0.02 }, { "mouth", 0.20, -0.37, 0.05 }, { "mouth", 0.0, -0.30, -0.04 }, { "mouth", 0.0, -0.43, 0.0 },
+}
+local landmarkCache: { [Instance]: { [number]: { Vector3 } } } = setmetatable({}, { __mode = "k" }) :: any
+-- Head-space landmark points of `head` seen from its right (side = 1) or left (side = -1), cached per head part.
+function BodyShape.faceLandmarks(head: BasePart, side: number): { Vector3 }
+	local byHead = landmarkCache[head]
+	if not byHead then
+		byHead = {}
+		landmarkCache[head] = byHead
+	end
+	local cached = byHead[side]
+	if cached then return cached end
+	local h = head.Size * 0.5
+	local att = head:FindFirstChild("FaceFrontAttachment")
+	local f = if att and att:IsA("Attachment") then att.Position else Vector3.new(0, 0, -head.Size.Z * 0.45)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { head }
+	local wasQuery = head.CanQuery
+	head.CanQuery = true
+	local list = {}
+	for _, l in BodyShape.FACE do
+		local lp = Vector3.new(f.X + side * (l[2] :: number) * h.X, f.Y + (l[3] :: number) * h.Y, f.Z + (l[4] :: number) * h.Z)
+		local from = head.CFrame:PointToWorldSpace(Vector3.new(lp.X, lp.Y, -h.Z * 2))
+		local to = head.CFrame:PointToWorldSpace(Vector3.new(lp.X, lp.Y, h.Z))
+		local hit = workspace:Raycast(from, to - from, params)
+		if hit then
+			local hl = head.CFrame:PointToObjectSpace(hit.Position)
+			if math.abs(hl.Z - lp.Z) < h.Z * 0.6 then lp = Vector3.new(lp.X, lp.Y, hl.Z - 0.01) end
+		end
+		table.insert(list, lp)
+	end
+	head.CanQuery = wasQuery
+	byHead[side] = list
+	return list
+end
+
 return BodyShape
