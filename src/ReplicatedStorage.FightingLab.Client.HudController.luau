@@ -145,7 +145,15 @@ local SLANT = 13
 local CARD = 70 -- portrait card size
 local TIMER_W = 116
 local GAP = 12 -- between a bar's inner end and the clock plate
-M.LAYOUT = { top = TOP, barHeight = BAR_H, barWidth = BAR_W, card = CARD, timerWidth = TIMER_W }
+-- Status chips (SURGE, ULTIMATE, the stance) sit right under the bar's accent edge, compact and never lower than the
+-- name row: the HUD band stays shallow where the fighters' heads are (the bars' inner ends, near the clock).
+local STATUS_Y = 14 + BAR_H + 7
+local STATUS_H = 17
+local NAME_Y = 14 + BAR_H + 9
+local NAME_H = 30
+M.LAYOUT = { top = TOP, barHeight = BAR_H, barWidth = BAR_W, card = CARD, timerWidth = TIMER_W, statusY = STATUS_Y, statusHeight = STATUS_H, nameY = NAME_Y, nameHeight = NAME_H }
+-- The local player's fighter is always drawn on the left (setViewSlot): only that side shows the Ultimate's key.
+M.OWN_SIDE = 1
 
 local function makeBar(index: number, color: Color3): Bar
 	local s = stage :: Frame
@@ -172,7 +180,7 @@ local function makeBar(index: number, color: Color3): Bar
 	local sash = HudKit.cap(card, "Sash", 26, 26, if right then "BL" else "BR", color, 0.1, { AnchorPoint = Vector2.new(if right then 0 else 1, 1), Position = if right then UDim2.fromScale(0, 1) else UDim2.fromScale(1, 1), ZIndex = 9 })
 	refs["sash" .. index] = sash
 	-- Name row under the bar: FIGHTER  player  [TAG]
-	local nameRow = make("Frame", { Name = "NameRow", BackgroundTransparency = 1, AnchorPoint = Vector2.new(if right then 1 else 0, 0), Position = if right then UDim2.new(1, -(CARD + 8), 0, 14 + BAR_H + 9) else UDim2.fromOffset(CARD + 8, 14 + BAR_H + 9), Size = UDim2.fromOffset(BAR_W - 150, 30), Parent = group })
+	local nameRow = make("Frame", { Name = "NameRow", BackgroundTransparency = 1, AnchorPoint = Vector2.new(if right then 1 else 0, 0), Position = if right then UDim2.new(1, -(CARD + 8), 0, NAME_Y) else UDim2.fromOffset(CARD + 8, NAME_Y), Size = UDim2.fromOffset(BAR_W - 150, NAME_H), Parent = group })
 	UIHelpers.list(nameRow, true, 9, if right then Enum.HorizontalAlignment.Right else Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	local name = text(nameRow, "Name", "", T.display, 27, WHITE, { Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, RichText = true })
 	UIHelpers.textStroke(name, 0.35, 2)
@@ -182,21 +190,22 @@ local function makeBar(index: number, color: Color3): Bar
 	local tag = text(tagPlate, "Slot", "", T.heavy, 11, T.ink, { Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center })
 	local player = text(nameRow, "Player", "", T.bold, 14, Color3.fromRGB(214, 220, 232), { Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = if right then 0 else 4 })
 	UIHelpers.textStroke(player, 0.5, 1)
-	-- Status row at the bar's inner end: SURGE and the ULTIMATE indicator (Contract A)
-	local status = make("Frame", { Name = "Status", BackgroundTransparency = 1, AnchorPoint = Vector2.new(if right then 0 else 1, 0), Position = if right then UDim2.fromOffset(4, 14 + BAR_H + 10) else UDim2.new(1, -4, 0, 14 + BAR_H + 10), Size = UDim2.fromOffset(300, 26), Parent = group })
-	UIHelpers.list(status, true, 6, if right then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-	local surgeChip = HudKit.chip(status, "Surge", "SURGE", 22, T.display, 16, SURGE_RED, WHITE, if right then "\\" else "/", { LayoutOrder = if right then 1 else 2, Visible = false })
-	local ultChip: Frame = make("Frame", { Name = "Ultimate", BackgroundColor3 = Color3.fromRGB(16, 14, 10), BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = if right then 2 else 1, Visible = false, Parent = status })
+	-- Status row at the bar's inner end: SURGE, the ULTIMATE indicator (Contract A) and the stance, compact chips right
+	-- under the bar's accent edge (STATUS_Y), never lower than the name row
+	local status = make("Frame", { Name = "Status", BackgroundTransparency = 1, AnchorPoint = Vector2.new(if right then 0 else 1, 0), Position = if right then UDim2.fromOffset(4, STATUS_Y) else UDim2.new(1, -4, 0, STATUS_Y), Size = UDim2.fromOffset(300, STATUS_H), Parent = group })
+	UIHelpers.list(status, true, 5, if right then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Top)
+	local surgeChip = HudKit.chip(status, "Surge", "SURGE", STATUS_H, T.display, 13, SURGE_RED, WHITE, if right then "\\" else "/", { LayoutOrder = if right then 1 else 2, Visible = false })
+	local ultChip: Frame = make("Frame", { Name = "Ultimate", BackgroundColor3 = Color3.fromRGB(16, 14, 10), BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.fromOffset(0, STATUS_H), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = if right then 2 else 1, Visible = false, Parent = status })
 	UIHelpers.corner(ultChip, 3)
-	local ultStroke = UIHelpers.outline(ultChip, ULT_GOLD, 1.5, 0)
+	local ultStroke = UIHelpers.outline(ultChip, ULT_GOLD, 1.2, 0)
 	refs["ultStroke" .. index] = ultStroke
-	make("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 8), Parent = ultChip })
-	UIHelpers.list(ultChip, true, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	local ultKey = make("Frame", { Name = "Key", BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Parent = ultChip })
+	make("UIPadding", { PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 6), Parent = ultChip })
+	UIHelpers.list(ultChip, true, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	local ultKey = make("Frame", { Name = "Key", BackgroundTransparency = 1, Size = UDim2.fromOffset(0, STATUS_H - 3), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Parent = ultChip })
 	UIHelpers.list(ultKey, true, 2, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	local ultText = text(ultChip, "Text", "ULTIMATE", T.display, 15, ULT_GOLD, { Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2 })
+	local ultText = text(ultChip, "Text", "ULTIMATE", T.display, 13, ULT_GOLD, { Size = UDim2.fromOffset(0, STATUS_H), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2 })
 	-- the current stance (round 6 signatures: Pocket, Southpaw, ...) while the fighter holds one
-	local stanceChip = HudKit.chip(status, "Stance", "", 20, T.heavy, 12, Color3.fromRGB(28, 32, 44), WHITE, if right then "\\" else "/", { LayoutOrder = if right then 3 else 0, Visible = false })
+	local stanceChip = HudKit.chip(status, "Stance", "", STATUS_H - 1, T.heavy, 11, Color3.fromRGB(28, 32, 44), WHITE, if right then "\\" else "/", { LayoutOrder = if right then 3 else 0, Visible = false })
 	refs["stance" .. index] = stanceChip
 	return {
 		group = group, bar = bar, portrait = vp, portraitStroke = pstroke, card = card, name = name, tag = tag, tagPlate = tagPlate, player = player,
@@ -533,18 +542,22 @@ function M.stanceName(key: string): string
 	return string.upper(spaced)
 end
 
-local function paintUltKey(b: Bar, device: string)
+-- The ULTIMATE indicator of one side. Only the local player's own side (M.OWN_SIDE, the left) shows the key to press;
+-- the opponent's ready Ultimate is a plain ULTIMATE tag (a dummy or CPU in Surge must not advertise the player's key).
+local function paintUltKey(b: Bar, device: string, own: boolean)
 	for _, c in b.ultKey:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
-	local key = M.ultimateKey(device)
+	local key = if own then M.ultimateKey(device) else ""
 	b.ultKey.Visible = key ~= ""
 	if key ~= "" then
+		local h = STATUS_H - 3
 		if string.find(key, "%d") and not string.find(key, "%a") then
-			UIHelpers.notationRow(b.ultKey, key, { height = 18, order = 1 })
+			UIHelpers.notationRow(b.ultKey, key, { height = h, order = 1 })
 		else
-			UIHelpers.glyph(b.ultKey, key, { height = 18, device = if device == "gamepad" then "gamepad" else "keyboard", order = 1 })
+			UIHelpers.glyph(b.ultKey, key, { height = h, device = if device == "gamepad" then "gamepad" else "keyboard", order = 1 })
 		end
 	end
-	b.ultText.Text = if key == "" then "ULTIMATE READY" else "ULTIMATE"
+	b.ultText.Text = if own and key == "" then "ULTIMATE READY" else "ULTIMATE"
+	b.ultChip:SetAttribute("KeyShown", key ~= "")
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -771,7 +784,7 @@ local function updateStatus(now: number)
 	local device = if touchOnly() then "touch" else currentDevice()
 	if device ~= ultDevice then
 		ultDevice = device
-		for _, b in bars do paintUltKey(b, device) end
+		for side, b in bars do paintUltKey(b, device, side == M.OWN_SIDE) end
 	end
 	for side, b in bars do
 		local showSurge, showUlt = M.statusFor(surge[side], ultUsed[side])

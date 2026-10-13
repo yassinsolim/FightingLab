@@ -248,6 +248,60 @@ return function(t: Runner.T)
 		end)
 	end)
 
+	t.test("only the local player's side shows the Ultimate key; a dummy or CPU in Surge gets a plain ULTIMATE tag", function()
+		run(t, function(gui)
+			UIHelpers._setControlsForTests({
+				fight = { keyboard = { ultimate = "L", guide = "G" }, gamepad = { ultimate = "ButtonR2" } },
+				notation = { lp = "1", rp = "2", lk = "3", rk = "4", ultimate = "1+2" },
+				label = function(_g: string, action: string, device: string?): string
+					if action == "ultimate" then return if device == "gamepad" then "RT" else "L" end
+					return ""
+				end,
+			})
+			-- Free Training after a few Ultimates: the dummy drops into Surge too; as P1 and as P2 (own fighter on the left)
+			for _, view in { 1, 2 } do
+				Hud.setViewSlot(view)
+				Hud.setFighterInfo(view, info("KAEL", "YOU"))
+				Hud.setFighterInfo(3 - view, info("SIERRA", "DUMMY"))
+				Hud.setVisible(true)
+				local stage = (gui :: any).FightHud.Stage
+				local own, other = stage.HudFighter1.Status.Ultimate, stage.HudFighter2.Status.Ultimate
+				Hud.onSnapshot(snap(10 + view, { health = 20, surge = true, ultUsed = false }, { health = 20, surge = true, ultUsed = false }))
+				Hud.update(frame({ mode = "Training", session = "Practice", authority = "Local" }))
+				t.expect.truthy(own.Visible and other.Visible, "both sides show a ready Ultimate (view " .. view .. ")")
+				t.expect.truthy(own.Key.Visible and own.Key:FindFirstChildWhichIsA("Frame", true) ~= nil, "own side: the key to press")
+				t.expect.equal(own:GetAttribute("KeyShown"), true)
+				t.expect.falsy(other.Key.Visible, "the opponent's side shows no key (view " .. view .. ")")
+				t.expect.equal(other.Key:FindFirstChildWhichIsA("GuiObject", true), nil, "no glyph on the opponent's side")
+				t.expect.equal(other:GetAttribute("KeyShown"), false)
+				t.expect.equal(other.Text.Text, "ULTIMATE")
+			end
+		end)
+	end)
+
+	t.test("status chips stay compact and never lower than the name row (tall fighters' heads stay clear)", function()
+		run(t, function(gui)
+			Hud.setViewSlot(1)
+			Hud.setVisible(true)
+			local stage = (gui :: any).FightHud.Stage
+			local L = Hud.LAYOUT
+			for i = 1, 2 do
+				local group = stage["HudFighter" .. i]
+				local status, nameRow = group.Status, group.NameRow
+				local statusTop = status.Position.Y.Offset
+				local statusBottom = statusTop + status.Size.Y.Offset
+				local nameBottom = nameRow.Position.Y.Offset + nameRow.Size.Y.Offset
+				t.expect.truthy(statusTop >= 14 + L.barHeight, "chips sit under the bar, not on it")
+				t.expect.truthy(statusBottom <= nameBottom - 10, string.format("chips end above the name row's bottom (%d vs %d)", statusBottom, nameBottom))
+				t.expect.truthy(status.Size.Y.Offset <= 18, "a compact status row")
+				for _, name in { "Surge", "Ultimate", "Stance" } do
+					local chip = status:FindFirstChild(name) :: Frame
+					t.expect.truthy(chip ~= nil and chip.Size.Y.Offset <= 18, name .. " chip is compact")
+				end
+			end
+		end)
+	end)
+
 	t.test("Contract A: UltStart shows the Ultimate card with the roster name, letterbox while in state Ultimate", function()
 		run(t, function(gui)
 			Hud.setViewSlot(1)
