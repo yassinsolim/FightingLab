@@ -86,7 +86,9 @@ are dropped, never an error.
   look-at points in the attacker's frame in studs (+X its right, +Y up, +Z toward the defender), mirrored when the
   attacker stands on the viewer's right so the screen direction of the fight is kept. `cut = true` starts a new shot;
   keys interpolate with `ease` inside a shot. Every shot is checked against both bodies (`BodyMargin`) and the arena
-  walls (`safeShot`): a shot that would sit inside a body or a wall is pulled back along its look line.
+  walls (`safeShot`): a shot that would sit inside a body or a wall is pulled back along its look line. Every shot also
+  keeps both fighters whole in the frame (`_fitShot`: heads and feet with `CineFitMargin` headroom; the lens widens up
+  to `CineFitMaxFov` = 50 degrees, then the camera backs off along its look line).
 * Slow motion narrows the lens a little on the final impact; at the end the camera returns to the fight camera over
   `CineReturn` (0.8 s). Attributes `CameraCinematic` / `CameraCinematicShot` expose the state for tests.
 
@@ -95,7 +97,8 @@ are dropped, never an error.
 * **Surge aura**: while a fighter's `surge` flag is on, a floor ring of flames, sparks and a soft glow in the fighter's
   accent colour (grey accents use an icy blue), kept below the chest so faces stay readable; a one-time burst and a
   layered sound on the `Surge` event.
-* **UltStart**: an inward-gathering burst on the attacker and a rising sound.
+* **UltStart**: an inward-gathering burst on the attacker and a rising sound; a short, light screen flash (0.16 s:
+  the HUD plays its own title card and letterbox on UltStart, so the effects add no text).
 * **UltHit k**: an impact burst at the striking limb of `hits[k]` (else the midpoint), a heavier tier per impact; the
   last impact gets a double burst, a floor shockwave, dust and a whoosh. Landing dust and a thud when the defender's
   track reaches the floor inside the cinematic (`Cinematic.defenderGround`).

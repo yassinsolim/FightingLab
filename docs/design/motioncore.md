@@ -900,3 +900,10 @@ Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 pu
   as 46-frame throws.
 - MotionQA: `QA.ultimateCases(id)` (move, cinematic, Landing and getup) and `QA.stanceCases(id)` (each stance held to
   its end and into each follow-up); `tools/mocap/motionqa_report.luau` runs them as parts `ultimates` and `stances`.
+### 15.6 Presentation fixes asked by the other agents
+
+- Hit flash (`CharacterPresenter`): a white fill of at most 30 % for 4 frames (was 55 % for 6), so still frames do
+  not look washed out; Surge and UltStart flash the body for 5 frames, the UltStart screen flash lasts 0.16 s.
+- Boxing gloves (`Motion.BodyShape.isGlove`): the boolean attribute `FightingLabGlove`, else a `FightingLabRole` of
+  `Glove`/`BoxingGlove`, decides; the old "*glove*" name rule only applies without either.
+- The Ultimate camera frames both fighters whole (`CameraDirector._fitShot`, see `ultimates.md` section 4).
