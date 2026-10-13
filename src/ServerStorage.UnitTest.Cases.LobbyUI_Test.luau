@@ -524,7 +524,8 @@ return function(t: Runner.T)
 			t.expect.equal(m.ctl.menuPage(), "Moves")
 			local content = menuGui.Stage.Body.Panel.Content
 			local rows = 0
-			for _, row in content.Page_Moves.List:GetChildren() do if row:IsA("Frame") then rows += 1 end end
+			-- move rows only (round 6: MoveList adds group headers and a COMBOS section around them)
+			for _, row in content.Page_Moves.List:GetChildren() do if row:IsA("Frame") and string.sub(row.Name, 1, 5) == "Move_" then rows += 1 end end
 			t.expect.equal(rows, #Roster.get("Goran").moveOrder, "move list shows the current fighter")
 			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Return), "enter moves focus into the page")
 			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Right), "right switches the fighter tab")
