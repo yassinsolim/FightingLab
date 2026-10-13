@@ -315,6 +315,9 @@ return function(t: Runner.T)
 			local stage = (gui :: any).FightHud.Stage
 			Hud.update(frame({ phase = "Ready", round = 1 }))
 			t.expect.truthy(stage.BannerHolder.Visible); t.expect.equal(stage.BannerHolder.Banner.Text, "ROUND 1")
+			task.wait(1.3)
+			Hud.update(frame({ phase = "Ready", round = 1 }))
+			t.expect.truthy(stage.BannerHolder.Visible and stage.BannerHolder.Banner.TextTransparency < 0.5, "ROUND 1 holds through the Ready phase")
 			Hud.update(frame({ phase = "Fight" }))
 			t.expect.equal(stage.BannerHolder.Banner.Text, "FIGHT")
 			local entry = { fighters = { { health = 100, maxHealth = 100 }, { health = 0, maxHealth = 100 } } }

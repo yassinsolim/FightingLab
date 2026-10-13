@@ -860,10 +860,13 @@ function M.update(f: RenderFrame)
 	end
 	-- Phase banners: round intro, FIGHT, round end (K.O. / TIME / PERFECT), winner.
 	if f.phase ~= lastPhase then
+		-- The round intro holds through the whole Ready phase (the first one plays under the fight camera's intro and
+		-- a fixed beat could end before the player sees it); FIGHT replaces it, anything else clears it.
+		if lastPhase == "Ready" and f.phase ~= "Fight" and b then HudBanners.hideCentre(b) end
 		if f.phase == "Ready" and f.mode ~= "Training" then
 			roundEndShown = false
 			local winsNeeded = if f.config and f.config.WinsNeeded then f.config.WinsNeeded else 2
-			showBanner(HudBanners.roundIntroText(f.round, f.scores, winsNeeded), WHITE, nil, 1.0)
+			showBanner(HudBanners.roundIntroText(f.round, f.scores, winsNeeded), WHITE, nil, 0)
 		end
 		if f.phase == "Fight" and lastPhase == "Ready" and f.mode ~= "Training" then M.announce("Fight", "FIGHT") end
 		if (f.phase == "RoundOver" or f.phase == "MatchOver") and not roundEndShown and f.mode ~= "Training" then

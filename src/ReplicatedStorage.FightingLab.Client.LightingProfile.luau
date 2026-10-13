@@ -64,9 +64,9 @@ export type Profile = {
 
 local rgb = Color3.fromRGB
 
--- Readability ceilings for every arena profile (pinned by World_Test). Measured on the real fight camera with the
--- palest (Sierra) and darkest (Nia, Goran) fighters: fighter p95 luma stays <= 235 with < 0.5 % near-white pixels
--- and faces keep a p50 above 70 (see world.md, round 6).
+-- Readability ceilings for every arena profile (pinned by World_Test). Measured on the real fight camera with both
+-- fighters masked (CPU fights, world.md round 6): fighter-pixel luma p95 188-221 (limit 235) and at most 0.5 %
+-- near-white pixels in every arena.
 M.CEILINGS = { exposure = 0.3, bloomIntensity = 0.9, bloomThresholdMin = 1.35, gradeBrightness = 0.04, gradeContrast = 0.16, sunRays = 0.06, glare = 0.4, dofFar = 0.3, rigKey = 2.4, rigRim = 4.5 }
 
 M.PROFILES = {
