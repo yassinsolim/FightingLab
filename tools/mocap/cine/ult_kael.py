@@ -111,16 +111,28 @@ def build(tl: dict) -> dict:
 
     # --- attacker ------------------------------------------------------------------------------------------------
     pk_edit = pocket(stance)
+    # the catch: the fist stays on its sternum while it folds over it (a runtime grip: the defender reaches its sim spot
+    # over the first frames, MotionPlayer.UltimateEntryGlide, and the fist follows instead of passing through it)
+    catch = {"RightHand": {"grip": C.sternum(), "w": 1.0}}
     A = [
-        pk(0, C.pose_at(C.at(STRAIGHT, "contact"))),
-        pk(6, C.pose_at(C.at(STRAIGHT, "follow"))),
+        pk(0, C.pose_at(C.at(STRAIGHT, "contact")), **catch),
+        pk(5, C.pose_at(C.at(STRAIGHT, "contact")), **catch),
+        pk(9, C.pose_at(C.at(STRAIGHT, "follow"))),
     ]
-    # steps in chest to chest and dips into the Pocket (bobbing), then the shovel hook to the liver
-    dz1, b1 = C.strike_beat(dtrack, i1, LIVER, "LeftHand", C.liver(+1), stance, start_off=9, windup_off=5, recover_off=7, guard_after=8,
-                            dx=-0.20, extra={"guard": pk_edit, "start": {"pelvis_plus": [0.0, -0.06, 0.0]}})
-    A += [pk(14, C.pose_at(stance, dz1 * 0.6), lift=(0.05, 0.05), **pocket(stance, 5))]
-    A += b1[1:]
-    H.add(i1, "LeftHand", "Mid", C.liver(+1))
+    # steps in chest to chest and dips into the Pocket (bobbing) with his head to the other side of its head (it folds
+    # over to its own right, his left: he slips to his right), then the shovel hook to the liver (round 6 follow-up:
+    # stepping in on his left put his head and guard into its folded head)
+    side1 = 0.04
+    # (the rear glove stays tight at his right cheek through the wind-up: the clip's start reached it forward over its
+    # shoulder, into its head)
+    rear_guard = {"RightHand": C.guard_local(stance, dy=0.02, dz=0.02)["RightHand"]}
+    hook = dict(extra={"guard": pk_edit, "start": dict(rear_guard, pelvis_plus=[0.0, -0.12, 0.0]), "windup": dict(rear_guard, pelvis_plus=[0.0, -0.10, 0.0])})
+    _, b1s = C.strike_beat(dtrack, i1, LIVER, "LeftHand", C.liver(+1), stance, start_off=9, windup_off=5, recover_off=7, guard_after=8, dx=side1, **hook)
+    # ... and rolls back under its folded head to his left as he rips the hook in (its head is rising by then)
+    dz1, b1 = C.strike_beat(dtrack, i1, LIVER, "LeftHand", C.liver(+1), stance, start_off=9, windup_off=5, recover_off=7, guard_after=8, dx=-0.12, **hook)
+    A += [pk(15, C.pose_at(stance, dz1 * 0.6, side1 * 0.8), lift=(0.05, 0.05), **pocket(stance, 5))]
+    A += [b1s[1]] + b1[2:]
+    H.add(i1, "LeftHand", "Mid", C.liver(+1), after=5)
     # the rear hook to the other side (a rear shovel ripping in from the right)
     dz2, b2 = C.strike_beat(dtrack, i2, SHOVEL, "RightHand", C.ribs(-1), stance, start_off=10, windup_off=6, recover_off=7, guard_after=8,
                             dx=0.10, extra={"guard": pocket(stance, -5)})
@@ -157,10 +169,12 @@ def build(tl: dict) -> dict:
     A.sort(key=lambda kk: kk["f"])
 
     # --- camera (studs, Kael's frame: +x his right, +z toward the defender) ----------------------------------------
+    # the catch and the clinch in profile from his right (round 6 follow-up: from behind his right shoulder his guard
+    # glove hid its folded face and read as pushed into its head)
     cam = [
-        {"f": 0, "pos": [5.4, 3.6, -1.6], "look": [0.3, 3.4, 2.4], "fov": 38, "cut": True},
-        {"f": 18, "pos": [4.0, 3.0, 0.6], "look": [0.2, 3.0, 2.3], "fov": 35},
-        {"f": i1 + 8, "pos": [3.7, 2.9, 0.9], "look": [0.2, 3.0, 2.3], "fov": 34},
+        {"f": 0, "pos": [5.8, 3.4, 1.0], "look": [0.2, 3.3, 2.2], "fov": 38, "cut": True},
+        {"f": 18, "pos": [4.7, 3.0, 2.0], "look": [0.1, 3.1, 2.1], "fov": 35},
+        {"f": i1 + 8, "pos": [4.4, 2.9, 2.1], "look": [0.1, 3.0, 2.1], "fov": 34},
         # reverse low angle past the defender: Kael's face working the body
         {"f": i1 + 12, "pos": [2.8, 2.3, 7.4], "look": [0.0, 3.3, 1.4], "fov": 35, "cut": True},
         {"f": i2 + 10, "pos": [2.2, 2.2, 7.0], "look": [0.0, 3.3, 1.5], "fov": 34},

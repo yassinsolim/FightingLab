@@ -2,6 +2,8 @@
 
 Values are quantised to 12 bits per channel (2 base64 digits). Channel ranges: root position and limb positions
 [-2, 2], rotations/poles [-1, 1], contacts/ground [0, 1]. Constant channels are stored once ("c" in the layout).
+A clip whose root travels further than 2 leg lengths (a cinematic defender thrown far behind the attacker) carries
+`rootRange = R`: its three root channels span [-R, R] instead (ROOT_RANGE when absent; R is a multiple of 0.5).
 """
 from __future__ import annotations
 
@@ -15,10 +17,21 @@ LEVELS = 4095
 N_CHANNELS = 58
 
 
-def channel_range(c: int) -> tuple[float, float]:
+ROOT_RANGE = 2.0
+
+
+def root_range_for(channels: np.ndarray) -> float:
+    """The root channels' range for these channels: ROOT_RANGE, or the next 0.5 above the largest root value."""
+    peak = float(np.max(np.abs(channels[0:3]))) if channels.size else 0.0
+    if peak <= ROOT_RANGE - 1e-6:
+        return ROOT_RANGE
+    return float(np.ceil((peak + 0.05) / 0.5) * 0.5)
+
+
+def channel_range(c: int, root_range: float = ROOT_RANGE) -> tuple[float, float]:
     """c is 1-based (as in Luau)."""
     if c <= 3:
-        return -2.0, 2.0
+        return -root_range, root_range
     if c <= 15:
         return -1.0, 1.0
     if c >= 56:
@@ -31,7 +44,7 @@ def quantise(v: np.ndarray, lo: float, hi: float) -> np.ndarray:
     return np.clip(np.round((v - lo) / (hi - lo) * LEVELS), 0, LEVELS).astype(int)
 
 
-def encode(channels: np.ndarray, const_eps: float = 0.0005) -> tuple[str, str, int]:
+def encode(channels: np.ndarray, const_eps: float = 0.0005, root_range: float = ROOT_RANGE) -> tuple[str, str, int]:
     """channels: (58, N). Returns (layout, data, clipped count)."""
     if channels.shape[0] != N_CHANNELS:
         raise ValueError("expected 58 channels")
@@ -39,7 +52,7 @@ def encode(channels: np.ndarray, const_eps: float = 0.0005) -> tuple[str, str, i
     parts = []
     clipped = 0
     for c in range(N_CHANNELS):
-        lo, hi = channel_range(c + 1)
+        lo, hi = channel_range(c + 1, root_range)
         v = channels[c]
         clipped += int(np.sum((v < lo - 1e-9) | (v > hi + 1e-9)))
         q = quantise(v, lo, hi)
@@ -53,11 +66,11 @@ def encode(channels: np.ndarray, const_eps: float = 0.0005) -> tuple[str, str, i
     return "".join(layout), "".join(parts), clipped
 
 
-def decode(layout: str, data: str, frames: int) -> np.ndarray:
+def decode(layout: str, data: str, frames: int, root_range: float = ROOT_RANGE) -> np.ndarray:
     out = np.zeros((N_CHANNELS, frames))
     pos = 0
     for c in range(N_CHANNELS):
-        lo, hi = channel_range(c + 1)
+        lo, hi = channel_range(c + 1, root_range)
         step = (hi - lo) / LEVELS
         if layout[c] == "c":
             q = DIGIT[data[pos]] * 64 + DIGIT[data[pos + 1]]
@@ -75,13 +88,16 @@ def decode(layout: str, data: str, frames: int) -> np.ndarray:
 
 def clip_fields(name: str, channels: np.ndarray, meta: dict, source: str, ids: list[str], indent: str = "\t") -> tuple[str, int]:
     """Lua table body (fields only, one per line) for one FLClip1 clip."""
-    layout, data, clipped = encode(channels)
+    root_range = root_range_for(channels)
+    layout, data, clipped = encode(channels, root_range=root_range)
     frames = channels.shape[1]
     fields = [
         'format = "FLClip1"', f'name = "{name}"', f"fps = {meta['fps']:g}", f"frames = {frames}",
         f"loop = {'true' if meta.get('loop') else 'false'}", f"speed = {meta.get('speed', 0.0):.4f}",
         "travel = { %.4f, %.4f, %.4f }" % tuple(meta.get("travel", [0, 0, 0])),
     ]
+    if root_range != ROOT_RANGE:
+        fields.append(f"rootRange = {root_range:g}")
     for key in ("contact", "recover"):
         if meta.get(key) is not None:
             fields.append(f"{key} = {meta[key]:.4f}")
@@ -364,4 +380,4 @@ def parse_lua_table(text: str):
 
 
 def clip_channels(raw: dict) -> np.ndarray:
-    return decode(raw["layout"], raw["data"], int(raw["frames"]))
+    return decode(raw["layout"], raw["data"], int(raw["frames"]), float(raw.get("rootRange") or ROOT_RANGE))

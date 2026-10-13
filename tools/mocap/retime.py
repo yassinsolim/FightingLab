@@ -129,7 +129,7 @@ def find_modules(src: str, names: list[str] | None, all_throws: bool) -> list[st
 
 
 def replace_track(text: str, old: dict, new_ch: np.ndarray) -> str:
-    layout, data, clipped = clipio.encode(new_ch)
+    layout, data, clipped = clipio.encode(new_ch, root_range=float(old.get("rootRange") or clipio.ROOT_RANGE))
     if clipped:
         raise ValueError("re-timed channels out of range")
     i = text.index(f'data = "{old["data"]}"')

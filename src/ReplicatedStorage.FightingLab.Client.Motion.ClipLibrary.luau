@@ -195,9 +195,10 @@ local DIGIT: { [number]: number } = {}
 for i = 1, 64 do DIGIT[string.byte(ALPHABET, i)] = i - 1 end
 local LEVELS = 4095
 
--- Quantisation ranges per channel kind (must match tools/mocap/clipio.py).
-local function channelRange(c: number): (number, number)
-	if c <= 3 then return -2, 2 end
+-- Quantisation ranges per channel kind (must match tools/mocap/clipio.py). A clip's optional `rootRange` widens its
+-- three root channels to [-rootRange, rootRange] (a cinematic body carried or thrown further than 2 leg lengths).
+local function channelRange(c: number, rootRange: number?): (number, number)
+	if c <= 3 then local r = rootRange or 2; return -r, r end
 	if c <= 15 then return -1, 1 end
 	if c >= 56 then return 0, 1 end
 	local k = (c - 16) % 10
@@ -220,10 +221,11 @@ function ClipLibrary.decode(raw: { [string]: any }, name: string?): Clip
 	local data = raw.data
 	if type(frames) ~= "number" or frames < 1 or type(fps) ~= "number" or fps <= 0 then error("ClipLibrary: bad header in " .. tostring(name)) end
 	if type(layout) ~= "string" or #layout ~= ClipLibrary.CHANNELS or type(data) ~= "string" then error("ClipLibrary: bad layout/data in " .. tostring(name)) end
+	local rootRange = if type(raw.rootRange) == "number" and raw.rootRange > 0 then raw.rootRange else 2
 	local channels = table.create(ClipLibrary.CHANNELS)
 	local pos = 1
 	for c = 1, ClipLibrary.CHANNELS do
-		local lo, hi = channelRange(c)
+		local lo, hi = channelRange(c, rootRange)
 		local step = (hi - lo) / LEVELS
 		if string.byte(layout, c) == 99 then -- "c": constant channel
 			local a, b = string.byte(data, pos, pos + 1)

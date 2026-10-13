@@ -143,6 +143,11 @@ local FINAL_HIT_HOLD = 1.1
 MotionPlayer.TeleportDistance = 3
 -- Real-time window after a hit or a throw exit in which the sim's push is absorbed into the glide (see sample).
 MotionPlayer.PushAbsorbWindow = 2.5 / 60
+-- Animation seconds of the defender's glide onto its cinematic spot when the Ultimate lands (the sim puts it endDistance
+-- in front of the attacker on the hit frame). The catch is authored against that spot: held at its pre-hit spot for a
+-- normal push glide (up to 0.2 s), the attacker's catch strike went through its chest and it folded over his arm
+-- (round 6 follow-up). Long enough not to read as a pop.
+MotionPlayer.UltimateEntryGlide = 0.1
 -- Real-time window after a round reset in which the body is shown at the newest entry's position (see sample).
 MotionPlayer.ResetSnapWindow = 0.5
 -- Impact entries (a reaction, knockdown, launch, KO or throw that starts on a hit): the crossfade from whatever the
@@ -1270,7 +1275,7 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 			local remaining = if st.glide and st.glideStart and st.glideDur then (st.glide :: Vector3) * (1 - smoothstep((st.clock - st.glideStart) / st.glideDur)) else Vector3.zero
 			st.glide = remaining - d
 			st.glideStart = st.clock
-			st.glideDur = math.clamp(0.08 + (remaining - d).Magnitude * 0.06, 0.08, 0.2)
+			st.glideDur = if key == "Ultimate" then MotionPlayer.UltimateEntryGlide else math.clamp(0.08 + (remaining - d).Magnitude * 0.06, 0.08, 0.2)
 		end
 	end
 	if not roundReset and (newHit or leavingThrow or enteringUltimate) then st.absorbUntil = st.real + MotionPlayer.PushAbsorbWindow end
@@ -2506,6 +2511,36 @@ local function swapSide(name: string): string
 	if string.sub(name, 1, 5) == "Right" then return "Left" .. string.sub(name, 6) end
 	return name
 end
+-- An Ultimate strike's grip point is where a bare fist meets the partner's head or body; a boxing glove (and the
+-- forearm behind it) is bigger. After the arm reaches the point, whatever of the glove/hand capsule or the lower arm is
+-- still inside the partner's core (Motion.BodyShape) draws the point back toward the striker by that depth and the arm
+-- solves again, as long as that helps (round 6 follow-up: Kael's overhand sank his glove into a smaller opponent's
+-- head). Studs of residual allowed:
+MotionPlayer.StrikeGripClearance = 0.02
+local STRIKE_GRIP_PARTS = { Head = true, UpperTorso = true, LowerTorso = true }
+local function modelOf(rig: RigInfo): Instance?
+	local root = rig.motors.Root.Part0
+	return root and root.Parent or nil
+end
+local function strikeGripDepth(rig: RigInfo, limb: string, partner: RigInfo, frames: { [string]: CFrame }): number
+	local shape = BodyShape.of(rig, rig.parts, modelOf(rig))
+	local pshape = BodyShape.of(partner, partner.parts, modelOf(partner))
+	local tip = rig.tips[limb]
+	local h = shape.hand[limb]
+	if not tip or not h then return 0 end
+	local a, b, r = BodyShape.handCapsule(h, tip)
+	local worst = -math.huge
+	for k = 0, 4 do worst = math.max(worst, r - (BodyShape.coreDistance(pshape, frames, a:Lerp(b, k / 4), false))) end
+	local midName = if limb == "LeftHand" then "LeftLowerArm" else "RightLowerArm"
+	local mid = rig.parts[midName]
+	local midCF = partWorld(rig, midName)
+	if mid and midCF then
+		local mr = math.min(mid.Size.X, mid.Size.Z) * 0.4
+		local half = midCF.UpVector * math.max(mid.Size.Y * 0.5 - mr, 0)
+		for k = 0, 4 do worst = math.max(worst, mr - (BodyShape.coreDistance(pshape, frames, (midCF.Position + half):Lerp(midCF.Position - half, k / 4), false))) end
+	end
+	return worst
+end
 function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, frame: any?, slot: number, partner: RigInfo, floorY: number): number
 	local throw = view.throw
 	local ultimate = Cinematic.isUltimate(throw)
@@ -2550,6 +2585,28 @@ function MotionPlayer.applyGrips(rig: RigInfo, pose: Pose, view: FighterView, fr
 					grip.gripWorld, grip.gripWeight = point, w
 					local heading = hrp.Rotation
 					solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+					if ultimate and not defender and not chain.isLeg and STRIKE_GRIP_PARTS[partName] then
+						local frames: { [string]: CFrame } = {}
+						for _, n in BodyShape.CORE do frames[n] = partWorld(partner, n) :: CFrame end
+						local back = -hrp.LookVector
+						local depth = strikeGripDepth(rig, limb, partner, frames)
+						for _ = 1, 3 do
+							if depth <= MotionPlayer.StrikeGripClearance then break end
+							local before = point
+							point += back * (depth * w + 0.01)
+							grip.gripWorld = point
+							solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+							local after = strikeGripDepth(rig, limb, partner, frames)
+							if after >= depth - 0.005 then
+								-- (no better: back to the last point)
+								point = before
+								grip.gripWorld = point
+								solveChain(rig, chain, parent, heading, heading, grip, floorY, heading, scaleFromRoot(rig.rootHeight), true, 0, nil)
+								break
+							end
+							depth = after
+						end
+					end
 					moved += 1
 					if not chain.isLeg then movedHands[limb] = true end
 				end
