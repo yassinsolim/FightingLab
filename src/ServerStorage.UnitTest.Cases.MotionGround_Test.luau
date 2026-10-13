@@ -101,18 +101,21 @@ end
 -- including the first active frame) and close range (Separation: keepApart cancels the advance). LEAD frames of the
 -- held stance first.
 -- Case groups of the move-clip sweeps (see the step-in and lock-release tests). The throw groups are split by the rig
--- that plays the track (the attacker's own rig for the attacker role, each defender's rig for the defender role).
-local RIG_HALVES: { { [string]: boolean } } = { {}, {} }
-local HALF_NAMES: { { string } } = { {}, {} }
+-- that plays the track (the attacker's own rig for the attacker role, each defender's rig for the defender role), in
+-- RIG_PARTS parts (round 6 follow-up: thirds, so every test stays well inside the runner's 5 s on a loaded machine).
+local RIG_PARTS = 3
+local RIG_SETS: { { [string]: boolean } } = {}
+local SET_NAMES: { { string } } = {}
+for p = 1, RIG_PARTS do RIG_SETS[p], SET_NAMES[p] = {}, {} end
 for i, id in Roster.order do
-	local h = if i <= math.ceil(#Roster.order / 2) then 1 else 2
-	RIG_HALVES[h][id] = true
-	table.insert(HALF_NAMES[h], id)
+	local p = math.min(RIG_PARTS, math.ceil(i * RIG_PARTS / #Roster.order))
+	RIG_SETS[p][id] = true
+	table.insert(SET_NAMES[p], id)
 end
 local GROUND_GROUPS: { any } = { { label = "attacks", throw = false } }
 for _, far in { true, false } do
-	for h = 1, 2 do
-		table.insert(GROUND_GROUPS, { label = string.format("throws at %s range, %s rigs", if far then "max" else "close", table.concat(HALF_NAMES[h], ", ")), throw = true, far = far, ids = RIG_HALVES[h] })
+	for p = 1, RIG_PARTS do
+		table.insert(GROUND_GROUPS, { label = string.format("throws at %s range, %s rigs", if far then "max" else "close", table.concat(SET_NAMES[p], ", ")), throw = true, far = far, ids = RIG_SETS[p] })
 	end
 end
 local function groupCases(cases: { any }, group: any): { any }
@@ -531,8 +534,8 @@ return function(t)
 		print(string.format("[MotionGround] all other moves (information): %d planted foot-frames, %d over %.2f studs: %s", sweepPlanted, sweepOver, TOL, if #sweepList > 0 then table.concat(sweepList, ", ") else "none"))
 	end)
 
-	-- The two sweeps over every move clip run in five groups (attacks; throws at max and at close range, each split by
-	-- the rig that plays the track) so each test stays well inside the runner's time limit (round 5: the knockdown and
+	-- The two sweeps over every move clip run in groups (attacks; throws at max and at close range, each split by the rig
+	-- that plays the track) so each test stays well inside the runner's time limit (round 5: the knockdown and
 	-- thrown-defender clearance made a throw frame dearer). Same cases, same targets.
 	for _, group in GROUND_GROUPS do
 		t.test("move clips never lift a foot the clip holds on the floor (every move clip, both throw roles, max and close range): " .. group.label, function()
