@@ -117,7 +117,7 @@ local function skyline(model: Model, def: Layout.ArenaDef)
 	local towerBase = Vector3.new(behind.X, groundY, behind.Z)
 	local orbit = Props.tower(sky, towerBase, 34, 16, 74, rng, {
 		material = M.Concrete, color = Color3.fromRGB(62, 68, 88), neon = C.violet, lit = 0.28,
-		faces = { Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Back }, crown = false, mast = true,
+		faces = { Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Back }, crown = false, mast = true, windowLight = 0.65,
 	})
 	orbit.Name = "OrbitTower"
 	Props.neonSign(orbit, CFrame.new(towerBase + Vector3.new(0, 66, 8.4)), 22, 4.2, "HOTEL ORBIT", C.violet)
@@ -143,6 +143,7 @@ local function skyline(model: Model, def: Layout.ArenaDef)
 			neon = t[6] :: Color3,
 			faces = faces,
 			lit = 0.3,
+			windowLight = 0.65,
 		})
 		Kit.step()
 	end

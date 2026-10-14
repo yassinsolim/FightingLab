@@ -313,7 +313,7 @@ local function garden(m: Model, g: number, rng: Random)
 	for _, s in { -1, 1 } do
 		local p = c + side * s * 7.5 + out * 8.5
 		local blossom = { Color3.fromRGB(250, 186, 206), Color3.fromRGB(244, 160, 190), Color3.fromRGB(255, 210, 222) }
-		Props.tree(gd, Vector3.new(p.X, 0, p.Z), rng:NextNumber(1, 1.2), rng, blossom)
+		Props.tree(gd, Vector3.new(p.X, 0, p.Z), rng:NextNumber(0.86, 0.96), rng, blossom)
 		local q = c + side * s * 3.5 + out * 8
 		Props.lantern(gd, Vector3.new(q.X, 0, q.Z), Color3.fromRGB(255, 196, 120), M.Granite, Color3.fromRGB(150, 146, 136), 3.6)
 	end
