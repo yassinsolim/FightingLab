@@ -809,7 +809,7 @@ return function(t: Runner.T)
 
 	t.test("lobby modules require without side effects", function()
 		local before = #workspace:GetChildren()
-		for _, name in { "LobbyUI", "LobbyPrompts", "PlayFlow", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController", "LobbySprint", "FlashDetector" } do
+		for _, name in { "LobbyUI", "LobbyPrompts", "PlayFlow", "PracticeTools", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController", "LobbySprint", "FlashDetector" } do
 			local module = Client:FindFirstChild(name)
 			t.expect.truthy(module ~= nil and module:IsA("ModuleScript"), name .. " exists")
 			require(module :: ModuleScript)
@@ -1114,6 +1114,63 @@ return function(t: Runner.T)
 			task.wait()
 			t.expect.equal(m.ctl.toastCount(), toasts + 1)
 		end)
+	end)
+
+	t.test("PLAY flow: PRACTICE > COMBO TRIALS opens the trial list once practice starts; the practice panel has the tools", function()
+		local combos = {
+			{ index = 1, name = "One Two", notation = "1, 2", difficulty = 1, damage = 10, kind = "launch", counter = false, surge = false, steps = { { label = "Jab", notation = "1", move = "Jab" }, { label = "Cross", notation = "2", move = "Cross" } } },
+			{ index = 2, name = "Three Hit", notation = "1, 2, 4", difficulty = 2, damage = 18, kind = "launch", counter = false, surge = false, steps = { { label = "Jab", notation = "1", move = "Jab" }, { label = "Cross", notation = "2", move = "Cross" }, { label = "Kick", notation = "4", move = "Kick" } } },
+		}
+		local stub: any = {}
+		function stub.list(_id: string) return combos end
+		function stub.new(_id: string, index: number)
+			local trial: any = { info = combos[index] }
+			function trial:status() return { state = "Ready", step = 0, total = #combos[index].steps, damage = 0 } end
+			function trial:reset() end
+			function trial:feed(_e: any) return self:status() end
+			return trial
+		end
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_Dojo", "Practice", 5)
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(m.ctl.playFlow().screen(), "Practice")
+			t.expect.equal(cardIds(m), "training,trials,lesson,practiceCpu")
+			press(m, Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).kind, "QuickPlay")
+			t.expect.equal(lastCall(m).payload.practice, "Training")
+			t.expect.falsy(m.ctl.isPlayOpen())
+			m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
+			task.wait()
+			local tools = m.ctl.practiceTools()
+			t.expect.truthy(tools.modalOpen(), "the trial list is up in the dojo")
+			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
+			t.expect.falsy(stage.PracticePanel.Visible, "the list takes the panel's place")
+			-- The list owns the navigation keys; Backspace closes it without leaving practice.
+			local calls = #m.session.calls
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.S), "S browses the list")
+			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Backspace))
+			t.expect.falsy(tools.modalOpen())
+			for i = calls + 1, #m.session.calls do t.expect.falsy(m.session.calls[i][1] == "leave", "Backspace did not leave practice") end
+			-- The panel: COMBO TRIALS, INPUTS and FRAME DATA.
+			m.ctl.setPanelOpen(true)
+			local panel = stage.PracticePanel
+			t.expect.truthy(panel:FindFirstChild("Trials") ~= nil)
+			local inputs = panel:FindFirstChild("ToolInputs", true) :: TextButton
+			local frames = panel:FindFirstChild("ToolFrames", true) :: TextButton
+			t.expect.truthy(inputs ~= nil and frames ~= nil)
+			t.expect.falsy(tools.inputsOn())
+			m.ctl.practiceTools().setInputs(true)
+			m.ctl.refresh()
+			t.expect.truthy(inputs:GetAttribute("Selected"), "the chip shows the state")
+			-- A trial and the guided lesson exclude each other.
+			t.expect.truthy(tools.startTrial(2))
+			t.expect.truthy(m.ctl.startLesson())
+			t.expect.equal(tools.trial(), nil, "the lesson ends the trial")
+			t.expect.truthy(tools.startTrial(1))
+			t.expect.equal(m.ctl.lesson(), nil, "a trial ends the lesson")
+			m.ctl.sessionChanged("Lobby", nil)
+			t.expect.equal(tools.trial(), nil, "leaving practice ends it")
+		end, true, { comboTrial = stub })
 	end)
 
 	t.test("sprint: lobby only, 16 -> 28 studs/s with a smooth ramp and a small FOV ease; never in fights, practice or overlays", function()

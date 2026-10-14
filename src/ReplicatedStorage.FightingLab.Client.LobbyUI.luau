@@ -30,6 +30,7 @@ local Leaderboard = require(Client.Leaderboard)
 local LobbySprint = require(Client.LobbySprint)
 local LobbyPrompts = require(Client.LobbyPrompts)
 local PlayFlow = require(Client.PlayFlow)
+local PracticeTools = require(Client.PracticeTools)
 local Roster = require(Lab.Roster)
 
 local T = UIHelpers.Theme
@@ -76,6 +77,7 @@ export type Env = {
 	onLocalArena: ((arenaId: string?) -> ())?, -- arena of the local player's fight/practice (nil in the lobby)
 	device: (() -> string)?, -- input device override ("keyboard" | "gamepad" | "touch")
 	clock: (() -> number)?, -- time source of the practice panel timers (tests); os.clock by default
+	comboTrial: any?, -- ComboTrial override for the practice tools (tests); ReplicatedStorage.FightingLab.ComboTrial by default
 	humanoid: (() -> Humanoid?)?, -- the lobby avatar's Humanoid (sprint); the local character's by default
 	moving: (() -> boolean)?, -- sprint movement override (tests)
 	camera: (() -> Camera?)?, -- sprint FOV camera (tests); workspace.CurrentCamera when live
@@ -115,6 +117,7 @@ export type Controller = {
 	sessionChanged: (state: string, info: any?) -> (),
 	syncPractice: (mode: any, dummy: any, paused: any?) -> (), -- practice snapshot fields from FightSession
 	practiceState: () -> { cpu: boolean, dummy: string, paused: boolean, difficulty: string },
+	practiceTools: () -> any, -- round 7: input display, frame advantage, combo trials (Client.PracticeTools)
 	panelOpen: () -> boolean, -- the full practice panel is shown (else its strip)
 	setPanelOpen: (open: boolean) -> (), -- show / fold the panel without pausing
 	togglePanel: () -> (), -- the strip / fold button: open as a pause menu, or fold (and resume)
@@ -243,6 +246,7 @@ function LobbyUI.mount(env: Env): Controller
 	local stationConns: { [Instance]: RBXScriptConnection } = {}
 	local destroyed = false
 	local controller: Controller
+	local tools: any -- Client.PracticeTools, mounted with the PLAY flow below
 
 	-- Mutable state shared by the builders below (one table keeps the main function's locals in check).
 	local S = {
@@ -704,6 +708,13 @@ function LobbyUI.mount(env: Env): Controller
 				row("Hint_" .. action, keysFor("practice", action), upper, nil)
 			end
 		end
+		-- Round 7 training tools: combo trials, the input display and the frame advantage readout.
+		P.trials = row("Trials", {}, "COMBO TRIALS", function() if tools then tools.openTrials() end end)
+		local _, toolChips = chipRow("Tools", {}, "SHOW", {
+			{ id = "inputs", name = "ToolInputs", text = "INPUTS", glyphs = {}, onClick = function() if tools then tools.setInputs(not tools.inputsOn()); apply() end end },
+			{ id = "frames", name = "ToolFrames", text = "FRAME DATA", glyphs = {}, onClick = function() if tools then tools.setFrames(not tools.framesOn()); apply() end end },
+		}, T.gold)
+		P.tools = toolChips
 		-- Panel tools (not practice key bindings): fight guide key, the lesson, the menu.
 		P.guide = row("Guide", keysFor("fight", "guide"), string.upper(UIHelpers.actionText("guide")), function()
 			local hud = modules().Hud
@@ -1061,6 +1072,26 @@ function LobbyUI.mount(env: Env): Controller
 		camera = if env.camera then env.camera elseif live then function(): Camera? return workspace.CurrentCamera end else nil,
 		onChanged = function() if controller then controller.refresh() end end,
 		difficulty = function() return S.practiceDifficulty end, setDifficulty = function(level: string) S.practiceDifficulty = level end,
+	})
+	tools = PracticeTools.mount({
+		parent = env.parent, live = live, touchOnly = touchOnly, device = function() return S.device end, clock = clock, sound = sound,
+		practice = function() return S.sessionState == "Practice" or view.mode == "Practice" end, versus = function() return S.practiceCpu == true end, fighter = fighterId,
+		command = function(kind: string, arg: any?) if controller then controller.practiceCommand(kind, arg) end end,
+		send = function(kind: string, a: any?, b: any?)
+			local s = session()
+			if s and typeof(s.send) == "function" then pcall(s.send, kind, a, b, 1) end
+		end,
+		inputLog = function()
+			local hud = modules().Hud
+			if hud and typeof(hud.inputLog) == "function" then
+				local ok, log = pcall(hud.inputLog)
+				if ok then return log end
+			end
+			return nil
+		end,
+		comboTrial = env.comboTrial,
+		onChanged = function() if controller then controller.refresh() end end,
+		onTrialStart = function() if controller then controller.stopLesson() end end,
 	})
 
 	-- Lobby menu ([Tab]) — built on first open ----------------------------------------------------------------------
@@ -1780,7 +1811,7 @@ function LobbyUI.mount(env: Env): Controller
 			S.owedEnable = false
 		end
 		-- Practice runs fight input; the menu pauses it so menu keys never move the fighter.
-		local wantPause = S.menuOpen and view.mode == "Practice"
+		local wantPause = (S.menuOpen or tools.inputBlocked()) and view.mode == "Practice"
 		if wantPause ~= S.gameplayPaused then
 			S.gameplayPaused = wantPause
 			local input = modules().Input
@@ -2171,8 +2202,9 @@ function LobbyUI.mount(env: Env): Controller
 			S.panelPausedSeen = S.paused
 			setPanelOpen(S.paused)
 		end
-		practicePanel.Visible = inPractice and S.panelOpen
-		strip.Visible = inPractice and not S.panelOpen
+		-- The combo trial list takes the panel's place while it is open (the strip stays).
+		practicePanel.Visible = inPractice and S.panelOpen and not tools.modalOpen()
+		strip.Visible = inPractice and (not S.panelOpen or tools.modalOpen())
 		if mode == "Practice" then
 			readPracticeInfo()
 			-- Mode names come from the switchMode legend text ("Training / Versus CPU").
@@ -2185,6 +2217,14 @@ function LobbyUI.mount(env: Env): Controller
 			if P.pause then P.pause.setSelected(S.paused == true) end
 			P.lesson.label.Text = if S.lesson then "END LESSON" else "GUIDED LESSON"
 			P.lesson.setSelected(S.lesson ~= nil)
+			if P.tools then
+				P.tools.inputs.setSelected(tools.inputsOn())
+				P.tools.frames.setSelected(tools.framesOn())
+			end
+			if P.trials then
+				P.trials.setEnabled(tools.available())
+				P.trials.setSelected(tools.trial() ~= nil)
+			end
 			paintStrip()
 		end
 		renderLesson()
@@ -2399,6 +2439,12 @@ function LobbyUI.mount(env: Env): Controller
 			end
 		end
 		if state ~= "Practice" and previous == "Practice" then S.lesson = nil; S.panelOpen = false end
+		tools.sessionChanged(state)
+		-- COMBO TRIALS from the PLAY flow: the trial list opens once the dojo is ready.
+		if state == "Practice" and previous ~= "Practice" and S.pendingTrials then
+			S.pendingTrials = false
+			task.defer(function() if not destroyed and S.sessionState == "Practice" then tools.openTrials() end end)
+		end
 		if state == "Results" and typeof(info) == "table" then
 			if info.result or info.matchEnd or info.winnerSlot ~= nil then
 				S.pendingEnd = info.result or info.matchEnd or info
@@ -2601,6 +2647,7 @@ function LobbyUI.mount(env: Env): Controller
 				Bar.play.label.TextSize = if playLabel == "PLAY" then 36 else 21
 			end
 			flow.tick(dt)
+			tools.tick(dt)
 			if firstHint.Visible then H.firstHintScale.Scale = 1 + math.sin(os.clock() * 3) * 0.035 end
 			sprint.step(dt)
 			if mode == "Countdown" then H.cdRingGradient.Rotation = (H.cdRingGradient.Rotation + dt * 160) % 360 end
@@ -2660,6 +2707,10 @@ function LobbyUI.mount(env: Env): Controller
 			if UIState.LOBBY_MODES[mode] then
 				if playKey then return controller.openPlay() end
 				if fightersKey then return controller.openFighterSelect(nil) end
+			end
+			if mode == "Practice" and tools.modalOpen() then
+				local trialNav = NAV_KEYS[key]
+				if trialNav then return tools.handleNav(trialNav) end
 			end
 			if mode == "Practice" then
 				local action = practiceKey(key)
@@ -2860,6 +2911,7 @@ function LobbyUI.mount(env: Env): Controller
 		end,
 		startLesson = function(): boolean
 			if view.mode ~= "Practice" and S.sessionState ~= "Practice" then return false end
+			tools.endTrial()
 			if S.practiceCpu then controller.practiceCommand("SwitchMode") end
 			local s = session()
 			local slot = 1
@@ -2887,6 +2939,7 @@ function LobbyUI.mount(env: Env): Controller
 		onSnapshot = function(entry: any)
 			if destroyed or typeof(entry) ~= "table" then return end
 			controller.syncPractice(entry.mode, entry.dummy, entry.paused)
+			tools.onSnapshot(entry)
 			-- The local fighter acting on its own input (keys or touch buttons) folds the open panel away.
 			if S.panelOpen and not S.paused and S.sessionState == "Practice" and typeof(entry.fighters) == "table" then
 				local info = S.matchInfo
@@ -2919,6 +2972,7 @@ function LobbyUI.mount(env: Env): Controller
 			end
 		end,
 		practiceState = function() return { cpu = S.practiceCpu, dummy = S.dummy, paused = S.paused, difficulty = S.practiceDifficulty } end,
+		practiceTools = function() return tools end,
 		panelOpen = function() return S.panelOpen end,
 		setPanelOpen = function(open: boolean)
 			if destroyed or view.mode ~= "Practice" then return end
@@ -2948,6 +3002,7 @@ function LobbyUI.mount(env: Env): Controller
 			if on then controller.closeMenu() end
 			renderPicker()
 			flow.setSuppressed(on)
+			tools.setSuppressed(on)
 			apply()
 		end,
 		openPlay = function(screen: string?): boolean
@@ -3025,6 +3080,7 @@ function LobbyUI.mount(env: Env): Controller
 				Mn.unfit(); Mn.gui:Destroy()
 			end
 			flow.destroy()
+			tools.destroy()
 			if fadeGui then fadeGui:Destroy() end
 			pickerGui:Destroy()
 			gui:Destroy()
@@ -3046,14 +3102,14 @@ function LobbyUI.mount(env: Env): Controller
 		if key == Enum.KeyCode.Tab then return true end
 		local overlay = S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen()
 		if overlay then return OVERLAY_KEYS[key] == true or NAV_KEYS[key] ~= nil end
-		if view.mode == "Practice" then return practiceKey(key) ~= nil or isFightKey(key) end
+		if view.mode == "Practice" then return practiceKey(key) ~= nil or isFightKey(key) or (tools.modalOpen() and (NAV_KEYS[key] ~= nil or OVERLAY_KEYS[key] == true)) end
 		return false
 	end
 	-- The left stick browses every overlay like the D-pad (one step per push, re-armed near the centre).
 	local stickDir: string? = nil
 	local STICK_KEYS: { [string]: Enum.KeyCode } = { Left = Enum.KeyCode.DPadLeft, Right = Enum.KeyCode.DPadRight, Up = Enum.KeyCode.DPadUp, Down = Enum.KeyCode.DPadDown }
 	local function onStick(position: Vector3)
-		if not (S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen()) then
+		if not (S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen() or tools.modalOpen()) then
 			stickDir = nil
 			return
 		end

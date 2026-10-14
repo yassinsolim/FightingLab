@@ -5,7 +5,7 @@ return function(t)
 	local expected = {
 		ClientTypes = {},
 		InputController = { "init", "setGameplayEnabled", "isGameplayEnabled", "releaseAll", "setTouchControlsVisible", "bindMenu", "practice", "bindPractice" },
-		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode", "ultimateKey", "statusFor", "stanceName" },
+		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode", "ultimateKey", "statusFor", "stanceName", "recordInput", "inputLog" },
 		-- Round 6 (look): the HUD's drawing kit and its big moments (round intro, K.O., winner, Ultimate card).
 		HudKit = { "capGradient", "cap", "slab", "paintSlab", "chip", "healthBar", "stepTrail", "fillColors" },
 		HudBanners = { "roundIntroText", "roundEndText", "isPerfect", "ultimateName", "build", "show", "flash", "setCinematic", "showUltimate", "showWinner", "hideAll" },
@@ -39,6 +39,8 @@ return function(t)
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
 		-- Round 7: the PLAY flow (who -> map -> fight, practice, searching) behind the bar's PLAY button.
 		PlayFlow = { "new", "cards", "act", "rejected", "arenaModel", "arenaLook", "collectArenas", "previewFrame", "mount" },
+		-- Round 7: practice tools (input display, frame advantage, combo trials on ComboTrial).
+		PracticeTools = { "inputRows", "readout", "formatValue", "comboTrialModule", "mount" },
 		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).
 		LobbyPrompts = { "worldPrompts" },
 		UIHelpers = { "holdPlayerList", "attributes", "isAttack" },
