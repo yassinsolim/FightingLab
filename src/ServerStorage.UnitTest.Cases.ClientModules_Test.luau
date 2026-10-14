@@ -5,7 +5,7 @@ return function(t)
 	local expected = {
 		ClientTypes = {},
 		InputController = { "init", "setGameplayEnabled", "isGameplayEnabled", "releaseAll", "setTouchControlsVisible", "bindMenu", "practice", "bindPractice" },
-		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode", "ultimateKey", "statusFor", "stanceName" },
+		HudController = { "init", "setVisible", "onSnapshot", "onEvent", "update", "setFighterInfo", "announce", "setViewSlot", "toggleGuide", "setGuide", "guideVisible", "guideMode", "ultimateKey", "statusFor", "stanceName", "recordInput", "inputLog" },
 		-- Round 6 (look): the HUD's drawing kit and its big moments (round intro, K.O., winner, Ultimate card).
 		HudKit = { "capGradient", "cap", "slab", "paintSlab", "chip", "healthBar", "stepTrail", "fillColors" },
 		HudBanners = { "roundIntroText", "roundEndText", "isPerfect", "ultimateName", "build", "show", "flash", "setCinematic", "showUltimate", "showWinner", "hideAll" },
@@ -22,7 +22,7 @@ return function(t)
 		["Motion.ClipPlayer"] = { "sample", "moveTime", "progressTime" },
 		EffectsController = { "init", "onEvent", "onPhase", "update" },
 		AudioController = { "init", "play", "playMusic", "onEvent", "onPhase" },
-		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena", "occluderRelevant", "rigFrames" },
+		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena", "occluderRelevant", "rigFrames", "previewArena", "previewing", "animOffset", "hidesInOwnFight" },
 		SelectScene = { "init", "showCharacter", "showStage", "showVS", "hide", "update", "isActive", "debugInstanceCount" },
 		CreditsScreen = { "render", "scroll", "hasData" },
 		FrontEnd = { "init", "start", "onSnapshot", "update" },
@@ -34,9 +34,13 @@ return function(t)
 		-- Round 5: lobby sprint (Controls.lobby.sprint), driven by LobbyUI.
 		LobbySprint = { "new", "bindInput", "stepAlpha", "speedFor", "fovFor" },
 		-- Round 6: the lobby camera framed over the player's shoulder after a fight, a practice or a quick travel.
-		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers" },
+		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers", "facingOf" },
 		SpectatorPresenter = { "init", "onSnapshot", "update", "clear" },
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
+		-- Round 7: the PLAY flow (who -> map -> fight, practice, searching) behind the bar's PLAY button.
+		PlayFlow = { "new", "cards", "act", "rejected", "arenaModel", "arenaLook", "collectArenas", "previewFrame", "previewFov", "lobbyCameraType", "mount" },
+		-- Round 7: practice tools (input display, frame advantage, combo trials on ComboTrial).
+		PracticeTools = { "inputRows", "readout", "formatValue", "comboTrialModule", "mount" },
 		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).
 		LobbyPrompts = { "worldPrompts" },
 		UIHelpers = { "holdPlayerList", "attributes", "isAttack" },

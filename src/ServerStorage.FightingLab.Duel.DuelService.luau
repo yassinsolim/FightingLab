@@ -49,6 +49,8 @@ type Station = {
 	fighters: { string }, resultsUntil: number?, winnerSlot: number, resultText: string, matchId: string, practiceCount: number,
 	-- Held for players the server is about to teleport onto its pads (no walk-in claims, no second assignment).
 	reserved: boolean,
+	-- Round 7: a player the server is moving onto one circle to wait there (VS PLAYER on a chosen arena), by side.
+	incoming: { [number]: Record? },
 }
 
 local DuelService = {}
@@ -101,7 +103,7 @@ function DuelService:addStation(arena: WorldIndex.Arena)
 		id = arena.id, arena = arena, kind = arena.kind, folder = folder, published = {},
 		pads = {}, participants = {}, state = "Open", countdownDeadline = 0, countdownEndsAt = 0, host = nil,
 		cpuSlot = nil, difficulty = "", fighters = {}, resultsUntil = nil, winnerSlot = 0, resultText = "", matchId = "", practiceCount = 0,
-		reserved = false,
+		reserved = false, incoming = {},
 	}
 	self.stations[arena.id] = station
 	table.insert(self.stationOrder, arena.id)
@@ -132,6 +134,7 @@ function DuelService:stationAttributes(station: Station): { [string]: any }
 		WinnerSlot = station.winnerSlot, ResultText = station.resultText, Cpu = station.host ~= nil and station.cpuSlot ~= nil,
 		Difficulty = if station.host and station.cpuSlot then station.difficulty else "", MatchId = station.matchId,
 		PracticeCount = station.practiceCount,
+		Reserved = station.reserved or next(station.incoming) ~= nil,
 	}
 	local host = station.host
 	if host then
@@ -265,8 +268,11 @@ function DuelService:sendDuel(rec: Record, kind: string, payload: { [string]: an
 	self.stats.lastSentAt = os.clock()
 end
 
-function DuelService:reject(rec: Record, request: string, reason: string)
-	self:sendDuel(rec, "Rejected", { request = request, reason = reason })
+-- Rejected {request, reason}; `extra` adds fields (round 7: ArenaBusy carries `arena` and `next`, the next free one).
+function DuelService:reject(rec: Record, request: string, reason: string, extra: { [string]: any }?)
+	local payload: { [string]: any } = { request = request, reason = reason }
+	if extra then for key, value in extra do payload[key] = value end end
+	self:sendDuel(rec, "Rejected", payload)
 end
 
 local function takeToken(rec: Record, now: number): boolean
@@ -377,7 +383,7 @@ function DuelService:pollPads()
 				if station.kind == "Duel" and not station.reserved and (station.state == "Open" or station.state == "Waiting") then
 					for side = 1, 2 do
 						local pad = station.arena.pads[side]
-						if pad and station.pads[side] == nil and WorldIndex.onPad(pad, position) then
+						if pad and station.pads[side] == nil and station.incoming[side] == nil and WorldIndex.onPad(pad, position) then
 							self:claimPad(station, side, rec)
 							break
 						end
@@ -665,7 +671,7 @@ function DuelService:requestCpu(rec: Record, difficulty: string)
 		self:reject(rec, "RequestCpu", "NotWaiting")
 		return
 	end
-	if station.state ~= "Waiting" or station.pads[3 - rec.padSide] ~= nil then
+	if station.state ~= "Waiting" or station.pads[3 - rec.padSide] ~= nil or station.incoming[3 - rec.padSide] ~= nil then
 		self:reject(rec, "RequestCpu", "NotAlone")
 		return
 	end
@@ -792,21 +798,30 @@ function DuelService:setQuickStatus(rec: Record, status: string)
 	self:publishRecord(rec)
 end
 
--- A duel arena nobody uses: open, not reserved, no claims and nobody standing on its circles.
+-- Someone (other than `except` or the pad's claimant) stands on a station's duel circle.
+function DuelService:padOccupied(station: Station, side: number, except: Record?): boolean
+	local pad = station.arena.pads[side]
+	if not pad then return true end
+	for _, rec in self.records do
+		if rec ~= except and rec ~= station.pads[side] then
+			local position = self.positionOf(rec.player)
+			if position and WorldIndex.onPad(pad, position, 1) then return true end
+		end
+	end
+	return false
+end
+
+-- A duel arena nobody uses: open, not reserved, no claims, nobody on the way and nobody standing on its circles.
+function DuelService:arenaFree(station: Station): boolean
+	if station.kind ~= "Duel" or station.state ~= "Open" or station.reserved or next(station.incoming) ~= nil then return false end
+	if station.pads[1] or station.pads[2] or not station.arena.pads[1] or not station.arena.pads[2] then return false end
+	return not self:padOccupied(station, 1) and not self:padOccupied(station, 2)
+end
+
 function DuelService:freeArena(): Station?
 	for _, id in self.stationOrder do
 		local station = self.stations[id]
-		if station.kind == "Duel" and station.state == "Open" and not station.reserved and not station.pads[1] and not station.pads[2]
-			and station.arena.pads[1] and station.arena.pads[2] then
-			local occupied = false
-			for _, rec in self.records do
-				local position = self.positionOf(rec.player)
-				for _, pad in station.arena.pads do
-					if position and WorldIndex.onPad(pad, position, 1) then occupied = true end
-				end
-			end
-			if not occupied then return station end
-		end
+		if self:arenaFree(station) then return station end
 	end
 	return nil
 end
@@ -815,9 +830,46 @@ function DuelService:freeArenaCount(): number
 	local n = 0
 	for _, id in self.stationOrder do
 		local station = self.stations[id]
-		if station.kind == "Duel" and station.state == "Open" and not station.reserved and not station.pads[1] and not station.pads[2] then n += 1 end
+		if station.kind == "Duel" and station.state == "Open" and not station.reserved and next(station.incoming) == nil and not station.pads[1] and not station.pads[2] then n += 1 end
 	end
 	return n
+end
+
+-- Round 7 (VS PLAYER on a chosen arena): the circle a player is put on to wait, or nil when the arena has none free.
+-- Opposite a player already waiting (or on the way) first: that is an instant duel.
+function DuelService:waitSide(station: Station, except: Record?): number?
+	if station.kind ~= "Duel" or station.reserved or (station.state ~= "Open" and station.state ~= "Waiting") then return nil end
+	local function free(side: number): boolean
+		return station.arena.pads[side] ~= nil and station.pads[side] == nil and station.incoming[side] == nil and not self:padOccupied(station, side, except)
+	end
+	for side = 1, 2 do
+		if free(side) and (station.pads[3 - side] ~= nil or station.incoming[3 - side] ~= nil) then return side end
+	end
+	for side = 1, 2 do
+		if free(side) then return side end
+	end
+	return nil
+end
+
+-- The arena offered when a chosen one is busy: the next free duel arena in Order for a CPU fight; for VS PLAYER the
+-- first arena with a free circle, one where somebody already waits preferred.
+function DuelService:nextArena(mode: string, avoid: string?, except: Record?): string?
+	local fallback: string? = nil
+	for _, id in self.stationOrder do
+		local station = self.stations[id]
+		if id ~= avoid then
+			if mode == "Cpu" then
+				if self:arenaFree(station) then return id end
+			else
+				local side = self:waitSide(station, except)
+				if side then
+					if station.pads[3 - side] ~= nil then return id end
+					fallback = fallback or id
+				end
+			end
+		end
+	end
+	return fallback
 end
 
 function DuelService:dojo(mode: string): Station?
@@ -861,6 +913,7 @@ end
 -- circle, who must still be there when the move happens.
 function DuelService:sendToPads(station: Station, assignment: { [number]: Record }, waiter: Record?)
 	station.reserved = true
+	self:publishStation(station)
 	local recs, since = {}, {}
 	for _, rec in assignment do
 		since[rec] = if rec.quick then (rec.quick :: any).since else self.now()
@@ -872,6 +925,7 @@ function DuelService:sendToPads(station: Station, assignment: { [number]: Record
 	local job: { [string]: any } = {}
 	job.run = function(alive: boolean)
 		station.reserved = false
+		self:publishStation(station)
 		local waiterOk = waiter == nil or (self.records[waiter.player] == waiter and station.pads[waiter.padSide] == waiter and (station.state == "Waiting"))
 		local free = waiter ~= nil or (station.state == "Open" and not station.pads[1] and not station.pads[2])
 		if not alive or not waiterOk or not free then
@@ -914,7 +968,7 @@ function DuelService:matchmake()
 		if station.kind == "Duel" and station.state == "Waiting" and not station.reserved then
 			local side = if station.pads[1] and not station.pads[2] then 2 elseif station.pads[2] and not station.pads[1] then 1 else nil
 			local waiter = if side then station.pads[3 - side] else nil
-			if side and waiter and not self:avatarLoading(waiter) and station.arena.pads[side] then
+			if side and waiter and station.incoming[side] == nil and not self:avatarLoading(waiter) and station.arena.pads[side] then
 				self:sendToPads(station, { [side] = table.remove(searchers, 1) :: Record }, waiter)
 			end
 		end
@@ -950,6 +1004,34 @@ function DuelService:cancelQueue(rec: Record)
 	self:matchmake()
 end
 
+-- Round 7 VS PLAYER on a chosen arena: the player is moved onto its free circle and waits there like a walk-in (the
+-- Quick Duel matchmaking sends "Any map" searchers to circle waiters first; someone already waiting there means an
+-- instant countdown). No free circle: rejected "ArenaBusy" with the next arena that has one.
+function DuelService:waitAt(rec: Record, station: Station)
+	local side = self:waitSide(station, rec)
+	if not side then
+		self:reject(rec, "QuickPlay", "ArenaBusy", { arena = station.id, next = self:nextArena("Duel", station.id, rec) or "" })
+		return
+	end
+	local s = side :: number
+	station.incoming[s] = rec
+	self:publishStation(station)
+	local job: { [string]: any } = {}
+	job.run = function(alive: boolean)
+		if station.incoming[s] == rec then station.incoming[s] = nil end
+		local pad = station.arena.pads[s]
+		local open = pad ~= nil and station.pads[s] == nil and not station.reserved and (station.state == "Open" or station.state == "Waiting")
+		if not alive or not open then
+			self:publishStation(station)
+			if alive then self:reject(rec, "QuickPlay", "ArenaBusy", { arena = station.id, next = self:nextArena("Duel", station.id, rec) or "" }) end
+			return
+		end
+		self:teleport(rec, WorldIndex.padFrame(pad :: WorldIndex.Pad, station.arena.origin))
+		self:claimPad(station, s, rec)
+	end
+	self:schedule(job, { rec }, "Wait", station.id)
+end
+
 function DuelService:quickPlay(rec: Record, payload: { [string]: any })
 	local now = self.now()
 	if rec.pending ~= nil or now - rec.lastQuick < NetProtocol.QuickPlayCooldown then
@@ -957,13 +1039,28 @@ function DuelService:quickPlay(rec: Record, payload: { [string]: any })
 		return
 	end
 	local mode = payload.mode :: string
+	-- Round 7: a chosen duel arena (VS CPU / VS PLAYER map pick); unknown ids and the dojo are not duel arenas.
+	local chosen: Station? = nil
+	if mode ~= "Practice" and typeof(payload.arena) == "string" then
+		chosen = self.stations[payload.arena]
+		if not chosen or chosen.kind ~= "Duel" then
+			self:reject(rec, "QuickPlay", "NoArena")
+			return
+		end
+	end
 	if rec.state == "Queued" then
 		local station = self.stations[rec.arenaId]
-		if mode == "Duel" then
-			-- Already waiting on a circle: Quick Duel searchers are sent here first.
+		local here = chosen == nil or chosen == station
+		if mode == "Duel" and here then
+			-- Already waiting on a circle (of that arena): Quick Duel searchers are sent here first.
 			self:reject(rec, "QuickPlay", "OnCircle")
 			return
-		elseif mode == "Cpu" and station and station.state == "Waiting" and station.pads[3 - rec.padSide] == nil then
+		elseif mode == "Cpu" and here and station and station.state == "Waiting" then
+			if station.pads[3 - rec.padSide] ~= nil or station.incoming[3 - rec.padSide] ~= nil then
+				-- A challenger is here or on the way: keep the circle.
+				self:reject(rec, "QuickPlay", "NotAlone")
+				return
+			end
 			-- Alone on a circle: the CPU joins right here (no wait, no move).
 			rec.lastQuick = now
 			self:startMatch(station, { slot = 3 - rec.padSide, difficulty = NetProtocol.validDifficulty(payload.difficulty) or "Normal" })
@@ -977,7 +1074,7 @@ function DuelService:quickPlay(rec: Record, payload: { [string]: any })
 		return
 	end
 	rec.lastQuick = now
-	if mode == "Duel" then
+	if mode == "Duel" and not chosen then
 		if rec.quick then return end
 		rec.quick = { since = now }
 		rec.quickStatus = "Searching"
@@ -985,33 +1082,46 @@ function DuelService:quickPlay(rec: Record, payload: { [string]: any })
 		self:matchmake()
 		return
 	end
-	-- Fight CPU and Practice leave the queue first.
+	-- Fight CPU, a chosen arena and Practice leave the queue first.
 	if rec.quick then
 		rec.quick = nil
 		rec.quickStatus = ""
 		self:publishRecord(rec)
+		self:matchmake()
 	end
-	if mode == "Cpu" then
-		local station = self:freeArena()
+	if mode == "Duel" then
+		self:waitAt(rec, chosen :: Station)
+	elseif mode == "Cpu" then
+		local station: Station? = if chosen then (if self:arenaFree(chosen) then chosen else nil) else self:freeArena()
+		local function busy()
+			if chosen then
+				self:reject(rec, "QuickPlay", "ArenaBusy", { arena = chosen.id, next = self:nextArena("Cpu", chosen.id, rec) or "" })
+			else
+				self:reject(rec, "QuickPlay", "ArenasBusy")
+			end
+		end
 		if not station then
-			self:reject(rec, "QuickPlay", "ArenasBusy")
+			busy()
 			return
 		end
-		station.reserved = true
+		local target = station :: Station
+		target.reserved = true
+		self:publishStation(target)
 		local difficulty = NetProtocol.validDifficulty(payload.difficulty) or "Normal"
 		local job: { [string]: any } = {}
 		job.run = function(alive: boolean)
-			station.reserved = false
-			if not alive or station.state ~= "Open" or station.pads[1] or station.pads[2] then
-				if alive then self:reject(rec, "QuickPlay", "ArenasBusy") end
+			target.reserved = false
+			if not alive or target.state ~= "Open" or target.pads[1] or target.pads[2] or next(target.incoming) ~= nil then
+				self:publishStation(target)
+				if alive then busy() end
 				return
 			end
-			local pad = station.arena.pads[1] :: WorldIndex.Pad
-			self:teleport(rec, WorldIndex.padFrame(pad, station.arena.origin))
-			self:claimPad(station, 1, rec)
-			self:startMatch(station, { slot = 2, difficulty = difficulty })
+			local pad = target.arena.pads[1] :: WorldIndex.Pad
+			self:teleport(rec, WorldIndex.padFrame(pad, target.arena.origin))
+			self:claimPad(target, 1, rec)
+			self:startMatch(target, { slot = 2, difficulty = difficulty })
 		end
-		self:schedule(job, { rec }, "Cpu", station.id)
+		self:schedule(job, { rec }, "Cpu", target.id)
 	elseif mode == "Practice" then
 		local padMode = payload.practice :: string
 		local station = self:dojo(padMode)

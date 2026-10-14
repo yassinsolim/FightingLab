@@ -717,4 +717,178 @@ return function(t)
 		t.expect.equal(start.difficulty, "Easy")
 		t.expect.equal(lastSent(h, a, "Teleport"), nil, "no move needed")
 	end)
+
+	-- Round 7 PLAY flow: two duel arenas (A, B in Order) and the dojo.
+	local B_ORIGIN = Vector3.new(0, 0, 200)
+	local function arenaHarness(): any
+		local h: any = quickHarness()
+		local world = h.service.deps.world
+		world.arenas.Arena_B = {
+			id = "Arena_B", stageId = "JungleRuins", displayName = "Arena B", kind = "Duel", order = 2, origin = B_ORIGIN,
+			pads = { [1] = pad(B_ORIGIN + Vector3.new(-27, 0, 0), 1), [2] = pad(B_ORIGIN + Vector3.new(27, 0, 0), 2) },
+			practicePads = {}, exits = { P1 = CFrame.new(B_ORIGIN + Vector3.new(-33, 0.5, 0)), P2 = CFrame.new(B_ORIGIN + Vector3.new(33, 0.5, 0)) },
+		}
+		table.insert(world.order, 2, "Arena_B")
+		h.service:addStation(world.arenas.Arena_B)
+		table.remove(h.service.stationOrder)
+		table.insert(h.service.stationOrder, 2, "Arena_B")
+		return h
+	end
+	local function onPadOf(origin: Vector3, side: number): Vector3
+		return origin + Vector3.new(if side == 1 then -27 else 27, 3, 0)
+	end
+
+	t.test("round 7: VS CPU on a chosen map fights there; a busy map is refused with the next free one", function()
+		local h = arenaHarness()
+		t.expect.equal(table.concat(h.service.stationOrder, ","), "Arena_Test,Arena_B,Arena_Dojo")
+		local a, b, c = stub(1, Vector3.new(0, 3, 0), "Lumi"), stub(2, Vector3.new(3, 3, 0), "Kael"), stub(3, Vector3.new(-3, 3, 0), "Nia")
+		for _, p in { a, b, c } do h.service:addPlayer(p) end
+		h.service:onLobby(a, "QuickPlay", { mode = "Cpu", difficulty = "Hard", arena = "Arena_B" })
+		local notice = lastSent(h, a, "Teleport")
+		t.expect.truthy(notice ~= nil and notice.arenaId == "Arena_B" and notice.reason == "Cpu", "taken to the chosen map")
+		t.expect.equal(h.stations.Arena_B:GetAttribute("Reserved"), true, "the map is held while the move is pending")
+		-- Meanwhile the chosen map is not free for anybody else.
+		h.service:onLobby(b, "QuickPlay", { mode = "Cpu", arena = "Arena_B" })
+		local busy = lastSent(h, b, "Rejected")
+		t.expect.equal(busy.reason, "ArenaBusy")
+		t.expect.equal(busy.arena, "Arena_B")
+		t.expect.equal(busy.next, "Arena_Test", "the next free map is offered")
+		settle(h)
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil and start.arenaId == "Arena_B", "the CPU fight starts on the chosen map")
+		t.expect.equal(start.difficulty, "Hard")
+		t.expect.truthy(near(a.position, onPadOf(B_ORIGIN, 1)), "on the chosen map's P1 circle")
+		t.expect.equal(h.stations.Arena_B:GetAttribute("Reserved"), false)
+		-- The offered map works.
+		h.clock.t += 1
+		h.service:onLobby(b, "QuickPlay", { mode = "Cpu", arena = busy.next })
+		settle(h)
+		t.expect.equal(lastSent(h, b, "MatchStart").arenaId, "Arena_Test")
+		-- Every map busy: refused with no alternative; the dojo and unknown ids are not duel maps.
+		h.service:onLobby(c, "QuickPlay", { mode = "Cpu", arena = "Arena_Test" })
+		local none = lastSent(h, c, "Rejected")
+		t.expect.equal(none.reason, "ArenaBusy")
+		t.expect.equal(none.next, "", "nothing free to offer")
+		h.clock.t += 1
+		h.service:onLobby(c, "QuickPlay", { mode = "Cpu", arena = "Arena_Dojo" })
+		t.expect.equal(lastSent(h, c, "Rejected").reason, "NoArena")
+		h.clock.t += 1
+		h.service:onLobby(c, "QuickPlay", { mode = "Cpu", arena = "Arena_Nowhere" })
+		t.expect.equal(lastSent(h, c, "Rejected").reason, "NoArena")
+		h.clock.t += 1
+		h.service:onLobby(c, "QuickPlay", { mode = "Cpu", arena = "../Arena_B" })
+		t.expect.equal(lastSent(h, c, "Rejected").reason, "Invalid", "malformed ids never reach the service")
+		-- Without a map it is today's "any free arena" (none left now).
+		h.clock.t += 1
+		h.service:onLobby(c, "QuickPlay", { mode = "Cpu" })
+		t.expect.equal(lastSent(h, c, "Rejected").reason, "ArenasBusy")
+	end)
+
+	t.test("round 7: VS PLAYER on a chosen map waits on its circle; a second player there or an Any map searcher starts the duel", function()
+		local h = arenaHarness()
+		local a, b = stub(1, Vector3.new(0, 3, 0), "Kael"), stub(2, Vector3.new(3, 3, 0), "Goran")
+		h.service:addPlayer(a)
+		h.service:addPlayer(b)
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		local notice = lastSent(h, a, "Teleport")
+		t.expect.truthy(notice ~= nil and notice.reason == "Wait" and notice.arenaId == "Arena_B", "taken to the chosen map to wait")
+		local ra = h.service:recordOf(a)
+		t.expect.equal(ra.quick, nil, "a chosen map is not the Any map queue")
+		t.expect.equal(h.stations.Arena_B:GetAttribute("Reserved"), true)
+		-- A walk-in cannot take the circle the server is moving `a` onto.
+		local walker = stub(9, onPadOf(B_ORIGIN, 1))
+		h.service:addPlayer(walker)
+		h.service:pollPads()
+		t.expect.equal(h.service:recordOf(walker).state, "Lobby", "the incoming circle takes no walk-in")
+		h.service:removePlayer(walker)
+		settle(h)
+		t.expect.truthy(near(a.position, onPadOf(B_ORIGIN, 1)))
+		t.expect.equal(ra.state, "Queued", "waiting on the chosen map's circle")
+		t.expect.equal(ra.arenaId, "Arena_B")
+		t.expect.equal(h.stations.Arena_B:GetAttribute("State"), "Waiting")
+		t.expect.equal(h.stations.Arena_B:GetAttribute("Reserved"), false)
+		-- Picking the same map again says you are already there.
+		h.clock.t += 1
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		t.expect.equal(lastSent(h, a, "Rejected").reason, "OnCircle")
+		-- A second player picking that map is put on the other circle: countdown.
+		h.service:onLobby(b, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		settle(h)
+		t.expect.truthy(near(b.position, onPadOf(B_ORIGIN, 2)), "opposite the waiter")
+		t.expect.equal(ra.state, "Countdown")
+		t.expect.equal(h.service:recordOf(b).state, "Countdown")
+		-- That map is now busy: the next map with a free circle is offered.
+		local c = stub(3, Vector3.new(-3, 3, 0), "Nia")
+		h.service:addPlayer(c)
+		h.service:onLobby(c, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		local busy = lastSent(h, c, "Rejected")
+		t.expect.equal(busy.reason, "ArenaBusy")
+		t.expect.equal(busy.next, "Arena_Test")
+		-- c waits on Arena_Test instead; an Any map searcher is sent to c (circle waiters first).
+		h.clock.t += 1
+		h.service:onLobby(c, "QuickPlay", { mode = "Duel", arena = busy.next })
+		settle(h)
+		t.expect.equal(h.service:recordOf(c).state, "Queued")
+		local d = stub(4, Vector3.new(0, 3, 4), "Rhys")
+		h.service:addPlayer(d)
+		h.service:onLobby(d, "QuickPlay", { mode = "Duel" })
+		t.expect.equal(h.service:recordOf(d).quickStatus, "Matched", "Any map joins the player waiting on a chosen map")
+		settle(h)
+		t.expect.equal(h.service:recordOf(c).state, "Countdown")
+		t.expect.equal(h.service:recordOf(d).state, "Countdown")
+		t.expect.truthy(near(d.position, onPad(2)))
+	end)
+
+	t.test("round 7: waiting on a chosen map: cancel, fight a CPU right there, switch maps, two players arriving at once", function()
+		local h = arenaHarness()
+		local a = stub(1, Vector3.new(0, 3, 0), "Sierra")
+		h.service:addPlayer(a)
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel", arena = "Arena_Test" })
+		settle(h)
+		local ra = h.service:recordOf(a)
+		t.expect.equal(ra.state, "Queued")
+		-- Cancel = LeaveFight: back to the lobby, the circle is free again (no re-claim until stepping off).
+		h.service:onLobby(a, "LeaveFight", {})
+		t.expect.equal(ra.state, "Lobby")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Open")
+		h.service:pollPads()
+		t.expect.equal(ra.state, "Lobby", "standing on the circle does not re-queue at once")
+		-- Wait again, then fight a CPU right there (no move).
+		h.clock.t += 1
+		h.service:onLobby(a, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		settle(h)
+		t.expect.equal(ra.arenaId, "Arena_B", "switched maps")
+		t.expect.equal(h.stations.Arena_Test:GetAttribute("State"), "Open")
+		local teleports = countSent(h, a, "Teleport")
+		h.clock.t += 1
+		h.service:onLobby(a, "QuickPlay", { mode = "Cpu", difficulty = "Easy", arena = "Arena_B" })
+		local start = lastSent(h, a, "MatchStart")
+		t.expect.truthy(start ~= nil and start.cpu == true and start.arenaId == "Arena_B", "the CPU joins on the circle")
+		t.expect.equal(start.difficulty, "Easy")
+		t.expect.equal(countSent(h, a, "Teleport"), teleports, "no move")
+		-- Two players picking the same open map at once: one circle each, then the countdown.
+		local h2 = arenaHarness()
+		local p, q, walker = stub(5, Vector3.new(0, 3, 0)), stub(6, Vector3.new(2, 3, 0)), stub(7, Vector3.new(-2, 3, 0))
+		for _, s in { p, q, walker } do h2.service:addPlayer(s) end
+		h2.service:onLobby(p, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		h2.service:onLobby(q, "QuickPlay", { mode = "Duel", arena = "Arena_B" })
+		t.expect.equal(lastSent(h2, q, "Rejected"), nil, "the second arrival gets the other circle")
+		settle(h2)
+		t.expect.equal(h2.service:recordOf(p).state, "Countdown")
+		t.expect.equal(h2.service:recordOf(q).state, "Countdown")
+		-- A challenger already on the way to the other circle: the waiter's CPU request keeps the circle.
+		h2.service:onLobby(walker, "QuickPlay", { mode = "Duel", arena = "Arena_Test" })
+		local w = h2.service:recordOf(walker)
+		local r = stub(8, Vector3.new(4, 3, 4))
+		h2.service:addPlayer(r)
+		settle(h2)
+		t.expect.equal(w.state, "Queued")
+		h2.service:onLobby(r, "QuickPlay", { mode = "Duel", arena = "Arena_Test" })
+		h2.clock.t += 1
+		h2.service:onLobby(walker, "QuickPlay", { mode = "Cpu" })
+		t.expect.equal(lastSent(h2, walker, "Rejected").reason, "NotAlone", "a challenger is on the way")
+		t.expect.equal(w.state, "Queued", "still waiting on the circle")
+		settle(h2)
+		t.expect.equal(w.state, "Countdown")
+	end)
 end

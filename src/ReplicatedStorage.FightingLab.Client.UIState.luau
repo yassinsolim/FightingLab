@@ -22,6 +22,7 @@ export type LobbyInput = {
 	searching: boolean?, -- in the Quick Duel queue (Player attribute QuickQueue > 0)
 	searchSeconds: number?, -- time spent in the queue
 	quickStatus: string?, -- Player attribute QuickStatus: Searching | Busy | Matched
+	offerDelay: number?, -- seconds alone on a circle before the CPU is offered (round 7: the PLAY flow's VS PLAYER map)
 }
 export type LobbyView = {
 	mode: string, -- Hidden | Results | Practice | Countdown | Waiting | CpuOffer | PracticeChoice | Searching | Lobby
@@ -101,8 +102,8 @@ function M.lobbyView(input: LobbyInput): LobbyView
 	if duel == "Queued" then
 		local arena = input.arenaName or "the arena"
 		view.title = "WAITING FOR A CHALLENGER"
-		view.subtitle = string.upper(arena) .. "  ·  " .. (if side == 2 then "P2" else "P1") .. " CIRCLE  ·  STEP OFF TO LEAVE"
-		if (input.queuedSeconds or 0) >= M.CPU_OFFER_DELAY then
+		view.subtitle = string.upper(arena) .. "  ·  " .. (if side == 2 then "P2" else "P1") .. " CIRCLE  ·  STEP OFF OR CANCEL TO LEAVE"
+		if (input.queuedSeconds or 0) >= (input.offerDelay or M.CPU_OFFER_DELAY) then
 			view.mode = "CpuOffer"
 			view.offer = "No challenger yet? " .. press .. " to fight a CPU"
 		else
@@ -119,7 +120,7 @@ function M.lobbyView(input: LobbyInput): LobbyView
 			return view
 		end
 		view.title = "SEARCHING  " .. M.clock(seconds)
-		view.subtitle = if input.quickStatus == "Busy" then "All arenas are busy  ·  you are next in line" else "Walk around while you wait  ·  PLAY to cancel"
+		view.subtitle = if input.quickStatus == "Busy" then "All maps are busy  ·  you are next in line" else "Walk around while you wait  ·  Cancel any time"
 		if seconds >= M.QUICK_CPU_OFFER then
 			view.cpuInstead = true
 			view.offer = "No opponent yet? Fight a CPU instead"
@@ -128,7 +129,7 @@ function M.lobbyView(input: LobbyInput): LobbyView
 	end
 	view.mode = "Lobby"
 	view.title = "PRESS PLAY TO FIGHT"
-	view.subtitle = "Or walk into a glowing circle  ·  Fighter Kiosk: change fighter"
+	view.subtitle = "VS Player, VS CPU or Practice  ·  then pick a map"
 	return view
 end
 
@@ -266,126 +267,6 @@ function M.pickerAction(state: Picker, action: string): Picker
 		p.cancelled = true
 	end
 	return p
-end
-
---------------------------------------------------------------------------------------------------------------------
--- PLAY panel (round 5). Pure: the rows the bottom bar's PLAY panel shows for the current facts, keyboard / gamepad
--- focus over them and the request each item sends. Every action is two steps: open PLAY, pick an item.
---   duel     : QUICK DUEL (server matchmaking queue); while searching CANCEL, and FIGHT CPU INSTEAD after
---              QUICK_CPU_OFFER seconds
---   cpu      : Easy / Normal / Hard (server teleports you onto a free arena and the CPU match starts at once)
---   practice : Free training / Guided lesson / Versus CPU (teleport onto the dojo pad, practice starts)
---   travel   : every arena (its Arrival point, to watch or walk in) and back to the plaza
---------------------------------------------------------------------------------------------------------------------
-export type PlayItem = { id: string, label: string, sub: string, enabled: boolean, accent: string }
-export type PlayRow = { id: string, title: string, items: { PlayItem } }
-export type PlayArena = { id: string, name: string, kind: string, state: string, order: number }
-export type PlayInput = {
-	searching: boolean?, searchSeconds: number?, quickStatus: string?,
-	pending: boolean?, -- a PLAY request is in flight (debounce)
-	onCircle: boolean?, -- waiting on a duel circle (Quick Duel already effectively running there)
-	freeArenas: number?, -- duel arenas nobody uses (Stations attribute FreeArenas)
-	arenas: { PlayArena }?,
-}
-export type PlayFocus = { row: number, col: number }
-M.PLAY_ROW_IDS = { "duel", "cpu", "practice", "travel" } -- "travel" continues as "travel2", "travel3"... (3 per line)
-M.PLAY_TRAVEL_PER_ROW = 3
-local ARENA_STATE_TEXT: { [string]: string } = { Open = "OPEN", Waiting = "1 WAITING", Countdown = "STARTING", Fighting = "LIVE", Results = "LIVE" }
-local CPU_TEXT: { [string]: string } = { Easy = "Learn the basics", Normal = "A fair fight", Hard = "Reads and punishes" }
-
-function M.playRows(input: PlayInput): { PlayRow }
-	local can = input.pending ~= true
-	local busy = (input.freeArenas or 1) <= 0
-	local rows: { PlayRow } = {}
-	local duel: { PlayItem } = {}
-	if input.searching then
-		local secs = input.searchSeconds or 0
-		local offer = secs >= M.QUICK_CPU_OFFER
-		table.insert(duel, { id = "cpuInstead", label = "FIGHT CPU INSTEAD", sub = if offer then "Nobody yet: a Normal CPU, right now" else string.format("Offered after %d s", M.QUICK_CPU_OFFER), enabled = offer and can and not busy, accent = "warm" })
-		table.insert(duel, { id = "cancel", label = "CANCEL SEARCH", sub = "Searching " .. M.clock(secs), enabled = true, accent = "muted" })
-	else
-		local sub = if input.onCircle then "You are already waiting on a circle" elseif busy then "All arenas busy: you will queue" else "Find an opponent"
-		table.insert(duel, { id = "quick", label = "QUICK DUEL", sub = sub, enabled = can and input.onCircle ~= true, accent = "ember" })
-	end
-	table.insert(rows, { id = "duel", title = "VERSUS A PLAYER", items = duel })
-	local cpu: { PlayItem } = {}
-	for _, d in { "Easy", "Normal", "Hard" } do
-		local ok = can and (input.onCircle == true or not busy)
-		table.insert(cpu, { id = "cpu:" .. d, label = string.upper(d), sub = if ok or not can then CPU_TEXT[d] else "All arenas busy", enabled = ok, accent = d })
-	end
-	table.insert(rows, { id = "cpu", title = "FIGHT CPU", items = cpu })
-	table.insert(rows, { id = "practice", title = "PRACTICE", items = {
-		{ id = "practice:Training", label = "FREE TRAINING", sub = "A dummy, your rules", enabled = can, accent = "cool" },
-		{ id = "practice:Lesson", label = "GUIDED LESSON", sub = "10 short steps", enabled = can, accent = "cool" },
-		{ id = "practice:Cpu", label = "VERSUS CPU", sub = "Practice match", enabled = can, accent = "warm" },
-	} })
-	local travel: { PlayItem } = {}
-	local arenas = table.clone(input.arenas or {})
-	table.sort(arenas, function(a, b)
-		if a.order ~= b.order then return a.order < b.order end
-		return a.id < b.id
-	end)
-	for _, a in arenas do
-		local state = if a.kind == "Practice" then "DOJO" else (ARENA_STATE_TEXT[a.state] or "OPEN")
-		table.insert(travel, { id = "travel:" .. a.id, label = string.upper(a.name), sub = state, enabled = can, accent = if a.kind == "Practice" then "cool" else "gold" })
-	end
-	table.insert(travel, { id = "travel:Plaza", label = "PLAZA", sub = "Start area", enabled = can, accent = "muted" })
-	-- Three per line so every arena name fits: rows "travel", "travel2", ... (arrow keys move between the lines).
-	for i = 1, #travel, M.PLAY_TRAVEL_PER_ROW do
-		local line = table.move(travel, i, math.min(#travel, i + M.PLAY_TRAVEL_PER_ROW - 1), 1, {})
-		local n = (i - 1) // M.PLAY_TRAVEL_PER_ROW + 1
-		table.insert(rows, { id = if n == 1 then "travel" else "travel" .. n, title = if n == 1 then "GO TO" else "", items = line })
-	end
-	return rows
-end
-
--- Where the focus starts: the item most players want next.
-function M.playDefaultFocus(rows: { PlayRow }): PlayFocus
-	local duel = rows[1]
-	if duel and duel.items[1] and duel.items[1].id == "cpuInstead" and not duel.items[1].enabled then return { row = 1, col = 2 } end
-	return { row = 1, col = 1 }
-end
-
--- Keyboard / gamepad / mouse focus: Up | Down | Left | Right | Confirm | Set:<row>:<col>. Returns the new focus and
--- the id of an item that was activated (Confirm on an enabled item).
-function M.playNav(rows: { PlayRow }, focus: PlayFocus, action: string): (PlayFocus, string?)
-	local row = math.clamp(focus.row, 1, math.max(1, #rows))
-	local function clampCol(r: number, c: number): number
-		local items = rows[r] and rows[r].items or {}
-		return math.clamp(c, 1, math.max(1, #items))
-	end
-	local col = clampCol(row, focus.col)
-	local setRow, setCol = string.match(action, "^Set:(%d+):(%d+)$")
-	if setRow then
-		local r = math.clamp(tonumber(setRow) or 1, 1, math.max(1, #rows))
-		return { row = r, col = clampCol(r, tonumber(setCol) or 1) }, nil
-	end
-	if action == "Up" or action == "Down" then
-		local nextRow = math.clamp(row + (if action == "Up" then -1 else 1), 1, math.max(1, #rows))
-		return { row = nextRow, col = clampCol(nextRow, col) }, nil
-	elseif action == "Left" or action == "Right" then
-		return { row = row, col = clampCol(row, col + (if action == "Left" then -1 else 1)) }, nil
-	elseif action == "Confirm" then
-		local item = rows[row] and rows[row].items[col]
-		if item and item.enabled then return { row = row, col = col }, item.id end
-	end
-	return { row = row, col = col }, nil
-end
-
--- The request an item sends: { kind = Lobby kind, payload = {...}, lesson = guided lesson after practice starts }.
-function M.playRequest(id: string, difficulty: string?): { kind: string, payload: { [string]: any }, lesson: boolean }?
-	local level = if difficulty == "Easy" or difficulty == "Hard" then difficulty else "Normal"
-	if id == "quick" then return { kind = "QuickPlay", payload = { mode = "Duel" }, lesson = false } end
-	if id == "cancel" then return { kind = "CancelQueue", payload = {}, lesson = false } end
-	if id == "cpuInstead" then return { kind = "QuickPlay", payload = { mode = "Cpu", difficulty = "Normal" }, lesson = false } end
-	local cpuLevel = string.match(id, "^cpu:(%a+)$")
-	if cpuLevel then return { kind = "QuickPlay", payload = { mode = "Cpu", difficulty = cpuLevel }, lesson = false } end
-	if id == "practice:Training" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Training" }, lesson = false } end
-	if id == "practice:Lesson" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Training" }, lesson = true } end
-	if id == "practice:Cpu" then return { kind = "QuickPlay", payload = { mode = "Practice", practice = "Cpu", difficulty = level }, lesson = false } end
-	local to = string.match(id, "^travel:([%w_]+)$")
-	if to then return { kind = "Travel", payload = { to = to }, lesson = false } end
-	return nil
 end
 
 --------------------------------------------------------------------------------------------------------------------

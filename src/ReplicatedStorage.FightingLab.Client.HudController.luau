@@ -49,6 +49,9 @@ local PORTRAIT_PARKED = CFrame.new(0, -500, 0)
 local PORTRAIT_SETTLE = 0.2
 local refs: { [string]: any } = {}
 local inputHistory: { string } = {}
+-- Round 7: the same inputs with the time they were pressed (os.clock), newest first, for the practice input display.
+local inputLog: { { text: string, t: number } } = {}
+M.INPUT_LOG_SIZE = 12
 local portraitIds: { [number]: string } = {}
 local hudVisible = false
 local debugShown = false
@@ -493,8 +496,16 @@ function M.setGuide(on: boolean)
 end
 function M.toggleGuide() M.setGuide(not guideShown) end
 function M.toggleDebug() debugShown = not debugShown end
-function M.recordInput(textValue: string) table.insert(inputHistory, 1, textValue); while #inputHistory > 10 do table.remove(inputHistory) end end
+function M.recordInput(textValue: string, at: number?)
+	table.insert(inputHistory, 1, textValue); while #inputHistory > 10 do table.remove(inputHistory) end
+	table.insert(inputLog, 1, { text = textValue, t = at or os.clock() }); while #inputLog > M.INPUT_LOG_SIZE do table.remove(inputLog) end
+end
 function M.inputHistory(): { string } return table.clone(inputHistory) end
+function M.inputLog(): { { text: string, t: number } }
+	local out = {}
+	for i, e in inputLog do out[i] = { text = e.text, t = e.t } end
+	return out
+end
 -- Clears the per-session guide memory (tests and tools).
 function M._resetForTests() table.clear(guideSeen); guideShown = false; guideAutoUntil = 0; guidePending = false end
 -- Forces touch-only (true) or keyboard/gamepad (false) behaviour; nil restores the real device (tests only; the
@@ -591,6 +602,7 @@ function M.setViewSlot(slot: number)
 	table.clear(stances)
 	table.clear(stateHistory)
 	table.clear(inputHistory)
+	table.clear(inputLog)
 	trails = { { value = maxHealth[1], holdUntil = 0 }, { value = maxHealth[2], holdUntil = 0 } }
 	guidePending = true
 end

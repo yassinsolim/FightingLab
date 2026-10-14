@@ -44,9 +44,12 @@ NetProtocol.LobbyKinds = {
 }
 NetProtocol.DuelKinds = { Countdown = true, CountdownCancelled = true, MatchStart = true, MatchEnd = true, Rejected = true, Teleport = true }
 
--- PLAY panel (round 5). QuickPlay modes: "Duel" joins the matchmaking queue (paired players are teleported onto a free
--- duel arena's PadP1 / PadP2, or onto the free circle of a player already waiting there), "Cpu" teleports onto a free
--- arena's PadP1 and starts a CPU match at once, "Practice" teleports onto the dojo pad and starts practice.
+-- PLAY (round 5, round 7 flow). QuickPlay modes: "Duel" joins the matchmaking queue (paired players are teleported onto
+-- a free duel arena's PadP1 / PadP2, or onto the free circle of a player already waiting there), "Cpu" teleports onto a
+-- free arena's PadP1 and starts a CPU match at once, "Practice" teleports onto the dojo pad and starts practice.
+-- Round 7: Duel and Cpu take an optional `arena` (ArenaId). Cpu fights there (rejected "ArenaBusy" with `next` = the
+-- next free arena when it is in use); Duel puts the player on that arena's free circle to wait for an opponent (no
+-- arena = "Any map" = the matchmaking queue).
 NetProtocol.QuickModes = { Duel = true, Cpu = true, Practice = true }
 -- After this long in the Quick Duel queue the PLAY panel offers "Fight CPU instead".
 NetProtocol.QuickCpuOfferSeconds = 12
@@ -66,7 +69,15 @@ NetProtocol.StationDefaults = {
 	P1UserId = 0, P2UserId = 0, P1Name = "", P2Name = "", P1Fighter = "", P2Fighter = "",
 	CountdownEndsAt = 0, Phase = "", Round = 0, P1Rounds = 0, P2Rounds = 0, P1Health = 1, P2Health = 1, Timer = 0,
 	WinnerSlot = 0, ResultText = "", Cpu = false, Difficulty = "", MatchId = "",
+	-- Round 7: players are on their way to this arena (server teleport pending): its circles are spoken for.
+	Reserved = false,
 }
+
+-- Arena ids sent by clients (Travel `to`, QuickPlay `arena`): letters, digits and underscores, at most 48 characters.
+function NetProtocol.validArenaId(value: unknown): string?
+	if typeof(value) ~= "string" or #value == 0 or #value > 48 or string.find(value, "[^%w_]") then return nil end
+	return value
+end
 
 local function ensureChild(parent: Instance, className: string, name: string): Instance
 	local existing = parent:FindFirstChild(name)
@@ -141,12 +152,17 @@ function NetProtocol.parseLobby(kind: unknown, payload: unknown): (string?, { [s
 			if practice ~= "Training" and practice ~= "Cpu" then return nil, nil end
 			clean.practice = practice
 			clean.opponent = NetProtocol.validFighter(p.opponent)
+		elseif p.arena ~= nil and p.arena ~= "" then
+			-- A chosen arena (round 7 PLAY flow); a malformed id rejects the message, an unknown one is the service's call.
+			local arena = NetProtocol.validArenaId(p.arena)
+			if not arena then return nil, nil end
+			clean.arena = arena
 		end
 		return kind, clean
 	elseif kind == "Travel" then
 		-- An arena id (letters, digits, underscores) or "Plaza"; the service checks that the arena exists.
-		local to = p.to
-		if typeof(to) ~= "string" or #to == 0 or #to > 48 or string.find(to, "[^%w_]") then return nil, nil end
+		local to = NetProtocol.validArenaId(p.to)
+		if not to then return nil, nil end
 		return kind, { to = to }
 	end
 	return kind, {}

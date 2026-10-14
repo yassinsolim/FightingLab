@@ -331,6 +331,24 @@ return function(t)
 		t.expect.equal(NetProtocol.PlayerDefaults.QuickStatus, "")
 	end)
 
+	t.test("round 7 PLAY flow: QuickPlay Duel / Cpu carry a chosen map; malformed map ids are rejected", function()
+		local _, cpu = NetProtocol.parseLobby("QuickPlay", { mode = "Cpu", difficulty = "Easy", arena = "Arena_HarborDusk" })
+		t.expect.equal((cpu :: any).arena, "Arena_HarborDusk")
+		t.expect.equal((cpu :: any).difficulty, "Easy")
+		local _, duel = NetProtocol.parseLobby("QuickPlay", { mode = "Duel", arena = "Arena_JungleRuins" })
+		t.expect.equal((duel :: any).arena, "Arena_JungleRuins")
+		local _, any = NetProtocol.parseLobby("QuickPlay", { mode = "Duel", arena = "" })
+		t.expect.equal((any :: any).arena, nil, "an empty map is Any map")
+		local _, practice = NetProtocol.parseLobby("QuickPlay", { mode = "Practice", practice = "Training", arena = "Arena_HarborDusk" })
+		t.expect.equal((practice :: any).arena, nil, "practice always goes to the dojo")
+		for _, bad in { "../Arena", "Arena Harbor", string.rep("A", 60), 12, true } do
+			t.expect.falsy(NetProtocol.parseLobby("QuickPlay", { mode = "Cpu", arena = bad }), "rejects map " .. tostring(bad))
+		end
+		t.expect.equal(NetProtocol.validArenaId("Arena_SnowSummit"), "Arena_SnowSummit")
+		t.expect.equal(NetProtocol.validArenaId("Arena/Snow"), nil)
+		t.expect.equal(NetProtocol.StationDefaults.Reserved, false, "stations publish Reserved while players are on their way")
+	end)
+
 	t.test("appearance handshake counts the rigid welded gear (FightingLabExtra) too", function()
 		local model = Instance.new("Model")
 		local hand = Instance.new("Part"); hand.Name = "LeftHand"; hand.Parent = model
