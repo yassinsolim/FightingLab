@@ -48,7 +48,7 @@ Controls.actionText = {
 	reset = "Reset positions", switchMode = "Training / Versus CPU", easy = "CPU Easy", normal = "CPU Normal", hard = "CPU Hard",
 	dummy = "Dummy: stand / guard / fight back", pause = "Pause", leave = "Leave practice",
 	interact = "Interact", menu = "Menu", jump = "Jump",
-	play = "Play: Quick Duel, Fight CPU, Practice, Arenas", fighters = "Change fighter", sprint = "Sprint",
+	play = "Play: VS Player, VS CPU, Practice", fighters = "Change fighter", sprint = "Sprint",
 }
 
 local KEY_LABELS: { [string]: string } = {
