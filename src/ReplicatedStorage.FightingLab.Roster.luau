@@ -265,10 +265,11 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Final Bell': an armored lunging right straight opens it; on hit the cinematic plays the beats listed in movesets.md (shovel, body hook, uppercut, straight, then the overhand that drops the opponent face-down)." }),
 }, {
 	combos = {
-		{ name = "Uppercut Bread", kind = "launch", notation = "df+2, 1, b+1, 2,1", damage = 32, difficulty = 2, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
-		{ name = "Pocket Launch", kind = "stance", notation = "3+4, PKT+2, 1, b+1, 2,1", damage = 31, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "PKT+2" }, { wait = 38, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
-		{ name = "Counter Uppercut", kind = "max", notation = "CH df+2, 1, b+1, 2,1", damage = 36, difficulty = 3, counter = true, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 8, input = "1" } } },
-		{ name = "Final Bell Finish", kind = "ultimate", notation = "df+2, 1+2", damage = 37, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+2" }, { wait = 32, input = "1+2" } } },
+		{ name = "Uppercut Rush", kind = "launch", notation = "df+2, 2,1,2", damage = 33, difficulty = 1, steps = { { wait = 0, input = "df+2" }, { wait = 33, input = "2" }, { wait = 10, input = "1" }, { wait = 10, input = "2" } } },
+		{ name = "Pocket Launch", kind = "stance", notation = "3+4, PKT+2, 2,1,2", damage = 32, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 9, input = "PKT+2" }, { wait = 31, input = "2" }, { wait = 10, input = "1" }, { wait = 10, input = "2" } } },
+		{ name = "Rib Roller Finish", kind = "max", notation = "df+2, b+1, 2,1,2", damage = 37, difficulty = 2, steps = { { wait = 0, input = "df+2" }, { wait = 33, input = "b+1" }, { wait = 33, input = "2" }, { wait = 10, input = "1" }, { wait = 10, input = "2" } } },
+		{ name = "Counter Uppercut", kind = "counter", notation = "CH df+2, 1, b+1, 2,1", damage = 36, difficulty = 3, counter = true, steps = { { wait = 0, input = "df+2" }, { wait = 33, input = "1" }, { wait = 23, input = "b+1" }, { wait = 33, input = "2" }, { wait = 10, input = "1" } } },
+		{ name = "Final Bell Finish", kind = "ultimate", notation = "df+2, 1+2", damage = 37, difficulty = 1, surge = true, steps = { { wait = 0, input = "df+2" }, { wait = 33, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "Pocket", name = "Pocket", summary = "3+4: a low bob-and-roll crouch. Highs sail over him the whole time; PKT+1 is a +1 body shovel, PKT+2 an uppercut launcher. Cancel 1,2 / 2 / d+2 into it; hold back to leave." },
 	stances = {
@@ -354,10 +355,11 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Eight Limbs': an armored long teep opens it; on hit the cinematic plays the beats in movesets.md (body kick, clinch knees, elbow, switch head kick)." }),
 }, {
 	combos = {
-		{ name = "Switch Teep", kind = "launch", notation = "df+3, 3, 3+4, SPW+3, 1,3", damage = 34, difficulty = 4, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "3" }, { wait = 15, input = "3+4" }, { wait = 8, input = "SPW+3" }, { wait = 32, input = "1" }, { wait = 8, input = "3" } } },
-		{ name = "Counter Knee", kind = "counter", notation = "CH f+3, 1,3,4", damage = 32, difficulty = 2, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 26, input = "1" }, { wait = 8, input = "3" }, { wait = 11, input = "4" } } },
-		{ name = "Knee To Southpaw", kind = "max", notation = "CH f+3, 1,3, 3+4, SPW+3, 2", damage = 36, difficulty = 4, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 26, input = "1" }, { wait = 8, input = "3" }, { wait = 19, input = "3+4" }, { wait = 8, input = "SPW+3" }, { wait = 32, input = "2" } } },
-		{ name = "Eight Limbs Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 37, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "1+2" } } },
+		{ name = "Elbow Roundhouse", kind = "launch", notation = "df+3, 2, 4,4", damage = 34, difficulty = 1, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "2" }, { wait = 28, input = "4" }, { wait = 10, input = "4" } } },
+		{ name = "Switch Teep", kind = "stance", notation = "df+3, 3, 3+4, SPW+3, 2", damage = 33, difficulty = 3, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "3" }, { wait = 22, input = "3+4" }, { wait = 7, input = "SPW+3" }, { wait = 26, input = "2" } } },
+		{ name = "Counter Knee", kind = "counter", notation = "CH f+3, 2, 4,4", damage = 37, difficulty = 2, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 27, input = "2" }, { wait = 28, input = "4" }, { wait = 10, input = "4" } } },
+		{ name = "Knee To Southpaw", kind = "max", notation = "CH f+3, 1,3, 3+4, SPW+3, 2", damage = 36, difficulty = 5, counter = true, steps = { { wait = 0, input = "f+3" }, { wait = 27, input = "1" }, { wait = 12, input = "3" }, { wait = 22, input = "3+4" }, { wait = 7, input = "SPW+3" }, { wait = 26, input = "2" } } },
+		{ name = "Eight Limbs Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 37, difficulty = 1, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "Southpaw", name = "Southpaw", summary = "3+4: switch the lead leg. Southpaw guards highs and mids while held; SPW+4 fast long head kick, SPW+3 power body kick (tumbles in juggles), SPW+d+4 low kick. Cancel 3 / 1,3 into it; 3+4 again or back to switch back." },
 	stances = {
@@ -437,10 +439,10 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Landslide': an armored charging shoulder opens it; on hit the cinematic plays the beats in movesets.md (body-lock crush, suplex, knee slam, carry and forward drop)." }),
 }, {
 	combos = {
-		{ name = "Lift And Hammer", kind = "launch", notation = "d+2, f+3, 1,2", damage = 34, difficulty = 2, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" } } },
-		{ name = "Counter Haymaker", kind = "counter", notation = "CH b+2, f+3, 1,2", damage = 40, difficulty = 3, counter = true, steps = { { wait = 0, input = "b+2" }, { wait = 32, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" } } },
-		{ name = "Forearm Finish", kind = "max", notation = "d+2, f+3, 1,2,1", damage = 39, difficulty = 3, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "f+3" }, { wait = 34, input = "1" }, { wait = 8, input = "2" }, { wait = 11, input = "1" } } },
-		{ name = "Landslide Finish", kind = "ultimate", notation = "d+2, 1+2", damage = 42, difficulty = 2, surge = true, steps = { { wait = 0, input = "d+2" }, { wait = 35, input = "1+2" } } },
+		{ name = "Hammer Down", kind = "launch", notation = "d+2, 2,2", damage = 32, difficulty = 1, steps = { { wait = 0, input = "d+2" }, { wait = 36, input = "2" }, { wait = 10, input = "2" } } },
+		{ name = "Lift And Hammer", kind = "max", notation = "d+2, f+3, 1,2", damage = 34, difficulty = 1, steps = { { wait = 0, input = "d+2" }, { wait = 36, input = "f+3" }, { wait = 34, input = "1" }, { wait = 10, input = "2" } } },
+		{ name = "Counter Haymaker", kind = "counter", notation = "CH b+2, f+3, 1,2", damage = 40, difficulty = 2, counter = true, steps = { { wait = 0, input = "b+2" }, { wait = 33, input = "f+3" }, { wait = 34, input = "1" }, { wait = 10, input = "2" } } },
+		{ name = "Landslide Finish", kind = "ultimate", notation = "d+2, 1+2", damage = 42, difficulty = 1, surge = true, steps = { { wait = 0, input = "d+2" }, { wait = 36, input = "1+2" } } },
 	},
 	signature = { kind = "catch", key = "BearTrap", name = "Bear Trap", summary = "3+4: open arms for frames 4-24. A high or mid strike that touches him is caught into an unbreakable Belly Suplex. Lows and throws beat it; very punishable on whiff. Plus armored power moves (3, f+2, f,f+2, 3,2,2) and the f+1+3 command grab." },
 })
@@ -516,11 +518,11 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Skyline': an armored running jump kick opens it; on hit the cinematic plays the beats in movesets.md (heel kick, cartwheel kick, wall-run flip off the chest, scissor kick, drop sweep, falling heel)." }),
 }, {
 	combos = {
-		{ name = "Flip And Spin", kind = "launch", notation = "df+4, 2, 1,4, 4", damage = 34, difficulty = 3, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
-		{ name = "Aerial Launch", kind = "stance", notation = "3+4, AER+4, 2, 1,4, 4", damage = 33, difficulty = 4, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "AER+4" }, { wait = 41, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
-		{ name = "Cartwheel Counter", kind = "counter", notation = "CH b+3, 2, 1,4, 4", damage = 40, difficulty = 3, counter = true, steps = { { wait = 0, input = "b+3" }, { wait = 34, input = "2" }, { wait = 30, input = "1" }, { wait = 8, input = "4" }, { wait = 11, input = "4" } } },
-		{ name = "Crescent Flight", kind = "max", notation = "df+4, 2, 3,4,4", damage = 35, difficulty = 3, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "2" }, { wait = 30, input = "3" }, { wait = 8, input = "4" }, { wait = 14, input = "4" } } },
-		{ name = "Skyline Finish", kind = "ultimate", notation = "df+4, 1+2", damage = 35, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+4" }, { wait = 37, input = "1+2" } } },
+		{ name = "Flip Kick Combo", kind = "launch", notation = "df+4, 2, 1,4", damage = 29, difficulty = 1, steps = { { wait = 0, input = "df+4" }, { wait = 38, input = "2" }, { wait = 30, input = "1" }, { wait = 10, input = "4" } } },
+		{ name = "Aerial Launch", kind = "stance", notation = "3+4, AER+4, 2, 1,4,4", damage = 33, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 13, input = "AER+4" }, { wait = 30, input = "2" }, { wait = 30, input = "1" }, { wait = 10, input = "4" }, { wait = 10, input = "4" } } },
+		{ name = "Cartwheel Counter", kind = "counter", notation = "CH b+3, 2, 1,4,4", damage = 40, difficulty = 3, counter = true, steps = { { wait = 0, input = "b+3" }, { wait = 35, input = "2" }, { wait = 30, input = "1" }, { wait = 10, input = "4" }, { wait = 10, input = "4" } } },
+		{ name = "Flip And Spin", kind = "max", notation = "df+4, 2, 1,4,4", damage = 34, difficulty = 2, steps = { { wait = 0, input = "df+4" }, { wait = 38, input = "2" }, { wait = 30, input = "1" }, { wait = 10, input = "4" }, { wait = 10, input = "4" } } },
+		{ name = "Skyline Finish", kind = "ultimate", notation = "df+4, 1+2", damage = 35, difficulty = 1, surge = true, steps = { { wait = 0, input = "df+4" }, { wait = 38, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "Aerial", name = "Aerial", summary = "3+4: a forward no-hands cartwheel, airborne over lows from frame 3 to 18, traveling 2.2 studs. AER+3 split kick (tumbles in juggles), AER+4 rising heel launcher, AER+d+3 drop sweep; lands on its own at frame 26. Cancel d+3 into it." },
 	stances = {
@@ -603,10 +605,11 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Last Kata': an armored gliding reverse punch opens it; on hit the cinematic plays the beats in movesets.md (knife-hand, front kick, rising elbow, a long still breath, one decisive reverse punch)." }),
 }, {
 	combos = {
-		{ name = "Knee And Backfist", kind = "launch", notation = "df+3, 2, b+2, 1", damage = 31, difficulty = 2, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
-		{ name = "Still Water Answer", kind = "stance", notation = "3+4, STW+2, 2, b+2, 1", damage = 32, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 1, input = "STW+2" }, { wait = 40, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
-		{ name = "Counter Knee", kind = "max", notation = "CH df+3, 2, b+2, 1", damage = 34, difficulty = 3, counter = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
-		{ name = "Last Kata Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 38, difficulty = 2, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 32, input = "1+2" } } },
+		{ name = "Knee Rush", kind = "launch", notation = "df+3, 1,2,4", damage = 29, difficulty = 1, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "1" }, { wait = 10, input = "2" }, { wait = 12, input = "4" } } },
+		{ name = "Still Water Answer", kind = "stance", notation = "3+4, STW+2, 2, b+2, 1", damage = 32, difficulty = 3, steps = { { wait = 0, input = "3+4" }, { wait = 11, input = "STW+2" }, { wait = 31, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Knee And Backfist", kind = "max", notation = "df+3, 2, b+2, 1", damage = 31, difficulty = 1, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Counter Knee", kind = "counter", notation = "CH df+3, 2, b+2, 1", damage = 34, difficulty = 2, counter = true, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "2" }, { wait = 30, input = "b+2" }, { wait = 35, input = "1" } } },
+		{ name = "Last Kata Finish", kind = "ultimate", notation = "df+3, 1+2", damage = 38, difficulty = 1, surge = true, steps = { { wait = 0, input = "df+3" }, { wait = 33, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "StillWater", name = "Still Water", summary = "3+4: a still counter stance. From frame 8 every high or mid strike that touches him is parried (26-frame stagger, he is free at once). Lows and throws beat it. STW+1 fast mid punch, STW+2 rising reverse punch launcher. Cancel d+1 / d+4 into it; hold back to leave. Plus parries on b+1 (high/mid) and db+1 (low)." },
 	stances = {
@@ -688,10 +691,11 @@ define({
 		intent = "ULTIMATE (Surge only, once per round) 'Monsoon': an armored spinning palm strike opens it; on hit the cinematic plays the beats in movesets.md (double palm, spinning chop, sweep, spiral kick, mid-air whirl, two-palm push)." }),
 }, {
 	combos = {
-		{ name = "Palm Lift Flurry", kind = "launch", notation = "db+2, 1, 3, 2,3", damage = 31, difficulty = 3, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "1" }, { wait = 23, input = "3" }, { wait = 29, input = "2" }, { wait = 8, input = "3" } } },
-		{ name = "Coil Whirl", kind = "stance", notation = "db+2, 4, 3+4, COIL+4,4", damage = 32, difficulty = 4, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
-		{ name = "Whirlwind Rise", kind = "low", notation = "d+3,4, 4, 3+4, COIL+4,4", damage = 39, difficulty = 4, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
-		{ name = "Monsoon Finish", kind = "ultimate", notation = "d+3,4, 1+2", damage = 44, difficulty = 3, surge = true, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "1+2" } } },
+		{ name = "Palm Flurry", kind = "launch", notation = "db+2, 1,1,4", damage = 26, difficulty = 1, steps = { { wait = 0, input = "db+2" }, { wait = 33, input = "1" }, { wait = 10, input = "1" }, { wait = 10, input = "4" } } },
+		{ name = "Palm Lift Flurry", kind = "max", notation = "db+2, 1, 3, 2,3", damage = 31, difficulty = 2, steps = { { wait = 0, input = "db+2" }, { wait = 33, input = "1" }, { wait = 23, input = "3" }, { wait = 29, input = "2" }, { wait = 10, input = "3" } } },
+		{ name = "Coil Whirl", kind = "stance", notation = "db+2, 4, 3+4, COIL+4,4", damage = 32, difficulty = 3, steps = { { wait = 0, input = "db+2" }, { wait = 33, input = "4" }, { wait = 22, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 10, input = "4" } } },
+		{ name = "Whirlwind Rise", kind = "low", notation = "d+3,4, 4, 3+4, COIL+4,4", damage = 39, difficulty = 3, steps = { { wait = 0, input = "d+3" }, { wait = 12, input = "4" }, { wait = 42, input = "4" }, { wait = 22, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 10, input = "4" } } },
+		{ name = "Monsoon Finish", kind = "ultimate", notation = "d+3,4, 1+2", damage = 44, difficulty = 1, surge = true, steps = { { wait = 0, input = "d+3" }, { wait = 12, input = "4" }, { wait = 42, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "Coil", name = "Coil", summary = "3+4: wind the body like a spring. COIL+4 starts the whirl: three spinning kicks (COIL+4,4,4: mid, high, mid knockdown) whose 2nd and 3rd hits can be delayed; COIL+d+4 floor sweep. Cancel 4 / 2,3 / b+2 into it; hold back to leave." },
 	stances = {

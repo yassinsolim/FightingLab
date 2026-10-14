@@ -151,7 +151,7 @@ return function(t)
 		for _, id in Roster.order do
 			local c = Roster.get(id)
 			local kinds: { [string]: boolean } = {}
-			for _, combo in c.combos do
+			for i, combo in c.combos do
 				kinds[combo.kind] = true
 				if combo.counter then kinds.counter = true end
 				expect.truthy(combo.difficulty >= 1 and combo.difficulty <= 5, id .. " " .. combo.name .. " difficulty 1-5")
@@ -162,14 +162,44 @@ return function(t)
 					expect.truthy(combo.surge == true, id .. " " .. combo.name .. " is played in Surge")
 					expect.truthy(combo.damage <= 49, id .. " " .. combo.name .. " ultimate combo <= 55%")
 				else
-					-- Combos deal 30-45% of a 100 HP bar and never more than 45% of the smallest one (90).
-					expect.truthy(combo.damage >= 30 and combo.damage <= 40, id .. " " .. combo.name .. string.format(" damage %d in 30-40", combo.damage))
+					-- Combos deal 30-45% of a 100 HP bar and never more than 45% of the smallest one (90). Round 7: the first
+					-- route is the easy one (a launcher and one string), which trades a little damage for consistency: 25-40.
+					local low = if i == 1 then 25 else 30
+					expect.truthy(combo.damage >= low and combo.damage <= 40, id .. " " .. combo.name .. string.format(" damage %d in %d-40", combo.damage, low))
 				end
 			end
 			expect.truthy(#c.combos >= 4, id .. " lists at least four combos")
 			expect.truthy(kinds.launch, id .. " has a launch bread-and-butter")
 			expect.truthy(kinds.counter or kinds.low, id .. " has a counter-hit or low route")
 			expect.truthy(kinds.ultimate, id .. " has a combo ending in the Ultimate")
+		end
+	end)
+
+	test("round 7: the first listed route is easy and no listed route types two buttons that merge into a chord", function()
+		for _, id in Roster.order do
+			local c = Roster.get(id)
+			local first = c.combos[1]
+			expect.equal(first.kind, "launch", id .. " lists its easy launch route first")
+			expect.truthy(first.difficulty <= 2, id .. " first route difficulty 1-2")
+			expect.truthy(#first.steps <= 5 and not first.counter and not first.surge, id .. " first route: at most 5 presses, no counter hit, no Surge")
+			for _, step in first.steps do
+				expect.falsy(string.find(step.input, "3+4", 1, true), id .. " first route uses no 3+4")
+			end
+			-- Two single buttons typed in a row must stay far enough apart that a person pressing them a little early or
+			-- late never makes the 1+3 / 2+4 throw, the 1+2 Ultimate (always ready in practice) or the 3+4 signature.
+			for _, combo in c.combos do
+				for k = 2, #combo.steps do
+					local a = string.match(combo.steps[k - 1].input, "(%d)$")
+					local b = string.match(combo.steps[k].input, "(%d)$")
+					local prevChord = string.find(combo.steps[k - 1].input, "%d%+%d$") ~= nil
+					local thisChord = string.find(combo.steps[k].input, "%d%+%d$") ~= nil
+					if a and b and not prevChord and not thisChord then
+						local pair = a .. b
+						local need = if pair == "34" or pair == "43" or pair == "13" or pair == "31" or pair == "24" or pair == "42" then 12 elseif pair == "12" or pair == "21" then 8 else 1
+						expect.truthy(combo.steps[k].wait >= need, string.format("%s %s step %d (%s after %s) waits %d >= %d", id, combo.name, k, combo.steps[k].input, combo.steps[k - 1].input, combo.steps[k].wait, need))
+					end
+				end
+			end
 		end
 	end)
 
@@ -184,5 +214,70 @@ return function(t)
 			-- Only plain i10 jabs may stay identical across fighters.
 			expect.truthy(string.find(line, "Jab", 1, true) ~= nil, "only jabs may match: " .. line)
 		end
+	end)
+
+	test("round 7: every string is a natural combo on hit from every range its first hit reaches", function()
+		-- Each follow-up pressed as early as possible; after the first hit the dummy guards whenever it is free, so a gap
+		-- would be blocked and pushback that carried it out of reach would whiff. (Round 6: 13 of 22 strings.)
+		local BUTTON = { LP = "LeadPunch", RP = "RearPunch", LK = "LeadKick", RK = "RearKick" }
+		local natural, total = 0, 0
+		for _, id in Roster.order do
+			local c = Roster.get(id)
+			local followers: { [string]: { string } } = {}
+			for _, key in c.moveOrder do
+				local from = c.moves[key].chainFrom
+				if from then followers[from] = followers[from] or {}; table.insert(followers[from], key) end
+			end
+			local paths: { { string } } = {}
+			local function walk(path: { string })
+				local nexts = followers[path[#path]]
+				if not nexts then if #path > 1 then table.insert(paths, table.clone(path)) end return end
+				for _, k in nexts do local p = table.clone(path); table.insert(p, k); walk(p) end
+			end
+			for _, key in c.moveOrder do if c.moves[key].chainFrom == nil and followers[key] then walk({ key }) end end
+			for _, path in paths do
+				total += 1
+				local root = c.moves[path[1]]
+				local ok, reached = true, 0
+				local d10 = 26
+				while d10 <= math.floor((root.range + root.advance) * 10) + 3 do
+					local m = Sim.newMatch("Training", id, "Goran")
+					local a, t = m.fighters[1], m.fighters[2]
+					a.pos = Vector3.zero; t.pos = Vector3.new(d10 / 10, 0, 0)
+					if root.stance then Sim.enterStance(a, root.stance); a.stanceFrame = c.stances[root.stance].cancelFrom end
+					Sim.queueAttack(a, path[1])
+					local k, hits, result = 2, 0, nil
+					for _ = 1, 400 do
+						if k <= #path and a.move == path[k - 1] and a.moveFrame >= 2 and m.hitstop == 0 then
+							Sim.press(m, 1, BUTTON[string.match(c.moves[path[k]].input, "([%a]+)%s*$")])
+							k += 1
+						end
+						for _, e in Sim.step(m) do
+							if e.attacker == 1 then
+								if e.kind == "Hit" or e.kind == "KO" then
+									hits += 1
+									if hits == 1 then Sim.setDummy(m, "Guard") end
+									if hits > 1 and e.combo < 2 then result = "gap" end
+								elseif e.kind == "Block" or e.kind == "Whiff" then
+									result = if hits == 0 then "nohit" else string.lower(e.kind)
+								end
+							end
+						end
+						if result or hits == #path then break end
+					end
+					if result ~= "nohit" then
+						reached += 1
+						if hits ~= #path then
+							ok = false
+							expect.truthy(false, string.format("%s %s from %.1f: hit %d %s", id, table.concat(path, ","), d10 / 10, hits + 1, tostring(result)))
+						end
+					end
+					d10 += 3
+				end
+				expect.truthy(reached > 0, id .. " " .. path[1] .. " reaches")
+				if ok then natural += 1 end
+			end
+		end
+		print(string.format("[STRINGS] %d of %d strings are natural combos on hit", natural, total))
 	end)
 end
