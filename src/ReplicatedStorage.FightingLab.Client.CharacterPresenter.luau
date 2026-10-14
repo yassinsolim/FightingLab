@@ -483,6 +483,16 @@ function M.attachAccessories(model: Model): number
 	return welded
 end
 
+-- Preview continuity (round 7): a preview keeps its foot locks and IK continuity while the same fighter holds the same
+-- pose in the same place and its time moves on by less than PreviewGap seconds; anything else starts it over.
+M.PreviewGap = 0.25
+local previewState: { [Model]: { id: string, pose: string, root: CFrame, t: number, offset: Vector3 } } = setmetatable({} :: any, { __mode = "k" })
+-- World offset the latest posePreview moved the body by (the pose's bob and sway): callers that frame the fighter
+-- (FighterSelect's camera height) measure the body without it.
+function M.previewBodyOffset(model: Model): Vector3?
+	local s = previewState[model]
+	return if s then s.offset else nil
+end
 function M.posePreview(model: Model, characterId: string, pose: PreviewPose, t: number)
 	if not Roster.has(characterId) then error("CharacterPresenter.posePreview unknown character id " .. characterId) end
 	if typeof(t) ~= "number" or t ~= t or math.abs(t) == math.huge then error("CharacterPresenter.posePreview requires finite time") end
@@ -493,13 +503,18 @@ function M.posePreview(model: Model, characterId: string, pose: PreviewPose, t: 
 		rig = MotionPlayer.collectRig(model)
 		previewRigs[model] = rig
 	end
-	local posed = MotionPlayer.namedPose(characterId, pose, t, rig.rootHeight, rig.legLength)
-	-- The in-world presenter lowers the root by rootOffset so planted legs bend. Previews must not move the root
-	-- (callers frame the clone afterwards), so the floor is raised by the same amount instead: identical body pose.
 	local root = model:FindFirstChild("HumanoidRootPart")
-	local floorY: number? = nil
-	if root and root:IsA("BasePart") then floorY = root.Position.Y - rig.rootHeight - posed.rootOffset.Y end
-	MotionPlayer.apply(rig, posed, floorY)
+	local rootCF = if root and root:IsA("BasePart") then root.CFrame else CFrame.identity
+	local last = previewState[model]
+	local continuous = last ~= nil and last.id == characterId and last.pose == pose and t > last.t and t - last.t < M.PreviewGap
+		and (last.root.Position - rootCF.Position).Magnitude < 1e-3 and last.root.LookVector:Dot(rootCF.LookVector) > 0.99999
+	if not continuous then MotionPlayer.resetRig(rig) end
+	local posed = MotionPlayer.previewPose(characterId, pose, t, rig.rootHeight, rig.legLength)
+	if not continuous then posed.cut = true end
+	-- Posed like the fight: the floor is RootHeight under the root (callers stand the root that high over their floor)
+	-- and the pose's root offset moves the body through the Root joint (the clone's root never moves: callers frame it).
+	MotionPlayer.apply(rig, posed, rootCF.Position.Y - rig.rootHeight, posed.rootOffset)
+	previewState[model] = { id = characterId, pose = pose, root = rootCF, t = t, offset = rootCF:VectorToWorldSpace(posed.rootOffset) }
 	if Face then
 		local expression = if pose == "Victory" then "Smile" elseif pose == "Defeat" then "Pain" elseif pose == "Intro" then "Grit" else "Focused"
 		Face.setExpression(model, expression, if pose == "Defeat" then 0.6 else 1)

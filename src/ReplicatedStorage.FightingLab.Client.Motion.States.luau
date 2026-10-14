@@ -359,10 +359,60 @@ local function footReference(clip: any, legLength: number, scale: number): { [st
 	return ref
 end
 
+-- Stance foot anchor (round 7, the previews). The bouncing stance captures (Stance: Kael and Lumi; Stance_Kickboxer:
+-- Sierra) shuffle their feet back and forth by up to 0.2 leg lengths between tiny hops of the toes (the boxer is on the
+-- balls of his feet). On the fighters' long shoes the toes stay within a few hundredths of a stud of the floor while
+-- they move 2-4 studs/s: in the fighter select's close-up the shuffle read as feet skating on the platform. The
+-- previewed stance keeps each foot's height and turn from the clip (the bounce, heel lifts, the alternating rhythm) but
+-- holds its place on the floor at the clip's own mean over the cycle; 1 - STANCE_ANCHOR of the shuffle is left (1 =
+-- feet fixed). Stances whose feet stay put (moving less than STANCE_ANCHOR_MIN leg lengths over the cycle) are left as
+-- they are. The fight keeps the clip's footwork (moves and reactions leave the stance from the feet they were built on).
+States.STANCE_ANCHOR = 0.5
+States.STANCE_ANCHOR_MIN = 0.06
+local anchorCache: { [any]: { [string]: { [string]: Vector3 } } } = setmetatable({}, { __mode = "k" }) :: any
+-- Mean foot position over a looping clip, in the style layer's "world" frame (studs around the fighter's base, after the
+-- style yaw): the same frame styleAdjust places the stance's feet in. Only feet that travel are listed.
+local function stanceAnchor(clip: any, legLength: number, scale: number, yaw: number): { [string]: Vector3 }?
+	if type(clip) ~= "table" or not clip.loop or type(clip.duration) ~= "number" or clip.duration <= 0 then return nil end
+	local perClip = anchorCache[clip]
+	if not perClip then
+		perClip = {}
+		anchorCache[clip] = perClip
+	end
+	local key = string.format("%.4f|%.4f|%.3f", legLength, scale, yaw)
+	local cached = perClip[key]
+	if cached then return cached end
+	local k = legLength / (2.75 * scale)
+	local sums = { LeftFoot = Vector3.zero, RightFoot = Vector3.zero }
+	local lo = { LeftFoot = Vector3.one * math.huge, RightFoot = Vector3.one * math.huge }
+	local hi = { LeftFoot = -Vector3.one * math.huge, RightFoot = -Vector3.one * math.huge }
+	local n = math.max(24, math.floor(clip.duration * 30 + 0.5))
+	for i = 0, n - 1 do
+		local p = ClipPlayer.sample(clip, clip.duration * i / n, { legLength = legLength, scale = scale })
+		States.rotateYaw(p, math.rad(yaw), scale)
+		for limb in sums do
+			local e = p.targets[limb]
+			if e then
+				local w = p.rootOffset + (e.pos - LIMB_REF[limb] * scale) * k
+				sums[limb] += w
+				lo[limb], hi[limb] = lo[limb]:Min(w), hi[limb]:Max(w)
+			end
+		end
+	end
+	local out = {}
+	for limb, sum in sums do
+		local range = hi[limb] - lo[limb]
+		if math.max(range.X, range.Z) >= States.STANCE_ANCHOR_MIN * legLength then out[limb] = sum / n end
+	end
+	perClip[key] = out
+	return out
+end
+
 -- Blends the guard arms of `style` over a sampled heading-space pose (weight w), and applies stance width/depth.
 -- travel = true for clips that move over the floor (walks, dashes, sidesteps): the style yaw turns the feet's static
 -- placement but not their stride, so planted feet keep pace with the sim (a turned stride slides sideways).
-local function styleAdjust(style: Style, scale: number, legLength: number, w: number, now: number, feet: string?, travel: boolean?): (any, any) -> ()
+-- anchorW: share of the stance foot anchor (default 1, the previews; the fight's idle stance passes 0).
+local function styleAdjust(style: Style, scale: number, legLength: number, w: number, now: number, feet: string?, travel: boolean?, anchorW: number?): (any, any) -> ()
 	return function(pose: any, clip: any)
 		local ref = if travel and style.yaw ~= 0 then footReference(clip, legLength, scale) else nil
 		local strideL, strideR
@@ -415,11 +465,20 @@ local function styleAdjust(style: Style, scale: number, legLength: number, w: nu
 			local width = if walk then 1 + (style.width - 1) * 0.5 else style.width
 			local sway = if stance and style.sway > 0 then math.sin(now * math.pi * 2 * style.swayHz) * style.sway * legLength else 0
 			local root1 = root0 + Vector3.new(sway, -drop * legLength, 0)
+			-- The looping stance's feet hold their place on the floor (stanceAnchor; reactions use this layer too and keep
+			-- their steps).
+			local anchorShare = States.STANCE_ANCHOR * (if anchorW then math.clamp(anchorW, 0, 1) else 1)
+			local anchor = if stance and anchorShare > 0 then stanceAnchor(clip, legLength, scale, style.yaw) else nil
 			for _, limb in { "LeftFoot", "RightFoot" } do
 				local e = pose.targets[limb]
 				if e then
 					local refPos = LIMB_REF[limb] * scale
 					local world = root0 + (e.pos - refPos) * k
+					local a = if anchor then anchor[limb] else nil
+					if a then
+						local m = anchorShare
+						world = Vector3.new(world.X + (a.X - world.X) * m, world.Y, world.Z + (a.Z - world.Z) * m)
+					end
 					local side = if limb == "LeftFoot" then -1 else 1
 					world = Vector3.new(world.X * width + side * (width - 1) * States.WIDTH_SPREAD * legLength, world.Y, world.Z * (if stance then style.length else 1))
 					e.pos = refPos + (world - root1) / k
@@ -496,7 +555,9 @@ function States.request(view: any, frame: any?, slot: number, characterId: strin
 	local config = ctx.config or {}
 	local legLength = ctx.legLength or 3 * scale * 0.93
 	local st = styleOf(characterId)
-	local guardArms = styleAdjust(st, scale, legLength, st.w, ctx.clock, "stance")
+	-- The fight's idle stance keeps the clip's own footwork (no foot anchor: every move, reaction and step leaves the
+	-- stance from the feet its clips were built on); the anchor is for the close-up previews (States.named).
+	local guardArms = styleAdjust(st, scale, legLength, st.w, ctx.clock, "stance", nil, 0)
 	local walkArms = styleAdjust(st, scale, legLength, st.w, ctx.clock, "walk", true)
 	local moveArms = styleAdjust(st, scale, legLength, st.w * 0.75, ctx.clock, nil)
 	local travelArms = styleAdjust(st, scale, legLength, st.w * 0.75, ctx.clock, nil, true)

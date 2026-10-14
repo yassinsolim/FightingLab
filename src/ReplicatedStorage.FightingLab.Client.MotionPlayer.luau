@@ -57,6 +57,9 @@ export type Pose = {
 	defenderClear: boolean?,
 	-- ankleRange: a getup clip's pose (unplanted feet keep inside the ankle's range, MotionPlayer.GetupAnkleRange).
 	ankleRange: boolean?,
+	-- soleClear: near-floor feet are shown at the clip's own floor clearance (the idle stance, walks; previews:
+	-- MotionPlayer.SoleClearance).
+	soleClear: boolean?,
 }
 export type RigInfo = {
 	motors: { [string]: Motor6D }, parts: { [string]: BasePart }, rootHeight: number, legLength: number, armLength: number,
@@ -72,6 +75,11 @@ export type RigInfo = {
 	lockClock: number?,
 	-- Clock of the shown frame (real time; MotionPlayer.apply), paces the IK pole continuity.
 	frameClock: number?,
+	-- The clip's floor under the body in the latest apply (world Y; the root height over it is the airborne height):
+	-- the sole clearance's reference (MotionPlayer.SoleClearance).
+	soleFloor: number?,
+	-- The latest applied pose asks for the sole clearance (Pose.soleClear).
+	soleOn: boolean?,
 	-- Contact aim residual (studs) per striking limb on the last startup/active frame, added in the recovery.
 	aimResidual: { [string]: { r: number, clock: number? } }?,
 	-- Strike contact retraction (fraction of the reach) per limb on the latest frame (MotionPlayer.applyContact).
@@ -116,6 +124,8 @@ local GUARD_STATES = {
 	Idle = true, Guard = true, Walk = true, Backwalk = true, Crouch = true, CrouchBlock = true, Block = true,
 	Blockstun = true, Dash = true, Backdash = true, Sidestep = true, Step = true,
 }
+-- Motion keys (Motion.States requests) whose near-floor feet keep the clip's own floor clearance (MotionPlayer.SoleClearance).
+local SOLE_KEYS = { Stance = true, Walk = true, Backwalk = true }
 
 type SlotState = {
 	pose: Pose?, key: string?, clock: number, lastNow: number?, keyStarted: number,
@@ -1384,6 +1394,8 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	result.real = st.real
 	result.selfClear = SELF_CLEAR_STATES[view.state] == true and type(view.move) ~= "string" and type(view.throw) ~= "table"
 		and (type(frame) ~= "table" or frame.phase == nil or frame.phase == "Fight")
+	-- The idle stance and the walks show near-floor feet at the clip's own clearance (MotionPlayer.SoleClearance).
+	result.soleClear = SOLE_KEYS[key] == true and not settling
 	-- A thrown defender keeps its gloves out of its own body too (clearArms; grips re-solve their limbs afterwards), and
 	-- so does a defender breaking the throw (MotionPlayer.DefenderClearBreak).
 	result.defenderClear = type(view.throw) == "table" and view.throw.role == "Defender" and (view.throw.broken ~= true or MotionPlayer.DefenderClearBreak == true)
@@ -1392,7 +1404,8 @@ function MotionPlayer.sample(config: any, view: FighterView, frame: any?, slot: 
 	return result
 end
 
--- Menu/preview pose without a fight view: "Stance", "Guard", "Intro", "Victory", "Defeat" at time t (seconds).
+-- Menu/preview pose without a fight view: "Stance", "Guard", "Intro", "Victory", "Defeat" at time t (seconds). A
+-- one-off pose (standingHeights and other single measurements): no foot locks, no clock.
 function MotionPlayer.namedPose(characterId: string, name: string, t: number, rootHeight: number, legLength: number?): Pose
 	local scale = scaleFromRoot(rootHeight)
 	local leg = legLength or rootHeight * LEG_PER_ROOT
@@ -1401,6 +1414,23 @@ function MotionPlayer.namedPose(characterId: string, name: string, t: number, ro
 	local pose = resolveRequest(req, st, Roster.get(characterId).stanceStyle, scale, leg)
 	-- Previews jump between unrelated poses on the same rig: never pin their feet to a previous pose.
 	pose.footLock = false
+	return pose
+end
+
+-- One frame of a running preview (CharacterPresenter.posePreview), posed like the fight's own frames (round 7): planted
+-- feet rest on the floor and keep their place (the clip's contact channel and the world foot locks), the clock `t` paces
+-- the lock release and the IK continuity (callers pass a continuous time and reset the rig when the preview jumps: a
+-- new pose, fighter or place), and the guard keeps the gloves out of the own body. Apply it with its rootOffset as the
+-- body offset (MotionPlayer.apply): the stance's bob and sway then move the body over the planted feet. The round-6
+-- previews pinned the pelvis and moved the floor by the bob instead, without contacts: the bouncing stances' feet
+-- jumped and slid under a still body (Kael and Sierra in the fighter select).
+function MotionPlayer.previewPose(characterId: string, name: string, t: number, rootHeight: number, legLength: number?): Pose
+	local pose = MotionPlayer.namedPose(characterId, name, t, rootHeight, legLength)
+	pose.footLock = nil
+	pose.clock = t
+	pose.real = t
+	pose.selfClear = name == "Stance" or name == "Guard"
+	pose.soleClear = name == "Stance" or name == "Guard"
 	return pose
 end
 
@@ -1653,6 +1683,10 @@ local TIPTOE_MAX = math.rad(60)
 -- the floor toward the hip until the straight leg reaches it, and a world-space planted lock is re-anchored there.
 -- Reachable targets are never touched. false = the round-4 behaviour (diagnostics, A/B captures).
 MotionPlayer.FootReachNet = true
+-- Round 7: near-floor feet of the idle stance, the walks and the previews keep the clip's own floor clearance on every
+-- rig (Pose.soleClear, see solveChain), changing by at most SoleRate studs per frame. false = the round-6 behaviour.
+MotionPlayer.SoleClearance = true
+MotionPlayer.SoleRate = 0.06
 local NET_NEAR, NET_AIR = 0.12, 0.25
 local NET_TIPTOE = math.rad(40)
 local function relaxLyingFoot(r: CFrame, w: number, pitch: number?): CFrame
@@ -1829,12 +1863,16 @@ function MotionPlayer.resetRig(rig: RigInfo)
 	for _, chain in rig.chains do
 		chain.bendPrev, chain.bendRef, chain.bendClock = nil, nil, nil
 		chain.flatPrev, chain.flatRef, chain.flatClock = nil, nil, nil
+		chain.holdPrev, chain.holdRef = nil, nil
+		chain.solePrev, chain.soleRef = nil, nil
 	end
 end
 
 -- Heel-drop continuity: the flatten fraction of a planted foot on the previous frame (nil on a new round, a reused rig
 -- or a clock jump). Same per-frame bookkeeping as the bend continuity.
 MotionPlayer.FlattenRate = 0.15
+-- Most a foot's rest on the floor (its contact hold, 0..1) lets go per frame (round 7; nil = at once).
+MotionPlayer.HoldReleaseRate = 0.25
 MotionPlayer.LyingLegsRamp = 0.1
 -- Relaxed feet (toes laid out along the floor, sole up: up to a 180-degree roll about the toe line) come and go over at
 -- least this much real time: a roll getup tucking the toes again within its 5-frame crossfade snapped the ankle 66 deg.
@@ -1862,6 +1900,8 @@ local function flattenRef(rig: RigInfo, chain: any): number?
 		local last = chain.flatClock
 		local fresh = last ~= nil and clock > last and clock - last < 0.25
 		chain.flatRef = if fresh then chain.flatPrev else nil
+		chain.holdRef = if fresh then chain.holdPrev else nil
+		chain.soleRef = if fresh then chain.solePrev else nil
 		chain.flatDt = if fresh then clock - last else 0
 		chain.flatClock = clock
 	end
@@ -1926,22 +1966,67 @@ local function solveChain(rig: RigInfo, chain: any, parentFrame: CFrame, heading
 			end
 		end
 		local clipLift = if r then footLift(chain, r) else chain.ankleHeight
-		-- A foot coming down decelerates over the last SoftFloor studs instead of stopping dead on the floor (a clip foot
-		-- aimed a little below this rig's floor used to stop in one frame and kick the shin).
-		local clear = softPositive(goal.Y + chain.ankleHeight - floorY - clipLift, MotionPlayer.SoftFloor)
+		local rawClear = goal.Y + chain.ankleHeight - floorY - clipLift
 		-- Near-floor weight: 1 for a foot the clip holds on or near the floor (its own sole within NET_NEAR leg lengths),
 		-- fading out by NET_AIR (a foot clearly in the air: steps, chambers, kicks); never on a lying body or a striking
-		-- foot the contact aim pulls to the opponent. It weights the reach net (MotionPlayer.FootReachNet) and the
-		-- capped step-in: when keepApart held the root back (stepScale < 1), a released near-floor foot lifts only as
-		-- much of its clip clearance as the body really travelled, instead of stepping in place.
-		local soleLegs = effector.sole or clear / chain.fullReach
+		-- foot the contact aim pulls to the opponent. It weights the reach net (MotionPlayer.FootReachNet), the sole
+		-- clearance below and the capped step-in: when keepApart held the root back (stepScale < 1), a released near-floor
+		-- foot lifts only as much of its clip clearance as the body really travelled, instead of stepping in place.
+		local soleLegs = effector.sole or softPositive(rawClear, MotionPlayer.SoftFloor) / chain.fullReach
 		local nearW = math.clamp((NET_AIR - soleLegs) / (NET_AIR - NET_NEAR), 0, 1) * (1 - lyingW) * (1 - math.clamp(effector.aimWeight or 0, 0, 1))
+		-- Sole clearance (round 7; the idle stance, the walks and the previews: Pose.soleClear): a near-floor foot of an
+		-- upright body is shown at least as high above the floor as the clip holds it (its sole height in leg lengths on
+		-- this rig's leg, the foot's tilt included, over the clip's own floor: the floor under an airborne body's root),
+		-- whatever the rig's hip height under the root. The shipped rigs' hips sit 0.5-0.8 studs lower under the root than
+		-- the clips' reference, so their hip-relative foot targets ended 0.15-0.55 studs under the floor: a hop or a
+		-- shuffle step of the clip was pressed flat and skated along the floor (Kael's bouncing stance: the feet slid 3.8
+		-- studs/s; the walks of Kael, Goran and Rhys slid their swing feet along the floor). That offset runs along the
+		-- body, so a falling, lying or rolling body (its pelvis tilted past ~35-55 degrees) keeps the hip-relative targets.
+		local corr = 0
+		if MotionPlayer.SoleClearance and rig.soleOn and effector.sole and nearW > 0 then
+			local upright = smoothstep((parentFrame.UpVector.Y - 0.6) / 0.25)
+			local w = nearW * upright
+			if w > 0 then
+				local soleFloor = rig.soleFloor or floorY
+				local clipClear = (effector.sole :: number) * chain.fullReach + chain.ankleHeight - clipLift + (soleFloor - floorY)
+				-- Raise only: where a rig's hips sit high enough that its target clears the clip's height, it keeps it.
+				corr = math.max(clipClear - rawClear, 0) * w
+			end
+		end
+		-- The correction changes by at most SoleRate studs per frame (a getup's pelvis turning upright switches it on, a
+		-- foot rising past NET_AIR switches it off).
+		if MotionPlayer.SoleClearance and headingSpace then
+			flattenRef(rig, chain)
+			local cRef = if rig.lockClock ~= nil then chain.soleRef else nil
+			if cRef then
+				local step = MotionPlayer.SoleRate * math.max(chain.flatDt * 60, 1)
+				corr = math.clamp(corr, cRef - step, cRef + step)
+			end
+			chain.solePrev = corr
+		end
+		rawClear += corr
+		-- A foot coming down decelerates over the last SoftFloor studs instead of stopping dead on the floor (a clip foot
+		-- aimed a little below this rig's floor used to stop in one frame and kick the shin).
+		local clear = softPositive(rawClear, MotionPlayer.SoftFloor)
 		local netW = if MotionPlayer.FootReachNet then nearW else 0
 		if stepScale and stepScale < 1 then clear *= 1 - nearW * (1 - math.max(stepScale, 0)) end
 		-- Clip feet carry their own contact channel (keyframe fallbacks do not): a planted foot rests on the floor, and a
 		-- body relaxing on the floor (settle) lets its feet rest on it.
 		local hold = math.clamp(settle or 0, 0, 1)
-		if r then hold = math.max(hold, math.clamp((contact - 0.5) / 0.3, 0, 1)) end
+		if r then
+			local contactHold = math.clamp((contact - 0.5) / 0.3, 0, 1)
+			-- A foot leaving the floor in the idle stance, a walk or a preview (Pose.soleClear) lets go of its rest at most
+			-- HoldReleaseRate per frame (round 7): the bouncing stances' mocap contacts drop 0.65 -> 0.5 in a frame while
+			-- the clip already lifts the heel, and the toe popped up 0.05 studs in that frame. A kick or a step lets go at
+			-- once (a held kicking foot flipped Rhys's knee 265 degrees in a frame).
+			flattenRef(rig, chain)
+			local hRef = if rig.lockClock ~= nil then chain.holdRef else nil
+			if MotionPlayer.HoldReleaseRate and rig.soleOn and hRef and contactHold < hRef then
+				contactHold = math.max(contactHold, hRef - MotionPlayer.HoldReleaseRate * math.max(chain.flatDt * 60, 1))
+			end
+			chain.holdPrev = contactHold
+			hold = math.max(hold, contactHold)
+		end
 		clear *= 1 - hold
 		-- Feet near the floor are flattened sole-down (planted), except on a lying body: there the foot keeps the clip's
 		-- (relaxed) orientation.
@@ -2290,7 +2375,11 @@ local function jointClamp(rig: RigInfo, pose: Pose, floorY: number?)
 	end
 end
 
-function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
+-- bodyOffset (optional, studs in the root's heading frame: +X right, +Y up, +Z toward its facing, like rootCFrame's
+-- offset): moves the body by that much through the Root joint while the root part stays where it is. Previews use it
+-- with the pose's rootOffset (CharacterPresenter.posePreview: the stance's bob and sway move the body over planted feet,
+-- as in the fight, where the root itself moves by it).
+function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?, bodyOffset: Vector3?)
 	local motors = rig.motors
 	local rootPart = motors.Root.Part0
 	if not rootPart then return end
@@ -2301,7 +2390,12 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local hrp = rootPart.CFrame
 	local floor = if floorY ~= nil then floorY else hrp.Position.Y - rig.rootHeight
 	local rootC0 = hrp * motors.Root.C0
-	local lowerTorso = rootC0 * rootRot * motors.Root.C1:Inverse()
+	local bodyShift = if bodyOffset and finiteVector(bodyOffset) then hrp.Rotation:VectorToWorldSpace(libVector(bodyOffset)) else Vector3.zero
+	-- The clip's own floor under this body (the arena floor, or under an airborne root the height it flies at): the sole
+	-- clearance measures near-floor feet from it (solveChain).
+	rig.soleFloor = if headingSpace then hrp.Position.Y + bodyShift.Y - rig.rootHeight - pose.rootOffset.Y else nil
+	rig.soleOn = pose.soleClear == true
+	local lowerTorso = (rootC0 + bodyShift) * rootRot * motors.Root.C1:Inverse()
 	local upperTorso = lowerTorso * motors.Waist.C0 * waistRot * motors.Waist.C1:Inverse()
 	local head = upperTorso * motors.Neck.C0 * neckRot * motors.Neck.C1:Inverse()
 	local sizes = rig.sizes
@@ -2362,7 +2456,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 	local hang = rig.footHang
 	for pass = 1, 3 do
 		local shift = Vector3.new(0, dy, 0)
-		motors.Root.Transform = CFrame.new(rootC0.Rotation:Inverse() * shift) * rootRot
+		motors.Root.Transform = CFrame.new(rootC0.Rotation:Inverse() * (shift + bodyShift)) * rootRot
 		motors.Waist.Transform = waistRot
 		motors.Neck.Transform = neckRot
 		local lower = lowerTorso + shift
@@ -2391,7 +2485,7 @@ function MotionPlayer.apply(rig: RigInfo, pose: Pose, floorY: number?)
 			else
 				-- Last pass: lift the solved body rigidly (re-solving would reach the limbs back down to their targets).
 				dy += deficit
-				motors.Root.Transform = CFrame.new(rootC0.Rotation:Inverse() * Vector3.new(0, dy, 0)) * rootRot
+				motors.Root.Transform = CFrame.new(rootC0.Rotation:Inverse() * (Vector3.new(0, dy, 0) + bodyShift)) * rootRot
 				limbLowest += deficit
 				armLowest += deficit
 				legLowest += deficit
