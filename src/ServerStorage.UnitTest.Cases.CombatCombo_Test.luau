@@ -151,7 +151,7 @@ return function(t)
 		for _, id in Roster.order do
 			local c = Roster.get(id)
 			local kinds: { [string]: boolean } = {}
-			for _, combo in c.combos do
+			for i, combo in c.combos do
 				kinds[combo.kind] = true
 				if combo.counter then kinds.counter = true end
 				expect.truthy(combo.difficulty >= 1 and combo.difficulty <= 5, id .. " " .. combo.name .. " difficulty 1-5")
@@ -162,14 +162,44 @@ return function(t)
 					expect.truthy(combo.surge == true, id .. " " .. combo.name .. " is played in Surge")
 					expect.truthy(combo.damage <= 49, id .. " " .. combo.name .. " ultimate combo <= 55%")
 				else
-					-- Combos deal 30-45% of a 100 HP bar and never more than 45% of the smallest one (90).
-					expect.truthy(combo.damage >= 30 and combo.damage <= 40, id .. " " .. combo.name .. string.format(" damage %d in 30-40", combo.damage))
+					-- Combos deal 30-45% of a 100 HP bar and never more than 45% of the smallest one (90). Round 7: the first
+					-- route is the easy one (a launcher and one string), which trades a little damage for consistency: 25-40.
+					local low = if i == 1 then 25 else 30
+					expect.truthy(combo.damage >= low and combo.damage <= 40, id .. " " .. combo.name .. string.format(" damage %d in %d-40", combo.damage, low))
 				end
 			end
 			expect.truthy(#c.combos >= 4, id .. " lists at least four combos")
 			expect.truthy(kinds.launch, id .. " has a launch bread-and-butter")
 			expect.truthy(kinds.counter or kinds.low, id .. " has a counter-hit or low route")
 			expect.truthy(kinds.ultimate, id .. " has a combo ending in the Ultimate")
+		end
+	end)
+
+	test("round 7: the first listed route is easy and no listed route types two buttons that merge into a chord", function()
+		for _, id in Roster.order do
+			local c = Roster.get(id)
+			local first = c.combos[1]
+			expect.equal(first.kind, "launch", id .. " lists its easy launch route first")
+			expect.truthy(first.difficulty <= 2, id .. " first route difficulty 1-2")
+			expect.truthy(#first.steps <= 5 and not first.counter and not first.surge, id .. " first route: at most 5 presses, no counter hit, no Surge")
+			for _, step in first.steps do
+				expect.falsy(string.find(step.input, "3+4", 1, true), id .. " first route uses no 3+4")
+			end
+			-- Two single buttons typed in a row must stay far enough apart that a person pressing them a little early or
+			-- late never makes the 1+3 / 2+4 throw, the 1+2 Ultimate (always ready in practice) or the 3+4 signature.
+			for _, combo in c.combos do
+				for k = 2, #combo.steps do
+					local a = string.match(combo.steps[k - 1].input, "(%d)$")
+					local b = string.match(combo.steps[k].input, "(%d)$")
+					local prevChord = string.find(combo.steps[k - 1].input, "%d%+%d$") ~= nil
+					local thisChord = string.find(combo.steps[k].input, "%d%+%d$") ~= nil
+					if a and b and not prevChord and not thisChord then
+						local pair = a .. b
+						local need = if pair == "34" or pair == "43" or pair == "13" or pair == "31" or pair == "24" or pair == "42" then 12 elseif pair == "12" or pair == "21" then 8 else 1
+						expect.truthy(combo.steps[k].wait >= need, string.format("%s %s step %d (%s after %s) waits %d >= %d", id, combo.name, k, combo.steps[k].input, combo.steps[k - 1].input, combo.steps[k].wait, need))
+					end
+				end
+			end
 		end
 	end)
 

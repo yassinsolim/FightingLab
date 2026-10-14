@@ -225,7 +225,7 @@ function ComboTrial.feed(self: Trial, entry: any): Status
 	-- A move that started on this frame (string follow-ups change the key; a repeated move restarts its frame count).
 	local started: string? = nil
 	local moveFrame = if typeof(me.moveFrame) == "number" then me.moveFrame else 0
-	if me.move ~= nil and (me.move ~= self.prevMove or moveFrame < self.prevMoveFrame) then started = me.move end
+	if me.move ~= nil and moveFrame <= 2 and (me.move ~= self.prevMove or moveFrame < self.prevMoveFrame) then started = me.move end
 	self.prevMove = me.move
 	self.prevMoveFrame = moveFrame
 	local stanceNow = if me.state == "Stance" then me.stance else nil

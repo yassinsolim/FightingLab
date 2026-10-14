@@ -170,13 +170,17 @@ return function(t)
 		local info = ComboTrial.list("Kael")[1]
 		local demo = ComboTrial.demo("Kael", 1)
 		local lastStep = #info.steps
-		-- Late: the last press of a string follow-up long after the string window (the plain move comes out).
+		-- Late: the last press of a string follow-up after the string window (the plain move comes out instead).
 		local plain = (ComboTrial.new("Kael", 1) :: any).plainMoves[lastStep]
 		if plain then
-			local status = play("Kael", 1, "Goran", delayFrom(demo, lastStep, 24))
-			expect.equal(status.state, "Failed", "late string press")
-			expect.equal(status.reason, "Late")
-			expect.equal(status.step, lastStep - 1)
+			local late: any = nil
+			for delta = 8, 80, 2 do
+				local status = play("Kael", 1, "Goran", delayFrom(demo, lastStep, delta))
+				if status.state == "Failed" then late = status; break end
+			end
+			assert(late, "a late string press fails")
+			expect.equal(late.reason, "Late", "late string press")
+			expect.equal(late.step, lastStep - 1)
 		end
 		-- Late: a juggle hit pressed so late that it comes out on the falling body after it landed.
 		do

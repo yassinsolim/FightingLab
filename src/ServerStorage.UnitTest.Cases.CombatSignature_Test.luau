@@ -245,7 +245,13 @@ return function(t)
 	test("tumble: one extender per juggle spins the opponent and allows one more air hit", function()
 		expect.equal(Config.TumbleVelocity > Config.JuggleVelocity, true)
 		local c = Roster.get("Kael")
+		-- The route with the Rib Roller (b+1) juggle extender.
 		local route = c.combos[1]
+		for _, combo in c.combos do
+			local hasRib = false
+			for _, step in combo.steps do if step.input == "b+1" then hasRib = true end end
+			if hasRib and not combo.counter then route = combo break end
+		end
 		local m = practice("Kael", "Sierra", 3.0)
 		local d = m.fighters[2]
 		local run = Sim.comboRun(m, 1, route.steps)
