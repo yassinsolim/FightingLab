@@ -9,6 +9,7 @@ local Client = Lab:WaitForChild("Client")
 local UIState = require(Client:WaitForChild("UIState"))
 local UIHelpers = require(Client:WaitForChild("UIHelpers"))
 local LobbyUI = require(Client:WaitForChild("LobbyUI"))
+local PlayFlow = require(Client:WaitForChild("PlayFlow"))
 local FighterSelect = require(Client:WaitForChild("FighterSelect"))
 local StationBoards = require(Client:WaitForChild("StationBoards"))
 local Leaderboard = require(Client:WaitForChild("Leaderboard"))
@@ -1073,6 +1074,47 @@ return function(t: Runner.T)
 			setDuel(m, "Queued", "Arena_B", 2)
 			t.expect.equal(m.ctl.view().mode, "CpuOffer")
 		end)
+	end)
+
+	-- Live bug (round 7 QA): a preview that started while the camera was still a frozen (Scriptable) shot -- the few
+	-- frames a practice exit keeps the fight camera -- restored that frozen shot, and the lobby camera stayed stuck.
+	t.test("PLAY flow: the map preview always hands back a following camera, even if it started on a frozen shot", function()
+		local world = Instance.new("Folder")
+		local arenasFolder = Instance.new("Folder"); arenasFolder.Name = "Arenas"; arenasFolder.Parent = world
+		local model = Instance.new("Model"); model.Name = "Arena_A"; model.Parent = arenasFolder
+		local origin = Instance.new("Part"); origin.Name = "FightOrigin"; origin.Anchored = true; origin.Position = Vector3.new(0, 1, 60); origin.Parent = model
+		local previewCam = Instance.new("Part"); previewCam.Name = "PreviewCam"; previewCam.Anchored = true
+		previewCam.CFrame = CFrame.lookAt(Vector3.new(0, 20, 20), Vector3.new(0, 0, 60)); previewCam.Parent = model
+		local cam = Instance.new("Camera")
+		cam.Parent = world
+		local extra = { camera = function() return cam end, world = function() return world end }
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1)
+			local flow = m.ctl.playFlow()
+			local frozen = CFrame.new(-8, 7, -4)
+			cam.CameraType = Enum.CameraType.Scriptable
+			cam.CFrame = frozen
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(flow.previewArena(), "Arena_A", "the preview took the camera")
+			t.expect.equal(cam.CameraType, Enum.CameraType.Scriptable)
+			-- A circle wait / travel: the fade is black, the lobby camera comes back at once (not live: no delay).
+			m.ctl.onTeleport({ reason = "Wait", arenaId = "Arena_A", delay = 0.2 })
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "a following camera, not the frozen shot")
+			-- Closing the flow glides back and hands back the same way.
+			cam.CameraType = Enum.CameraType.Scriptable
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(flow.previewArena(), "Arena_A")
+			m.ctl.closePlay()
+			task.wait(PlayFlow.RETURN_SECONDS + 0.3)
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "after the glide back too")
+			-- A normal lobby camera comes back as it was.
+			cam.CameraType = Enum.CameraType.Custom
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
+			m.ctl.onTeleport({ reason = "Travel", arenaId = "Arena_A", delay = 0.2 })
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom)
+			t.expect.equal(PlayFlow.lobbyCameraType(Enum.CameraType.Follow), Enum.CameraType.Follow, "other types are kept")
+		end, true, extra)
+		world:Destroy()
 	end)
 
 	t.test("PLAY flow: a busy map is refused with the next free one offered, in place (READY) or by reopening the flow", function()

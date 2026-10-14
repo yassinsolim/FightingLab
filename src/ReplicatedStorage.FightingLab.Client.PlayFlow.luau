@@ -368,6 +368,19 @@ function PlayFlow.previewFrame(model: Instance?): CFrame?
 	return CFrame.lookAt(eye, o + out * 12 + Vector3.new(0, 2, 0))
 end
 
+-- The field of view the PreviewCam shot is framed for (its FieldOfView attribute, Contract D), when sane.
+function PlayFlow.previewFov(model: Instance?): number?
+	local cam = if model then model:FindFirstChild("PreviewCam") else nil
+	local fov = if cam then cam:GetAttribute("FieldOfView") else nil
+	return if typeof(fov) == "number" and fov >= 20 and fov <= 100 then fov else nil
+end
+
+-- The camera type the preview hands back: the lobby camera follows the character, so a frozen (Scriptable) camera
+-- seen when the preview started is never restored.
+function PlayFlow.lobbyCameraType(saved: Enum.CameraType?): Enum.CameraType
+	return if saved == nil or saved == Enum.CameraType.Scriptable then Enum.CameraType.Custom else saved
+end
+
 --------------------------------------------------------------------------------------------------------------------
 -- View
 --------------------------------------------------------------------------------------------------------------------
@@ -485,7 +498,10 @@ function PlayFlow.mount(env: Env): Controller
 	UIHelpers.textStroke(refs.sub, 0.6, 1)
 
 	-- CPU level toggle (map screen, VS CPU): one row of three chips under the header.
-	local levelRow = make("Frame", { Name = "Level", BackgroundTransparency = 1, Position = UDim2.fromOffset(64, 162), Size = UDim2.fromOffset(560, 46), Visible = false, Parent = content })
+	-- A dark backing keeps the caption and the hint readable over the live preview.
+	local levelRow = make("Frame", { Name = "Level", BackgroundColor3 = T.bg, BackgroundTransparency = 0.22, BorderSizePixel = 0, Position = UDim2.fromOffset(52, 156), Size = UDim2.fromOffset(0, 56), AutomaticSize = Enum.AutomaticSize.X, Visible = false, Parent = content })
+	UIHelpers.corner(levelRow, 6)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 18), Parent = levelRow })
 	UIHelpers.list(levelRow, true, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	refs.levelCaption = text(levelRow, "Caption", "CPU LEVEL", T.heavy, 15, T.muted, { Size = UDim2.fromOffset(96, 46), LayoutOrder = 0 })
 	refs.levels = {}
@@ -496,7 +512,8 @@ function PlayFlow.mount(env: Env): Controller
 		refs.levels[level] = b
 		table.insert(conns, b.button.Activated:Connect(function() controller.action("Level:" .. level) end))
 	end
-	refs.levelHint = text(levelRow, "Hint", "", T.medium, 13, T.dim, { Size = UDim2.fromOffset(0, 46), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 9 })
+	refs.levelHint = text(levelRow, "Hint", "", T.medium, 16, T.muted, { Size = UDim2.fromOffset(0, 46), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 9 })
+	make("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = refs.levelHint })
 
 	-- Showcase (map / ready screens): the focused map's name, tagline and state, over the live preview.
 	local showcase = make("Frame", { Name = "Showcase", BackgroundTransparency = 1, Position = UDim2.new(0, 64, 0.5, -120), Size = UDim2.fromOffset(760, 170), Visible = false, Parent = content })
@@ -569,6 +586,20 @@ function PlayFlow.mount(env: Env): Controller
 	local function stopTween()
 		if cam.tween then cam.tween:Cancel(); cam.tween = nil end
 	end
+	-- The flow only opens in the lobby, where the camera follows the character: a Scriptable camera seen when the
+	-- preview starts is someone's transient shot (e.g. the few frames a practice exit still holds the fight camera), so
+	-- the preview hands back a following camera, never that frozen shot.
+	local function handBack(c: Camera, saved: any)
+		local t = PlayFlow.lobbyCameraType(saved.type)
+		c.CameraType = t
+		local subject = saved.subject
+		if t ~= saved.type or not (subject and subject.Parent) then
+			local character = if player:IsA("Player") then (player :: Player).Character else nil
+			local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
+			subject = humanoid or subject
+		end
+		c.CameraSubject = subject
+	end
 	local function previewTo(arenaId: string?)
 		if S.previewId == arenaId then return end
 		S.previewId = arenaId
@@ -579,26 +610,27 @@ function PlayFlow.mount(env: Env): Controller
 			local saved = cam.saved
 			if not saved then return end
 			stopTween()
-			local tw = UIHelpers.tween(c, PlayFlow.RETURN_SECONDS, { CFrame = saved.cframe }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local tw = UIHelpers.tween(c, PlayFlow.RETURN_SECONDS, { CFrame = saved.cframe, FieldOfView = saved.fov }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			cam.tween = tw
 			tw.Completed:Connect(function(status)
 				if status == Enum.PlaybackState.Completed and cam.tween == tw and S.previewId == nil and cam.saved == saved then
-					c.CameraType = saved.type
-					c.CameraSubject = saved.subject
+					handBack(c, saved)
 					cam.saved = nil
 					cam.tween = nil
 				end
 			end)
 			return
 		end
-		local shot = PlayFlow.previewFrame(PlayFlow.arenaModel(env.world(), arenaId))
+		local model = PlayFlow.arenaModel(env.world(), arenaId)
+		local shot = PlayFlow.previewFrame(model)
 		if not shot then return end
 		if not cam.saved then
 			cam.saved = { type = c.CameraType, subject = c.CameraSubject, cframe = c.CFrame, fov = c.FieldOfView }
 		end
 		stopTween()
 		c.CameraType = Enum.CameraType.Scriptable
-		cam.tween = UIHelpers.tween(c, PlayFlow.GLIDE_SECONDS, { CFrame = shot }, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
+		local goal: { [string]: any } = { CFrame = shot, FieldOfView = PlayFlow.previewFov(model) or cam.saved.fov }
+		cam.tween = UIHelpers.tween(c, PlayFlow.GLIDE_SECONDS, goal, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
 	end
 	-- Ends the preview at once: restore (back to the lobby camera) or hand over (the fight camera takes it from here).
 	local function endPreview(restore: boolean)
@@ -609,8 +641,7 @@ function PlayFlow.mount(env: Env): Controller
 		local c = camera()
 		if restore and saved and c then
 			c.CFrame = saved.cframe
-			c.CameraType = saved.type
-			c.CameraSubject = saved.subject
+			handBack(c, saved)
 			c.FieldOfView = saved.fov
 		end
 	end

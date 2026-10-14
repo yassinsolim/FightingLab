@@ -34,11 +34,11 @@ return function(t)
 		-- Round 5: lobby sprint (Controls.lobby.sprint), driven by LobbyUI.
 		LobbySprint = { "new", "bindInput", "stepAlpha", "speedFor", "fovFor" },
 		-- Round 6: the lobby camera framed over the player's shoulder after a fight, a practice or a quick travel.
-		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers" },
+		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers", "facingOf" },
 		SpectatorPresenter = { "init", "onSnapshot", "update", "clear" },
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
 		-- Round 7: the PLAY flow (who -> map -> fight, practice, searching) behind the bar's PLAY button.
-		PlayFlow = { "new", "cards", "act", "rejected", "arenaModel", "arenaLook", "collectArenas", "previewFrame", "mount" },
+		PlayFlow = { "new", "cards", "act", "rejected", "arenaModel", "arenaLook", "collectArenas", "previewFrame", "previewFov", "lobbyCameraType", "mount" },
 		-- Round 7: practice tools (input display, frame advantage, combo trials on ComboTrial).
 		PracticeTools = { "inputRows", "readout", "formatValue", "comboTrialModule", "mount" },
 		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).

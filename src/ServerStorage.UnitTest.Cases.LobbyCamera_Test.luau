@@ -91,7 +91,7 @@ return function(t)
 		folder:Destroy()
 	end)
 
-	t.test("markers: the world's exits and Arrival markers, nearest within the radius", function()
+	t.test("markers: the world's exits, Arrival markers and duel circles, nearest within the radius", function()
 		local world = Instance.new("Folder")
 		local arenas = Instance.new("Folder"); arenas.Name = "Arenas"; arenas.Parent = world
 		local a = Instance.new("Model"); a.Name = "Arena_A"; a.Parent = arenas
@@ -99,10 +99,38 @@ return function(t)
 		marker("ExitP2", CFrame.new(6, 0, 0), a)
 		marker("Arrival", CFrame.new(3, 0, -4), a)
 		marker("PadP1", CFrame.new(-4, 0, -4), a)
+		marker("PadTraining", CFrame.new(-40, 0, -4), a)
 		local list = LobbyCamera.worldMarkers(world)
-		t.expect.equal(#list, 3, "exits and the Arrival, not pads")
+		t.expect.equal(#list, 4, "exits, the Arrival and the duel circle (not practice pads)")
 		t.expect.equal(LobbyCamera.markerAt(list, Vector3.new(0.5, 3, 0.5)), e1)
 		t.expect.equal(LobbyCamera.markerAt(list, Vector3.new(30, 3, 30)), nil)
+		world:Destroy()
+	end)
+
+	-- Round 7: VS PLAYER on a chosen map puts the player on that arena's free circle (Teleport reason "Wait").
+	t.test("a wait on a chosen map frames the ring from behind the player on the circle", function()
+		local world = Instance.new("Folder")
+		local arenas = Instance.new("Folder"); arenas.Name = "Arenas"; arenas.Parent = world
+		local a = Instance.new("Model"); a.Name = "Arena_A"; a.Parent = arenas
+		local stage = Instance.new("Model"); stage.Name = "Stage"; stage.Parent = a
+		marker("FightOrigin", CFrame.new(0, 2, -60), stage)
+		-- the circle part's own orientation says nothing about the ring
+		local pad = marker("PadP2", CFrame.new(10, 0, -20) * CFrame.Angles(0, math.rad(90), 0), a)
+		t.expect.truthy(LobbyCamera.facingOf(pad):Dot((Vector3.new(0, 0, -60) - Vector3.new(10, 0, -20)).Unit) > 0.999, "a circle faces its ring")
+		local root = marker("Root", CFrame.new(0, 3, 40), world)
+		local cam = Instance.new("Camera")
+		cam.CameraType = Enum.CameraType.Custom
+		cam.CFrame = CFrame.lookAt(Vector3.new(0, 10, 0), Vector3.new(0, 0, 50))
+		cam.Parent = world
+		local tracker = LobbyCamera.new({ camera = function() return cam end, root = function() return root end, markers = function() return LobbyCamera.worldMarkers(world) end })
+		tracker.onTeleport({ reason = "Wait", arenaId = "Arena_A", delay = 0.4 }, 0)
+		tracker.step("Lobby", 0.1)
+		t.expect.equal(tracker.aimed(), 0, "waits for the move")
+		root.CFrame = CFrame.new(10.5, 3, -19.5)
+		tracker.step("Lobby", 0.6)
+		t.expect.equal(tracker.aimed(), 1, "framed on the circle")
+		local toRing = (Vector3.new(0, 0, -60) - Vector3.new(10.5, 0, -19.5)).Unit
+		t.expect.truthy(cam.CFrame.LookVector:Dot(toRing) > 0.9, "looking at the ring")
 		world:Destroy()
 	end)
 end

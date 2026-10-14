@@ -2,9 +2,9 @@
 -- Lobby camera framing after a return (round 6). When a fight or a practice session ends, the server puts the player
 -- on the arena's exit facing the ring, and the default camera would keep the fight camera's last direction, so the
 -- view could start behind a lamp post or a sign. Quick travel (the PLAY panel's arenas) has the same problem after its
--- fade. Once the character stands on its return point, the camera is turned once to look over the player's shoulder
--- at the arena (from the open plaza side); the default camera then follows as usual (it keeps that direction and its
--- own zoom).
+-- fade, and so does VS PLAYER on a chosen map (round 7: the player is put on that arena's free circle to wait). Once the
+-- character stands on its return point or circle, the camera is turned once to look over the player's shoulder at the
+-- arena (from the open plaza side); the default camera then follows as usual (it keeps that direction and its own zoom).
 local Players = game:GetService("Players")
 
 local M = {}
@@ -18,6 +18,8 @@ M.MARKER_RADIUS = 5 -- the root is "on" a return point within this flat distance
 -- session states a return to the lobby comes from (a match passes through Results before the lobby)
 M.RETURN_STATES = { Fight = true, Practice = true, Results = true } :: { [string]: boolean }
 M.MARKER_NAMES = { ExitP1 = true, ExitP2 = true, ExitTraining = true, ExitCpu = true, Arrival = true } :: { [string]: boolean }
+-- the duel circles: a VS PLAYER wait on a chosen map lands here (they face nothing in particular: see facingOf)
+M.CIRCLE_NAMES = { PadP1 = true, PadP2 = true } :: { [string]: boolean }
 
 -- Camera CFrame over the shoulder of a player standing at `at` (facing its LookVector, flattened).
 function M.frameBehind(at: CFrame): CFrame
@@ -41,17 +43,30 @@ function M.markerAt(markers: { BasePart }, position: Vector3): BasePart?
 	return best
 end
 
--- Every return point in the world (exits of all arenas, the Arrival markers).
+-- Every return point in the world (exits of all arenas, the Arrival markers) and the duel circles.
 function M.worldMarkers(world: Instance?): { BasePart }
 	local list = {}
 	local arenas = world and world:FindFirstChild("Arenas")
 	if not arenas then return list end
 	for _, arena in arenas:GetChildren() do
 		for _, child in arena:GetChildren() do
-			if child:IsA("BasePart") and M.MARKER_NAMES[child.Name] then table.insert(list, child) end
+			if child:IsA("BasePart") and (M.MARKER_NAMES[child.Name] or M.CIRCLE_NAMES[child.Name]) then table.insert(list, child) end
 		end
 	end
 	return list
+end
+
+-- The way a player standing on `marker` faces: an exit's or the Arrival's own facing; on a duel circle, the ring (its
+-- arena's FightOrigin, flattened), as the server turns a player it puts there.
+function M.facingOf(marker: BasePart): Vector3
+	if M.CIRCLE_NAMES[marker.Name] and marker.Parent then
+		local origin = marker.Parent:FindFirstChild("FightOrigin", true)
+		if origin and origin:IsA("BasePart") then
+			local d = Vector3.new(origin.Position.X - marker.Position.X, 0, origin.Position.Z - marker.Position.Z)
+			if d.Magnitude > 0.1 then return d.Unit end
+		end
+	end
+	return marker.CFrame.LookVector
 end
 
 export type Env = {
@@ -90,7 +105,7 @@ function M.new(env: Env?): Tracker
 		if from and (root.Position - from).Magnitude < 4 then return end
 		local marker = M.markerAt(e.markers(), root.Position)
 		if not marker then return end
-		local facing = CFrame.lookAt(root.Position, root.Position + marker.CFrame.LookVector)
+		local facing = CFrame.lookAt(root.Position, root.Position + M.facingOf(marker))
 		cam.CFrame = M.frameBehind(facing)
 		pendingUntil = 0
 		from = nil

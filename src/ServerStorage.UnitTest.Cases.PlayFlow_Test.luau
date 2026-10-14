@@ -244,6 +244,15 @@ return function(t)
 		t.expect.truthy((Vector3.new(computed.Position.X, 0, computed.Position.Z)).Magnitude < 66, "from the plaza side")
 		t.expect.equal(PlayFlow.arenaModel(world, "Arena_Missing"), nil)
 		t.expect.equal(PlayFlow.previewFrame(nil), nil)
+		-- The shot's field of view: the PreviewCam's FieldOfView attribute when sane, else none (keep the current one).
+		local previewPart = (PlayFlow.arenaModel(world, "Arena_A") :: Instance):FindFirstChild("PreviewCam") :: BasePart
+		t.expect.equal(PlayFlow.previewFov(PlayFlow.arenaModel(world, "Arena_A")), nil, "no attribute: none")
+		previewPart:SetAttribute("FieldOfView", 64)
+		t.expect.equal(PlayFlow.previewFov(PlayFlow.arenaModel(world, "Arena_A")), 64, "the attribute")
+		previewPart:SetAttribute("FieldOfView", 500)
+		t.expect.equal(PlayFlow.previewFov(PlayFlow.arenaModel(world, "Arena_A")), nil, "nonsense is ignored")
+		t.expect.equal(PlayFlow.previewFov(PlayFlow.arenaModel(world, "Arena_B")), nil, "no PreviewCam: none")
+		t.expect.equal(PlayFlow.previewFov(nil), nil)
 		-- Without the world: Stations names, ember.
 		local bare = PlayFlow.collectArenas(stations, nil)
 		t.expect.equal(bare[1].name, "Arena_A Station")
