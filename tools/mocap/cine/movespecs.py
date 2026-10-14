@@ -514,11 +514,19 @@ def nia_coilwhirl3(ctx):
 
 @clip("*", None, "Core", name="AirTumble", fps=30)
 def air_tumble(ctx):
-    """Tumble extender: the juggled body rolls over in the air (a full turn about its long axis)."""
+    """Tumble extender: the juggled body rolls over in the air (a full turn about its long axis). Round 7: the axis
+    runs from the feet (between the ankles) to the head: the juggle pose is folded at the hips, and its head-to-pelvis
+    line stood the body upright in the middle of the roll (head up, legs hanging, for ~0.1 s). The turn starts at the
+    hit's speed and slows to a stop (keys every 3 frames on an ease-out; the old 90-degree keys stopped at each one)."""
     base = C.resolved(P("Juggle", 0.45))
     J = T.full_joints(base)
-    axis = np.asarray(J["head"]) - np.asarray(J["pelvis"])
-    return [C.pk(f, C.rotated_axis(base, axis, -90.0 * i)) for i, f in enumerate((0, 6, 12, 18, 24))] + [C.pk(30, P("Juggle", 0.6))], 30
+    feet = (np.asarray(J["ankleL"]) + np.asarray(J["ankleR"])) * 0.5
+    axis = np.asarray(J["head"]) - feet
+    keys = []
+    for f in range(0, 25, 3):
+        u = f / 24.0
+        keys.append(C.pk(f, C.rotated_axis(base, axis, -360.0 * (1.0 - (1.0 - u) ** 1.5)), "linear" if f else None))
+    return keys + [C.pk(30, P("Juggle", 0.6))], 30
 
 @clip("Lumi", "SnapKick", "Kicks")
 def lumi_snapkick(ctx):
