@@ -8,7 +8,7 @@
 local Config = require(script.Parent.CombatConfig)
 local Roster = require(script.Parent.Roster)
 
-export type Input = { moveX: number, moveZ: number, block: boolean, crouch: boolean, attack: string?, attackAge: number }
+export type Input = { moveX: number, moveZ: number, block: boolean, crouch: boolean, attack: string?, attackAge: number, attackKeep: boolean? }
 export type ThrowInfo = {
 	role: string, move: string, archetype: string, frame: number, duration: number, impactFrame: number, breakWindow: number,
 	breakButton: string, impactDone: boolean, breakTried: boolean, breakPress: string?,
@@ -18,7 +18,7 @@ export type ThrowInfo = {
 	ultimate: boolean?, nextImpact: number?, scale: number?,
 }
 export type LastHit = { kind: "Hit"|"Counter"|"Block"|"Crush"|"Armor"|"Parry"|"Throw", height: "High"|"Mid"|"Low"|"Throw", tier: "Light"|"Medium"|"Heavy"|"Launch", counter: boolean, frame: number, move: string, limb: string, side: number }
-export type Press = { button: string, frame: number, move: string? }
+export type Press = { button: string, frame: number, move: string?, before: any? }
 export type Fighter = {
 	name: string, characterId: string, character: Roster.CharacterDef, pos: Vector3, facing: Vector3, health: number, maxHealth: number, state: string,
 	move: string?, moveName: string?, moveFrame: number, hasHit: boolean, stun: number, stagger: number, combo: number,
@@ -37,6 +37,8 @@ export type Fighter = {
 	-- Round 6: signature stance (state "Stance"), Surge / Ultimate, tumble.
 	stance: string?, stanceFrame: number, surge: boolean, surgeFree: boolean, ultUsed: boolean, ultStartPending: boolean,
 	tumbled: boolean, tumbling: boolean,
+	-- Round 7: studs a string follow-up has stepped in so far (Sim.stringStep), reset by every move start.
+	stringStep: number,
 }
 export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean?, tumble: boolean?, punish: boolean? }
 export type TrainerDifficulty = "Easy" | "Normal" | "Hard"
@@ -59,7 +61,7 @@ Sim.FreeStates = FREE
 
 local function flat(v: Vector3): Vector3 return Vector3.new(v.X, 0, v.Z) end
 function Sim.lateral(f: Vector3): Vector3 return Vector3.new(f.Z, 0, -f.X) end
-function Sim.newInput(): Input return { moveX=0, moveZ=0, block=false, crouch=false, attack=nil, attackAge=0 } end
+function Sim.newInput(): Input return { moveX=0, moveZ=0, block=false, crouch=false, attack=nil, attackAge=0, attackKeep=false } end
 local function easeOut(t: number): number local u = 1 - math.clamp(t, 0, 1); return 1 - u * u end
 local function easeInOut(t: number): number return (1 - math.cos(math.pi * math.clamp(t, 0, 1))) / 2 end
 Sim.easeOut = easeOut
@@ -114,6 +116,7 @@ function Sim.newFighter(name: string, pos: Vector3, facing: Vector3, characterId
 		aiNextAttack=0, aiPressureUntil=0, aiLastLauncherFrame=-1000, chainMove=nil, armorUsed=false, throwInfo=nil, lastDefendedMove=nil,
 		aiIntent=nil, aiIntentUntil=0, aiIntentX=0, aiIntentZ=0, aiIntentBlock=false, aiIntentCrouch=false, ai=nil,
 		stance=nil, stanceFrame=0, surge=false, surgeFree=false, ultUsed=false, ultStartPending=false, tumbled=false, tumbling=false,
+		stringStep=0,
 	}
 end
 
@@ -238,6 +241,21 @@ function Sim.reach(a: Fighter, t: Fighter, name: string): (boolean, number, numb
 	return along > 0 and along <= effectiveRange and side <= v.width, along, side
 end
 
+-- Strings are natural combos on hit. A string follow-up whose previous hit (of the same string) holds the opponent in
+-- hitstun or a juggle is "on hit": during its startup it steps in (Sim.stringStep, real travel the animation shows) so
+-- that it lands from inside its own reach, and it may connect at most Config.StringReach (0.3 studs) past its range and
+-- width, never further. On block or whiff a follow-up keeps its normal reach and travel.
+function Sim.stringOnHit(a: Fighter, t: Fighter, def: Roster.MoveDef): boolean
+	if def.chainFrom == nil then return false end
+	local hit = t.lastHit
+	if hit == nil or hit.move ~= def.chainFrom or (hit.kind ~= "Hit" and hit.kind ~= "Counter") then return false end
+	return t.state == "Hitstun" or (t.state == "Airborne" and not t.airLocked)
+end
+function Sim.stringReach(a: Fighter, t: Fighter, def: Roster.MoveDef, along: number, side: number): boolean
+	if along <= 0 or not Sim.stringOnHit(a, t, def) then return false end
+	return along <= def.range + Config.StringReach and side <= def.width + Config.StringReach
+end
+
 -- Input --------------------------------------------------------------------------------------------------------------
 
 local function lastToken(input: string): string
@@ -323,9 +341,13 @@ function Sim.selectMove(f: Fighter, button: string): string
 end
 
 -- Queues a move by key: a string follow-up chains when the source move is inside its input window, anything else is
--- buffered and starts as soon as the fighter can act (within Config.AttackBuffer frames).
+-- buffered and starts as soon as the fighter can act: within Config.AttackBuffer frames, or within
+-- Config.RecoveryBuffer frames when it was pressed after the fighter's own move reached its active frames (the next
+-- hit of a combo pressed early, during the previous hit's hitstop or recovery) or is that move's stance cancel (3+4).
+-- Hitstop never ages a press.
 function Sim.queueAttack(f: Fighter, name: string)
 	assert(f.character.moves[name] ~= nil or Config.Moves[name] ~= nil, "unknown move " .. name .. " for " .. f.characterId)
+	local inOwnMove = false
 	if f.move ~= nil then
 		local source = moveDef(f, f.move)
 		local queuedDef = (f.character.moves[name] or Config.Moves[name]) :: any
@@ -333,13 +355,97 @@ function Sim.queueAttack(f: Fighter, name: string)
 			f.chainMove = name
 			return
 		end
+		inOwnMove = f.moveFrame > source.startup or (queuedDef.toStance ~= nil and source.stanceCancel == queuedDef.toStance)
 	end
-	f.input.attack=name; f.input.attackAge=0
+	f.input.attack=name; f.input.attackAge=0; f.input.attackKeep=inOwnMove
+end
+
+-- How old (frames without hitstop) the buffered press may be when the fighter can act.
+local function bufferLimit(input: Input): number
+	return if input.attackKeep then Config.RecoveryBuffer else Config.AttackBuffer
+end
+Sim.bufferLimit = bufferLimit
+
+-- Follow-up queue -------------------------------------------------------------------------------------------------
+-- A press that continues the move still pending (buffered, chained or already queued) — its string follow-up, its
+-- stance cancel (3+4) or, behind a pending stance entry, a stance follow-up — waits behind it instead of replacing it,
+-- so a string typed early (during the previous hit's hitstop or recovery) comes out whole. Up to FOLLOW_QUEUE items;
+-- they start in order (Sim.startMoveNow / enterStance promote them) and are dropped when the fighter is interrupted
+-- or the pending move never starts.
+local FOLLOW_QUEUE = 3
+export type Pending = { attack: string?, age: number, keep: boolean?, chainMove: string?, queue: { { key: string, kind: string } }? }
+
+local function pendingTail(f: Fighter): string?
+	local q = (f.input :: any).queue
+	if q and #q > 0 then return q[#q].key end
+	if f.input.attack ~= nil then return f.input.attack end
+	return f.chainMove
+end
+
+-- The move `button` gives as a continuation of `tail` (and how it continues it), or nil.
+local function continuation(f: Fighter, tail: string, button: string): (string?, string?)
+	local c = f.character
+	local tailDef = c.moves[tail]
+	if tailDef == nil then return nil, nil end
+	local notation = Config.ButtonNotation[button]
+	local index = inputIndex(c)
+	if button == "Kicks" then
+		local entry = index["LK+RK"]
+		if tailDef.stanceCancel and entry and c.moves[entry].toStance == tailDef.stanceCancel then return entry, "cancel" end
+		return nil, nil
+	end
+	if button == "Ultimate" or button == "Throw" or button == "Throw2" then return nil, nil end
+	if tailDef.toStance then
+		local st = c.stances[tailDef.toStance]
+		if st then
+			for _, dir in baseContexts(f) do
+				local key = index[if dir == "n" then st.tag .. "+" .. notation else st.tag .. "+" .. dir .. "+" .. notation]
+				if key then return key, "stance" end
+			end
+		end
+		return nil, nil
+	end
+	for _, key in c.moveOrder do
+		local def = c.moves[key]
+		if def.chainFrom == tail and lastToken(def.input) == notation then return key, "chain" end
+	end
+	return nil, nil
+end
+
+local function snapshot(f: Fighter): Pending
+	local q = (f.input :: any).queue
+	return { attack = f.input.attack, age = f.input.attackAge, keep = f.input.attackKeep, chainMove = f.chainMove, queue = if q then table.clone(q) else nil }
+end
+local function restore(f: Fighter, p: Pending)
+	f.input.attack = p.attack; f.input.attackAge = p.age; f.input.attackKeep = p.keep; f.chainMove = p.chainMove
+	;(f.input :: any).queue = p.queue
+end
+
+-- One press (a button or a chord) as a continuation of what is pending, otherwise as a fresh move / string follow-up.
+local function resolvePress(f: Fighter, button: string): string
+	local tail = pendingTail(f)
+	if tail then
+		local key, kind = continuation(f, tail, button)
+		if key and kind then
+			local q = (f.input :: any).queue or {}
+			if #q < FOLLOW_QUEUE then
+				table.insert(q, { key = key, kind = kind })
+				;(f.input :: any).queue = q
+				return key
+			end
+		end
+	end
+	local key = Sim.selectMove(f, button)
+	Sim.queueAttack(f, key)
+	-- A fresh buffered move starts a new sequence.
+	if f.input.attack == key then (f.input :: any).queue = nil end
+	return key
 end
 
 -- Button press from a player or the CPU. Handles throw breaks, chords (1+3 / 2+4 throws, 1+2 the Ultimate while it
--- is available, 3+4 the signature; a move started by the first button of the chord is upgraded in place), strings
--- and buffering. Returns the move key it queued (nil if none).
+-- is available, 3+4 the signature; a move started by the first button of the chord is upgraded in place, a press of
+-- the first button that only buffered or queued something is undone), strings, the follow-up queue and buffering.
+-- Returns the move key it queued (nil if none).
 function Sim.press(m: Match, index: number, button: string): string?
 	local f = m.fighters[index]
 	if Config.ButtonNotation[button] == nil then return nil end
@@ -354,16 +460,18 @@ function Sim.press(m: Match, index: number, button: string): string?
 	end
 	if button == "Ultimate" and not Sim.ultimateReady(f) then return nil end
 	local last = f.lastPress
-	local chord = if last and m.frame - last.frame <= Config.ChordFrames then Config.Chords[last.button .. "+" .. button] else nil
-	-- 1+2 and 3+4 need both presses closer together (Config.ChordWindow) so quickly typed 1,2 / 3,4 strings stay
-	-- strings; 1+2 is only the Ultimate while it can start, otherwise the two presses stay a 1,2 string.
-	if chord and last and Config.ChordWindow[chord] and m.frame - last.frame > Config.ChordWindow[chord] then chord = nil end
+	-- Chords: two buttons pressed within the chord's window (Config.ChordWindow, else Config.ChordFrames). 1+2 is tight
+	-- (quickly typed 1,2 stays the string) and only the Ultimate while it can start; 3+4 is wide enough for two keys a
+	-- keyboard player presses "together" (up to about 60 ms apart) while a typed 3,4 string (5+ frames apart) stays a
+	-- string.
+	local chord = if last then Config.Chords[last.button .. "+" .. button] else nil
+	local window = if chord then (Config.ChordWindow[chord] or Config.ChordFrames) else 0
+	if chord and last and m.frame - last.frame > window then chord = nil end
 	if chord == "Ultimate" and not Sim.ultimateReady(f) then chord = nil end
 	if chord and last then
 		f.lastPress = nil
-		if last.move ~= nil and f.input.attack == last.move then f.input.attack = nil end
-		if last.move ~= nil and f.chainMove == last.move then f.chainMove = nil end
-		local upgrade = last.move ~= nil and f.move == last.move and f.moveFrame <= Config.ChordFrames + 1 and f.state == "Startup"
+		-- The first button already started its move (still before its active frames): upgrade it in place.
+		local upgrade = last.move ~= nil and f.move == last.move and f.moveFrame <= window + 1 and f.state == "Startup"
 		if upgrade then
 			-- The first button already started its move: replace it, keeping the elapsed frames.
 			local elapsed = f.moveFrame
@@ -374,13 +482,13 @@ function Sim.press(m: Match, index: number, button: string): string?
 			if Sim.startMoveNow(f, key) and f.move == key then f.moveFrame = elapsed end
 			return key
 		end
-		local key = Sim.selectMove(f, chord)
-		Sim.queueAttack(f, key)
-		return key
+		-- Undo what the first button buffered or queued, then press the chord instead.
+		if last.before then restore(f, last.before :: any) end
+		return resolvePress(f, chord)
 	end
-	local key = Sim.selectMove(f, button)
-	Sim.queueAttack(f, key)
-	f.lastPress = { button = button, frame = m.frame, move = key }
+	local before = snapshot(f)
+	local key = resolvePress(f, button)
+	f.lastPress = { button = button, frame = m.frame, move = key, before = before } :: any
 	return key
 end
 
@@ -452,6 +560,23 @@ local function keepApart(f: Fighter, o: Fighter)
 	local dir = if n > 0.0001 then d / n else -f.facing
 	f.pos = Vector3.new(o.pos.X, f.pos.Y, o.pos.Z) + dir * Config.Separation
 end
+-- One frame of an on-hit string follow-up's step-in (its startup up to and including the first active frame): moves
+-- the attacker toward the opponent until it is Config.StringStepMargin inside the move's range, counting the root
+-- motion still to come; at most Config.StringStepFrame studs per frame and Config.StringStepIn per move, never closer
+-- than the separation (keepApart moves only the attacker).
+function Sim.stringStep(f: Fighter, o: Fighter, v: Roster.MoveDef)
+	local along = flat(o.pos - f.pos):Dot(f.facing)
+	if along <= 0 then return end
+	local framesLeft = math.max(1, v.startup + 2 - f.moveFrame)
+	local rootLeft = if v.advance > 0 then v.advance / math.max(1, v.startup) * (framesLeft - 1) else 0
+	local need = along - rootLeft - (v.range - Config.StringStepMargin)
+	local stepped = f.stringStep or 0
+	local stepNow = math.min(need, Config.StringStepFrame, Config.StringStepIn - stepped)
+	if stepNow <= 0 then return end
+	f.pos += f.facing * stepNow
+	f.stringStep = stepped + stepNow
+	keepApart(f, o)
+end
 function Sim.separate(a: Fighter, b: Fighter)
 	for _=1,3 do
 		local d=flat(b.pos-a.pos); local n=d.Magnitude
@@ -492,6 +617,29 @@ local function toIdle(f: Fighter)
 	f.stance = nil; f.stanceFrame = 0
 end
 
+-- The next queued follow-up (Sim.press) once its move or stance is under way: a string follow-up chains, a stance
+-- cancel waits in the buffer for the recovery, a stance follow-up waits in the buffer for the stance's cancelFrom.
+-- Anything that does not continue what just started is dropped.
+local function promoteQueued(f: Fighter, startedKey: string?, stance: string?)
+	local q = (f.input :: any).queue
+	if not q or #q == 0 then return end
+	local item = q[1]
+	local def = f.character.moves[item.key]
+	local started = if startedKey then f.character.moves[startedKey] else nil
+	if def and item.kind == "chain" and startedKey ~= nil and def.chainFrom == startedKey then
+		f.chainMove = item.key
+	elseif def and item.kind == "cancel" and started and started.stanceCancel ~= nil and def.toStance == started.stanceCancel then
+		f.input.attack = item.key; f.input.attackAge = 0; f.input.attackKeep = true
+	elseif def and item.kind == "stance" and stance ~= nil and def.stance == stance then
+		f.input.attack = item.key; f.input.attackAge = 0; f.input.attackKeep = false
+	else
+		(f.input :: any).queue = nil
+		return
+	end
+	table.remove(q, 1)
+	if #q == 0 then (f.input :: any).queue = nil end
+end
+
 -- Enters a signature stance (state "Stance", stanceFrame 1). Called by a 3+4 entry or a stance cancel.
 local function enterStance(f: Fighter, key: string)
 	f.move = nil; f.moveName = nil; f.moveFrame = 0; f.hasHit = false; f.chainMove = nil; f.stringIndex = 0
@@ -500,6 +648,7 @@ local function enterStance(f: Fighter, key: string)
 	f.crouched = false; f.crouchFrames = 0; f.evaded = false; f.armorUsed = false
 	local st = f.character.stances[key]
 	f.guard = if st then st.guard else nil
+	promoteQueued(f, nil, key)
 end
 Sim.enterStance = enterStance
 
@@ -519,9 +668,10 @@ local function startMove(f: Fighter, key: string): boolean
 	local prev = f.move
 	f.stringIndex = if def.chainFrom ~= nil and prev == def.chainFrom then f.stringIndex + 1 else 1
 	f.move=key; f.moveName=def.name; f.moveFrame=1; f.hasHit=false; f.state="Startup"; f.crouched=def.crouching
-	f.chainMove=nil; f.armorUsed=false; f.guard=nil; f.evaded=false; f.crouchFrames=0
+	f.chainMove=nil; f.armorUsed=false; f.guard=nil; f.evaded=false; f.crouchFrames=0; f.stringStep=0
 	f.dash=0; f.dashFrame=0; f.dashTotal=0; f.stepFrame=0; f.stepDir=0
 	f.stance=nil; f.stanceFrame=0
+	promoteQueued(f, key, nil)
 	return true
 end
 Sim.startMoveNow = startMove
@@ -626,6 +776,9 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 	local frame = m.frame
 	local input=f.input
 	if input.attack then input.attackAge+=1 end
+	-- The follow-up queue only lives while the move it continues is still pending (buffered or chained): a hit, a
+	-- block, a throw or a press that expired leaves it with nothing to follow.
+	if (input :: any).queue and input.attack == nil and f.chainMove == nil then (input :: any).queue = nil end
 	if f.stepRequest ~= 0 and frame - f.stepRequestFrame > Config.StepBuffer then f.stepRequest = 0 end
 	if f.dashRequest ~= 0 and frame - f.dashRequestFrame > 4 then f.dashRequest = 0 end
 	f.dashCooldown=math.max(0,f.dashCooldown-1)
@@ -757,7 +910,7 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 			return
 		end
 		-- Stance cancel: the stance entry (3+4) pressed during the recovery of a `stanceCancel` move.
-		if v.stanceCancel and input.attack and f.moveFrame > activeEnd and input.attackAge <= Config.AttackBuffer then
+		if v.stanceCancel and input.attack and f.moveFrame > activeEnd and input.attackAge <= bufferLimit(input) then
 			local qdef = moveDef(f, input.attack :: string)
 			if qdef.toStance == v.stanceCancel then
 				input.attack = nil
@@ -766,11 +919,20 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 				return
 			end
 		end
-		if f.moveFrame <= v.startup or (v.homing and f.moveFrame <= activeEnd) then turnToward(f, o, v.track) end
+		if o.state == "Airborne" and not o.airLocked and f.moveFrame <= v.startup + 1 then
+			-- Juggles: a follow-up turns fully toward the body in the air, so it never drifts off line.
+			face(f, o)
+		elseif f.moveFrame <= v.startup or (v.homing and f.moveFrame <= activeEnd) then
+			turnToward(f, o, v.track)
+		end
 		if v.advance > 0 and f.moveFrame <= v.startup + 1 then
 			-- Root motion: `advance` studs spread over the frames up to and including the first active frame.
 			f.pos += f.facing * (v.advance / math.max(1, v.startup))
 			keepApart(f, o)
+		end
+		if f.moveFrame <= v.startup + 1 and Sim.stringOnHit(f, o, v) then
+			-- A string follow-up on hit steps in during its startup (natural strings without reach the body cannot show).
+			Sim.stringStep(f, o, v)
 		end
 		if f.moveFrame<=v.startup then f.state="Startup"
 		elseif f.moveFrame<=activeEnd then f.state="Active"
@@ -799,7 +961,7 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 	local queued=input.attack
 	if queued then
 		input.attack=nil
-		if input.attackAge<=Config.AttackBuffer then startMove(f, queued); return end
+		if input.attackAge<=bufferLimit(input) then startMove(f, queued); return end
 	end
 	local stats=f.character.stats
 	f.crouched=input.crouch
@@ -1090,6 +1252,7 @@ local function hits(m: Match, events: { Event })
 		if air and (def.height=="Low" or t.pos.Y>Config.AirHitCeiling) then eligible=false end
 		if not eligible then continue end
 		local inReach, along, side = Sim.reach(a,t,entry.name)
+		if not inReach and Sim.stringReach(a, t, def, along, side) then inReach = true end
 		if not inReach then
 			if t.state == "Sidestep" and along > 0 and along <= def.range + 0.6 and side > def.width then a.evaded = true end
 			continue

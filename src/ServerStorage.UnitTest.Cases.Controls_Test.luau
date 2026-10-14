@@ -160,5 +160,7 @@ return function(t)
 			expect.falsy(fightOrPractice[key], "lobby." .. action .. " (" .. key .. ") is also a fight/practice key")
 		end
 		expect.truthy(#Controls.actionText.play > 0 and #Controls.actionText.fighters > 0 and #Controls.actionText.sprint > 0)
+		-- Round 7: the PLAY flow is VS PLAYER / VS CPU / PRACTICE, then a map (play's step-by-step flow).
+		expect.equal(Controls.actionText.play, "Play: VS Player, VS CPU, Practice")
 	end)
 end

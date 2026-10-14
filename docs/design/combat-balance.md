@@ -13,7 +13,562 @@ Raw outputs: `OV6\work\combat\exploit-base-all.txt`, `exploit-new-all-run.txt`, 
 step-in round `OV6\work\combat\runs-stepin\` (`before-*` = round 2, `fallout-*` = step-in Roster + round-2 CPU,
 `final-*` = this export).
 
-## R6. Round 6: distinct movesets, combos, Surge and the Ultimate — latest
+## Round 7 (`r7-combat`): combo execution and fairness — latest
+
+The user: combos are "difficult" ("maybe its a skill issue lets look more into this") and "make sure its fair, some
+characters seem stronger than other atleast from playing the bots". Harness: `OV6\work\r7-combat\harness\` (Lune 0.11,
+the real `CombatSim`, `CombatAI`, `MatchRunner`, `Roster` and `Client.InputController` driven by fake key events).
+Before = `main` b0d6050 (export in `OV6\work\r7-combat\main-src`, `R7_SRC=<dir>` points any tool at it), after =
+`r7-combat`. Re-run everything with `powershell -File final.ps1 -Tag <tag> [-Main]`; tools: `execaudit.luau` /
+`execreport.luau` / `windowstats.luau` (combo execution), `chords.luau`, `strings.luau`, `matrix.luau` (CPU vs CPU),
+`refpool.luau` (reference player vs CPU, reference vs reference), `refbot.luau` (the reference player), `power.luau`,
+`confirmgap.luau` (Hard string follow-ups), `aistats.luau`, `jugglecheck.luau`, `fairtables.luau`, `optimize.ps1`
+(per-fighter CPU skill), `refdiag.luau` / `cpudiag.luau` (where damage comes from).
+
+### Round 7.1 Combo execution through the keyboard path
+
+Every listed combo of every fighter, performed with keys through `InputController` into a practice `MatchRunner`,
+against all six opponents, 30 performances per opponent and noise level (180 per cell). The human model: every key
+event (press and release) shifted by a uniform random offset within ±2 … ±6 frames ("early" = every press 1-7
+frames early); juggle steps are timed off the launch (a person reacts to the launch), string follow-ups keep their
+rhythm relative to the previous press; directions lead the button by 1-4 frames and are held 3-8; buttons are held 3-6
+frames; chords (J+K, 1+2) are pressed 0-3 frames apart in random order. A performance succeeds when every step
+connects as a true combo. Success %, before → after (same names = the same route idea; most routes were re-timed or
+re-ordered; routes without an arrow are new):
+
+| fighter | # | combo | diff | ±2 | ±3 | ±4 | ±5 | ±6 | early (-7..-1) | top failure causes (±4) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Kael | 1 | Uppercut Rush | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Kael | 2 | Pocket Launch | 3 | 15 → 100 | 12 → 100 | 8 → 100 | 11 → 100 | 9 → 100 | 0 → 100 |  |
+| Kael | 3 | Rib Roller Finish | 2 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Kael | 4 | Counter Uppercut | 3 | 18 → 100 | 17 → 100 | 12 → 100 | 12 → 100 | 16 → 100 | 0 → 100 |  |
+| Kael | 5 | Final Bell Finish | 1 | 59 → 100 | 57 → 100 | 57 → 100 | 52 → 100 | 54 → 100 | 0 → 100 |  |
+| Sierra | 1 | Elbow Roundhouse | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Sierra | 2 | Switch Teep | 3 | 11 → 100 | 11 → 100 | 6 → 99 | 9 → 98 | 5 → 96 | 0 → 100 | late: landed or recovered 2 |
+| Sierra | 3 | Counter Knee | 2 | 43 → 100 | 39 → 100 | 36 → 100 | 37 → 100 | 33 → 100 | 0 → 100 |  |
+| Sierra | 4 | Knee To Southpaw | 5 | 9 → 100 | 12 → 100 | 5 → 97 | 7 → 93 | 5 → 88 | 0 → 100 | late: landed or recovered 5 |
+| Sierra | 5 | Eight Limbs Finish | 1 | 59 → 100 | 58 → 100 | 54 → 100 | 53 → 100 | 54 → 100 | 0 → 100 |  |
+| Goran | 1 | Hammer Down | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Goran | 2 | Forearm Finish | 2 | 24 → 100 | 20 → 100 | 23 → 100 | 16 → 100 | 19 → 100 | 0 → 100 |  |
+| Goran | 3 | Counter Haymaker | 2 | 31 → 100 | 22 → 100 | 24 → 100 | 27 → 100 | 23 → 100 | 0 → 100 |  |
+| Goran | 4 | Landslide Finish | 1 | 59 → 100 | 57 → 100 | 55 → 100 | 52 → 100 | 55 → 100 | 0 → 100 |  |
+| Lumi | 1 | Flip Kick Combo | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Lumi | 2 | Aerial Launch | 3 | 20 → 100 | 18 → 100 | 16 → 100 | 19 → 100 | 16 → 100 | 0 → 100 |  |
+| Lumi | 3 | Cartwheel Counter | 3 | 23 → 100 | 23 → 100 | 19 → 100 | 18 → 100 | 21 → 100 | 0 → 100 |  |
+| Lumi | 4 | Flip And Spin | 2 | 23 → 100 | 22 → 100 | 21 → 100 | 18 → 100 | 17 → 100 | 0 → 100 |  |
+| Lumi | 5 | Skyline Finish | 1 | 62 → 100 | 59 → 100 | 54 → 100 | 56 → 100 | 54 → 100 | 0 → 100 |  |
+| Rhys | 1 | Knee Rush | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Rhys | 2 | Still Water Answer | 3 | 17 → 100 | 15 → 100 | 12 → 100 | 14 → 100 | 13 → 100 | 0 → 100 |  |
+| Rhys | 3 | Knee And Backfist | 1 | 19 → 100 | 19 → 100 | 17 → 100 | 17 → 100 | 13 → 100 | 0 → 100 |  |
+| Rhys | 4 | Counter Knee | 2 | 21 → 100 | 19 → 100 | 16 → 100 | 15 → 100 | 18 → 100 | 0 → 100 |  |
+| Rhys | 5 | Last Kata Finish | 1 | 59 → 100 | 57 → 100 | 57 → 100 | 52 → 100 | 54 → 100 | 0 → 100 |  |
+| Nia | 1 | Palm Flurry | 1 | 100 | 100 | 100 | 100 | 100 | 100 |  |
+| Nia | 2 | Palm Lift Flurry | 2 | 16 → 100 | 12 → 100 | 16 → 100 | 11 → 100 | 14 → 100 | 0 → 100 |  |
+| Nia | 3 | Coil Whirl | 3 | 17 → 100 | 16 → 100 | 11 → 100 | 9 → 99 | 11 → 98 | 0 → 100 |  |
+| Nia | 4 | Whirlwind Rise | 3 | 9 → 100 | 8 → 100 | 8 → 99 | 5 → 98 | 6 → 95 | 0 → 100 | late: landed or recovered 2 |
+| Nia | 5 | Monsoon Finish | 1 | 36 → 100 | 31 → 100 | 33 → 100 | 29 → 100 | 29 → 100 | 0 → 100 |  |
+
+<details><summary>Main's own listed combos (before), same measurement</summary>
+
+| fighter | # | combo | diff | ±2 | ±3 | ±4 | ±5 | ±6 | early (-7..-1) | top failure causes (±4) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Kael | 1 | Uppercut Bread | 2 | 16 | 15 | 13 | 13 | 10 | 0 | dropped buffer 157 |
+| Kael | 2 | Pocket Launch | 3 | 15 | 12 | 8 | 11 | 9 | 0 | wrong move 83, chord not recognised 43, dropped buffer 39 |
+| Kael | 3 | Counter Uppercut | 3 | 18 | 17 | 12 | 12 | 16 | 0 | dropped buffer 158 |
+| Kael | 4 | Final Bell Finish | 2 | 59 | 57 | 57 | 52 | 54 | 0 | dropped buffer 77 |
+| Sierra | 1 | Switch Teep | 4 | 11 | 11 | 6 | 9 | 5 | 0 | dropped buffer 112, chord not recognised 34, late: landed or recovered 24 |
+| Sierra | 2 | Counter Knee | 2 | 43 | 39 | 36 | 37 | 33 | 0 | dropped buffer 115 |
+| Sierra | 3 | Knee To Southpaw | 4 | 9 | 12 | 5 | 7 | 5 | 0 | dropped buffer 109, chord not recognised 62 |
+| Sierra | 4 | Eight Limbs Finish | 2 | 59 | 58 | 54 | 53 | 54 | 0 | dropped buffer 83 |
+| Goran | 1 | Lift And Hammer | 2 | 28 | 28 | 25 | 21 | 26 | 0 | dropped buffer 135 |
+| Goran | 2 | Counter Haymaker | 3 | 31 | 22 | 24 | 27 | 23 | 0 | dropped buffer 136 |
+| Goran | 3 | Forearm Finish | 3 | 24 | 20 | 23 | 16 | 19 | 0 | dropped buffer 139 |
+| Goran | 4 | Landslide Finish | 2 | 59 | 57 | 55 | 52 | 55 | 0 | dropped buffer 81 |
+| Lumi | 1 | Flip And Spin | 3 | 23 | 22 | 21 | 18 | 17 | 0 | dropped buffer 143 |
+| Lumi | 2 | Aerial Launch | 4 | 20 | 18 | 16 | 19 | 16 | 0 | wrong move 71, chord not recognised 43, dropped buffer 36 |
+| Lumi | 3 | Cartwheel Counter | 3 | 23 | 23 | 19 | 18 | 21 | 0 | dropped buffer 146 |
+| Lumi | 4 | Crescent Flight | 3 | 24 | 21 | 18 | 19 | 16 | 0 | dropped buffer 147 |
+| Lumi | 5 | Skyline Finish | 2 | 62 | 59 | 54 | 56 | 54 | 0 | dropped buffer 83 |
+| Rhys | 1 | Knee And Backfist | 2 | 19 | 19 | 17 | 17 | 13 | 0 | dropped buffer 150 |
+| Rhys | 2 | Still Water Answer | 3 | 17 | 15 | 12 | 14 | 13 | 0 | wrong move 78, chord not recognised 43, dropped buffer 37 |
+| Rhys | 3 | Counter Knee | 3 | 21 | 19 | 16 | 15 | 18 | 0 | dropped buffer 152 |
+| Rhys | 4 | Last Kata Finish | 2 | 59 | 57 | 57 | 52 | 54 | 0 | dropped buffer 77 |
+| Nia | 1 | Palm Lift Flurry | 3 | 16 | 12 | 16 | 11 | 14 | 0 | dropped buffer 152 |
+| Nia | 2 | Coil Whirl | 4 | 17 | 16 | 11 | 9 | 11 | 0 | dropped buffer 126, late: landed or recovered 25, chord not recognised 10 |
+| Nia | 3 | Whirlwind Rise | 4 | 9 | 8 | 8 | 5 | 6 | 0 | late: landed or recovered 91, dropped buffer 67, chord not recognised 7 |
+| Nia | 4 | Monsoon Finish | 3 | 36 | 31 | 33 | 29 | 29 | 0 | late: landed or recovered 74, dropped buffer 47 |
+
+</details>
+
+Targets: every listed combo ≥ 90 % at ±3 (all 100 %), difficulty 1-2 routes ≥ 95 % at ±5 (all 100 %). Difficulty
+labels are computed: 1, +1 for 5+ presses, +1 for a stance entry or cancel, +1 for a counter-hit opener, +1 under 95 %
+at ±5, +1 more under 90 %.
+
+Per-step timing windows (one press moved early / late against the listed timing, every other press on time):
+
+| | before | after |
+|---|---|---|
+| steps measured (every press after the first, every listed combo) | 83 | 91 |
+| median window (frames that still connect) | 18 | 41 |
+| narrowest window | 8 | 22 |
+| median early tolerance (frames before the listed timing) | 0 | 27 |
+| steps with NO early tolerance (window starts at the listed frame) | 80 | 0 |
+| median late tolerance | 17 | 16 |
+| tightest late tolerance | 7 | 8 |
+| steps with a window of 6 frames or less | 0 | 0 |
+
+What stops a press just before its window opens:
+
+- cause just before the window, before: chord not recognised 2, dropped buffer 76, late: landed or recovered 2, ≤-30 3
+- cause just before the window, after: dropped buffer 55, late: landed or recovered 2, wrong move 1, ≤-30 33
+
+On `main` the next press was dropped as soon as it came more than 8 frames (`AttackBuffer`) before the fighter could
+act, and in a juggle almost every press is that early: 80 of 83 steps had no early tolerance at all. Every step of the
+final routes (window, cause just outside it; ±30 = the end of the search):
+
+| fighter | combo | step | input → move | window | too early | too late |
+|---|---|---|---|---|---|---|
+| Kael | Uppercut Rush | 2 | 2 → Cross | -28 .. +21 (50 f) | dropped buffer | late: landed or recovered |
+| Kael | Uppercut Rush | 3 | 1 → CrossHook | -8 .. +25 (34 f) | dropped buffer | string window missed (late) |
+| Kael | Uppercut Rush | 4 | 2 → HookOverhand | -12 .. +30 (43 f) | dropped buffer | ≥30 |
+| Kael | Pocket Launch | 2 | PKT+2 → PocketUppercut | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Kael | Pocket Launch | 3 | 2 → Cross | -27 .. +22 (50 f) | dropped buffer | late: landed or recovered |
+| Kael | Pocket Launch | 4 | 1 → CrossHook | -8 .. +28 (37 f) | dropped buffer | string window missed (late) |
+| Kael | Pocket Launch | 5 | 2 → HookOverhand | -12 .. +30 (43 f) | dropped buffer | ≥30 |
+| Kael | Rib Roller Finish | 2 | b+1 → RibRoller | -28 .. +15 (44 f) | dropped buffer | late: landed or recovered |
+| Kael | Rib Roller Finish | 3 | 2 → Cross | -20 .. +15 (36 f) | dropped buffer | late: landed or recovered |
+| Kael | Rib Roller Finish | 4 | 1 → CrossHook | -8 .. +21 (30 f) | dropped buffer | late: landed or recovered |
+| Kael | Rib Roller Finish | 5 | 2 → HookOverhand | -12 .. +28 (41 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 2 | 1 → Jab | -30 .. +10 (41 f) | ≤-30 | late: landed or recovered |
+| Kael | Counter Uppercut | 3 | b+1 → RibRoller | -11 .. +10 (22 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 4 | 2 → Cross | -20 .. +10 (31 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 5 | 1 → CrossHook | -8 .. +16 (25 f) | dropped buffer | late: landed or recovered |
+| Kael | Final Bell Finish | 2 | 1+2 → Ultimate | -28 .. +14 (43 f) | dropped buffer | late: landed or recovered |
+| Sierra | Elbow Roundhouse | 2 | 2 → SlashElbow | -28 .. +13 (42 f) | dropped buffer | late: landed or recovered |
+| Sierra | Elbow Roundhouse | 3 | 4 → HighRoundhouse | -16 .. +10 (27 f) | dropped buffer | late: landed or recovered |
+| Sierra | Elbow Roundhouse | 4 | 4 → DoubleRoundhouse | -30 .. +26 (57 f) | ≤-30 | late: landed or recovered |
+| Sierra | Switch Teep | 2 | 3 → Teep | -28 .. +16 (45 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 3 | 3+4 → Southpaw | -16 .. +10 (27 f) | wrong move | late: landed or recovered |
+| Sierra | Switch Teep | 4 | SPW+3 → SouthpawBodyKick | -30 .. +10 (41 f) | ≤-30 | late: landed or recovered |
+| Sierra | Switch Teep | 5 | 2 → SlashElbow | -19 .. +17 (37 f) | dropped buffer | late: landed or recovered |
+| Sierra | Counter Knee | 2 | 2 → SlashElbow | -21 .. +18 (40 f) | dropped buffer | late: landed or recovered |
+| Sierra | Counter Knee | 3 | 4 → HighRoundhouse | -16 .. +12 (29 f) | dropped buffer | late: landed or recovered |
+| Sierra | Counter Knee | 4 | 4 → DoubleRoundhouse | -30 .. +28 (59 f) | ≤-30 | late: landed or recovered |
+| Sierra | Knee To Southpaw | 2 | 1 → Jab | -21 .. +14 (36 f) | dropped buffer | late: landed or recovered |
+| Sierra | Knee To Southpaw | 3 | 3 → JabKick | -8 .. +17 (26 f) | dropped buffer | late: landed or recovered |
+| Sierra | Knee To Southpaw | 4 | 3+4 → Southpaw | -30 .. +8 (39 f) | ≤-30 | late: landed or recovered |
+| Sierra | Knee To Southpaw | 5 | SPW+3 → SouthpawBodyKick | -30 .. +8 (39 f) | ≤-30 | late: landed or recovered |
+| Sierra | Knee To Southpaw | 6 | 2 → SlashElbow | -19 .. +17 (37 f) | dropped buffer | late: landed or recovered |
+| Sierra | Eight Limbs Finish | 2 | 1+2 → Ultimate | -28 .. +12 (41 f) | dropped buffer | late: landed or recovered |
+| Goran | Hammer Down | 2 | 2 → Hammer | -30 .. +16 (47 f) | ≤-30 | late: landed or recovered |
+| Goran | Hammer Down | 3 | 2 → DoubleHammer | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Goran | Forearm Finish | 2 | f+3 → KneeLift | -30 .. +11 (42 f) | ≤-30 | late: landed or recovered |
+| Goran | Forearm Finish | 3 | 1 → Jab | -20 .. +11 (32 f) | dropped buffer | late: landed or recovered |
+| Goran | Forearm Finish | 4 | 2 → JabHammer | -8 .. +16 (25 f) | dropped buffer | late: landed or recovered |
+| Goran | Forearm Finish | 5 | 1 → JabHammerForearm | -12 .. +25 (38 f) | dropped buffer | late: landed or recovered |
+| Goran | Counter Haymaker | 2 | f+3 → KneeLift | -25 .. +21 (47 f) | dropped buffer | late: landed or recovered |
+| Goran | Counter Haymaker | 3 | 1 → Jab | -20 .. +20 (41 f) | dropped buffer | late: landed or recovered |
+| Goran | Counter Haymaker | 4 | 2 → JabHammer | -8 .. +23 (32 f) | dropped buffer | string window missed (late) |
+| Goran | Landslide Finish | 2 | 1+2 → Ultimate | -30 .. +8 (39 f) | ≤-30 | late: landed or recovered |
+| Lumi | Flip Kick Combo | 2 | 2 → SpinBackfist | -30 .. +12 (43 f) | ≤-30 | late: landed or recovered |
+| Lumi | Flip Kick Combo | 3 | 1 → Palm | -18 .. +11 (30 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip Kick Combo | 4 | 4 → PalmHeel | -30 .. +20 (51 f) | ≤-30 | late: landed or recovered |
+| Lumi | Aerial Launch | 2 | AER+4 → AerialHeel | -30 .. +13 (44 f) | ≤-30 | wrong move |
+| Lumi | Aerial Launch | 3 | 2 → SpinBackfist | -27 .. +17 (45 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 4 | 1 → Palm | -15 .. +15 (31 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 5 | 4 → PalmHeel | -30 .. +23 (54 f) | ≤-30 | late: landed or recovered |
+| Lumi | Aerial Launch | 6 | 4 → PalmHeelHook | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Lumi | Cartwheel Counter | 2 | 2 → SpinBackfist | -27 .. +17 (45 f) | dropped buffer | late: landed or recovered |
+| Lumi | Cartwheel Counter | 3 | 1 → Palm | -18 .. +13 (32 f) | dropped buffer | late: landed or recovered |
+| Lumi | Cartwheel Counter | 4 | 4 → PalmHeel | -30 .. +22 (53 f) | ≤-30 | string window missed (late) |
+| Lumi | Cartwheel Counter | 5 | 4 → PalmHeelHook | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Lumi | Flip And Spin | 2 | 2 → SpinBackfist | -30 .. +12 (43 f) | ≤-30 | late: landed or recovered |
+| Lumi | Flip And Spin | 3 | 1 → Palm | -18 .. +11 (30 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip And Spin | 4 | 4 → PalmHeel | -30 .. +18 (49 f) | ≤-30 | late: landed or recovered |
+| Lumi | Flip And Spin | 5 | 4 → PalmHeelHook | -30 .. +27 (58 f) | ≤-30 | late: landed or recovered |
+| Lumi | Skyline Finish | 2 | 1+2 → Ultimate | -30 .. +10 (41 f) | ≤-30 | late: landed or recovered |
+| Rhys | Knee Rush | 2 | 1 → Jab | -28 .. +22 (51 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee Rush | 3 | 2 → ReversePunch | -8 .. +22 (31 f) | dropped buffer | string window missed (late) |
+| Rhys | Knee Rush | 4 | 4 → ReverseHighKick | -12 .. +29 (42 f) | dropped buffer | string window missed (late) |
+| Rhys | Still Water Answer | 2 | STW+2 → StillReverse | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Rhys | Still Water Answer | 3 | 2 → StraightPunch | -27 .. +11 (39 f) | dropped buffer | late: landed or recovered |
+| Rhys | Still Water Answer | 4 | b+2 → SpinBackfist | -15 .. +10 (26 f) | dropped buffer | late: landed or recovered |
+| Rhys | Still Water Answer | 5 | 1 → Jab | -17 .. +12 (30 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 2 | 2 → StraightPunch | -28 .. +10 (39 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 3 | b+2 → SpinBackfist | -18 .. +8 (27 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 4 | 1 → Jab | -20 .. +11 (32 f) | dropped buffer | late: landed or recovered |
+| Rhys | Counter Knee | 2 | 2 → StraightPunch | -30 .. +10 (41 f) | ≤-30 | late: landed or recovered |
+| Rhys | Counter Knee | 3 | b+2 → SpinBackfist | -18 .. +8 (27 f) | dropped buffer | late: landed or recovered |
+| Rhys | Counter Knee | 4 | 1 → Jab | -20 .. +11 (32 f) | dropped buffer | late: landed or recovered |
+| Rhys | Last Kata Finish | 2 | 1+2 → Ultimate | -28 .. +12 (41 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Flurry | 2 | 1 → Chop | -28 .. +22 (51 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Flurry | 3 | 1 → DoubleChop | -30 .. +22 (53 f) | ≤-30 | string window missed (late) |
+| Nia | Palm Flurry | 4 | 4 → FlurryKick | -30 .. +24 (55 f) | ≤-30 | string window missed (late) |
+| Nia | Palm Lift Flurry | 2 | 1 → Chop | -28 .. +11 (40 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 3 | 3 → RisingFrontKick | -11 .. +11 (23 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 4 | 2 → PalmThrust | -15 .. +11 (27 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 5 | 3 → PalmKick | -30 .. +21 (52 f) | ≤-30 | late: landed or recovered |
+| Nia | Coil Whirl | 2 | 4 → HighKick | -28 .. +18 (47 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 3 | 3+4 → Coil | -23 .. +11 (35 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 4 | COIL+4 → CoilWhirl | -30 .. +11 (42 f) | ≤-30 | late: landed or recovered |
+| Nia | Coil Whirl | 5 | 4 → CoilWhirl2 | -30 .. +25 (56 f) | ≤-30 | late: landed or recovered |
+| Nia | Whirlwind Rise | 2 | 4 → RisingTornado | -7 .. +20 (28 f) | late: landed or recovered | string window missed (late) |
+| Nia | Whirlwind Rise | 3 | 4 → HighKick | -30 .. +16 (47 f) | ≤-30 | late: landed or recovered |
+| Nia | Whirlwind Rise | 4 | 3+4 → Coil | -23 .. +10 (34 f) | dropped buffer | late: landed or recovered |
+| Nia | Whirlwind Rise | 5 | COIL+4 → CoilWhirl | -30 .. +10 (41 f) | ≤-30 | late: landed or recovered |
+| Nia | Whirlwind Rise | 6 | 4 → CoilWhirl2 | -30 .. +24 (55 f) | ≤-30 | late: landed or recovered |
+| Nia | Monsoon Finish | 2 | 4 → RisingTornado | -7 .. +20 (28 f) | late: landed or recovered | string window missed (late) |
+| Nia | Monsoon Finish | 3 | 1+2 → Ultimate | -30 .. +11 (42 f) | ≤-30 | late: landed or recovered |
+
+<details><summary>The same table for main's routes (before)</summary>
+
+| fighter | combo | step | input → move | window | too early | too late |
+|---|---|---|---|---|---|---|
+| Kael | Uppercut Bread | 2 | 1 → Jab | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Uppercut Bread | 3 | b+1 → RibRoller | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Uppercut Bread | 4 | 2 → Cross | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Uppercut Bread | 5 | 1 → CrossHook | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Kael | Pocket Launch | 2 | PKT+2 → PocketUppercut | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Kael | Pocket Launch | 3 | 1 → Jab | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Kael | Pocket Launch | 4 | b+1 → RibRoller | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Kael | Pocket Launch | 5 | 2 → Cross | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Kael | Pocket Launch | 6 | 1 → CrossHook | 0 .. +17 (18 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 2 | 1 → Jab | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 3 | b+1 → RibRoller | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 4 | 2 → Cross | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Kael | Counter Uppercut | 5 | 1 → CrossHook | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Kael | Final Bell Finish | 2 | 1+2 → Ultimate | 0 .. +15 (16 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 2 | 3 → Teep | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 3 | 3+4 → Southpaw | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 4 | SPW+3 → SouthpawBodyKick | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 5 | 1 → Jab | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Sierra | Switch Teep | 6 | 3 → JabKick | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Sierra | Counter Knee | 2 | 1 → Jab | 0 .. +28 (29 f) | dropped buffer | late: landed or recovered |
+| Sierra | Counter Knee | 3 | 3 → JabKick | 0 .. +25 (26 f) | dropped buffer | string window missed (late) |
+| Sierra | Counter Knee | 4 | 4 → JabTeepHigh | 0 .. +30 (31 f) | dropped buffer | ≥30 |
+| Sierra | Knee To Southpaw | 2 | 1 → Jab | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Sierra | Knee To Southpaw | 3 | 3 → JabKick | 0 .. +25 (26 f) | dropped buffer | string window missed (late) |
+| Sierra | Knee To Southpaw | 4 | 3+4 → Southpaw | 0 .. +24 (25 f) | chord not recognised | late: landed or recovered |
+| Sierra | Knee To Southpaw | 5 | SPW+3 → SouthpawBodyKick | 0 .. +15 (16 f) | chord not recognised | late: landed or recovered |
+| Sierra | Knee To Southpaw | 6 | 2 → SlashElbow | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Sierra | Eight Limbs Finish | 2 | 1+2 → Ultimate | 0 .. +13 (14 f) | dropped buffer | late: landed or recovered |
+| Goran | Lift And Hammer | 2 | f+3 → KneeLift | 0 .. +17 (18 f) | dropped buffer | late: landed or recovered |
+| Goran | Lift And Hammer | 3 | 1 → Jab | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Goran | Lift And Hammer | 4 | 2 → JabHammer | 0 .. +26 (27 f) | dropped buffer | string window missed (late) |
+| Goran | Counter Haymaker | 2 | f+3 → KneeLift | 0 .. +22 (23 f) | dropped buffer | late: landed or recovered |
+| Goran | Counter Haymaker | 3 | 1 → Jab | 0 .. +21 (22 f) | dropped buffer | late: landed or recovered |
+| Goran | Counter Haymaker | 4 | 2 → JabHammer | 0 .. +26 (27 f) | dropped buffer | string window missed (late) |
+| Goran | Forearm Finish | 2 | f+3 → KneeLift | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Goran | Forearm Finish | 3 | 1 → Jab | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Goran | Forearm Finish | 4 | 2 → JabHammer | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Goran | Forearm Finish | 5 | 1 → JabHammerForearm | 0 .. +27 (28 f) | dropped buffer | late: landed or recovered |
+| Goran | Landslide Finish | 2 | 1+2 → Ultimate | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip And Spin | 2 | 2 → SpinBackfist | 0 .. +13 (14 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip And Spin | 3 | 1 → Palm | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip And Spin | 4 | 4 → PalmHeel | 0 .. +21 (22 f) | dropped buffer | late: landed or recovered |
+| Lumi | Flip And Spin | 5 | 4 → PalmHeelHook | 0 .. +29 (30 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 2 | AER+4 → AerialHeel | -30 .. +25 (56 f) | ≤-30 | wrong move |
+| Lumi | Aerial Launch | 3 | 2 → SpinBackfist | 0 .. +15 (16 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 4 | 1 → Palm | 0 .. +13 (14 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 5 | 4 → PalmHeel | 0 .. +23 (24 f) | dropped buffer | late: landed or recovered |
+| Lumi | Aerial Launch | 6 | 4 → PalmHeelHook | 0 .. +30 (31 f) | dropped buffer | ≥30 |
+| Lumi | Cartwheel Counter | 2 | 2 → SpinBackfist | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Lumi | Cartwheel Counter | 3 | 1 → Palm | 0 .. +14 (15 f) | dropped buffer | late: landed or recovered |
+| Lumi | Cartwheel Counter | 4 | 4 → PalmHeel | 0 .. +25 (26 f) | dropped buffer | string window missed (late) |
+| Lumi | Cartwheel Counter | 5 | 4 → PalmHeelHook | 0 .. +30 (31 f) | dropped buffer | ≥30 |
+| Lumi | Crescent Flight | 2 | 2 → SpinBackfist | 0 .. +7 (8 f) | dropped buffer | late: landed or recovered |
+| Lumi | Crescent Flight | 3 | 3 → SnapKick | 0 .. +7 (8 f) | dropped buffer | late: landed or recovered |
+| Lumi | Crescent Flight | 4 | 4 → SnapCrescent | 0 .. +17 (18 f) | dropped buffer | late: landed or recovered |
+| Lumi | Crescent Flight | 5 | 4 → CrescentFlyingKick | 0 .. +22 (23 f) | dropped buffer | late: landed or recovered |
+| Lumi | Skyline Finish | 2 | 1+2 → Ultimate | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 2 | 2 → StraightPunch | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 3 | b+2 → SpinBackfist | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Rhys | Knee And Backfist | 4 | 1 → Jab | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Rhys | Still Water Answer | 2 | STW+2 → StillReverse | -30 .. +30 (61 f) | ≤-30 | ≥30 |
+| Rhys | Still Water Answer | 3 | 2 → StraightPunch | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Rhys | Still Water Answer | 4 | b+2 → SpinBackfist | 0 .. +8 (9 f) | dropped buffer | late: landed or recovered |
+| Rhys | Still Water Answer | 5 | 1 → Jab | 0 .. +10 (11 f) | dropped buffer | late: landed or recovered |
+| Rhys | Counter Knee | 2 | 2 → StraightPunch | 0 .. +11 (12 f) | dropped buffer | late: landed or recovered |
+| Rhys | Counter Knee | 3 | b+2 → SpinBackfist | 0 .. +9 (10 f) | dropped buffer | late: landed or recovered |
+| Rhys | Counter Knee | 4 | 1 → Jab | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Rhys | Last Kata Finish | 2 | 1+2 → Ultimate | 0 .. +13 (14 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 2 | 1 → Chop | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 3 | 3 → RisingFrontKick | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 4 | 2 → PalmThrust | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+| Nia | Palm Lift Flurry | 5 | 3 → PalmKick | 0 .. +24 (25 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 2 | 4 → HighKick | 0 .. +20 (21 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 3 | 3+4 → Coil | 0 .. +27 (28 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 4 | COIL+4 → CoilWhirl | 0 .. +19 (20 f) | dropped buffer | late: landed or recovered |
+| Nia | Coil Whirl | 5 | 4 → CoilWhirl2 | 0 .. +30 (31 f) | dropped buffer | ≥30 |
+| Nia | Whirlwind Rise | 2 | 4 → RisingTornado | 0 .. +29 (30 f) | late: landed or recovered | string window missed (late) |
+| Nia | Whirlwind Rise | 3 | 4 → HighKick | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Nia | Whirlwind Rise | 4 | 3+4 → Coil | 0 .. +26 (27 f) | dropped buffer | late: landed or recovered |
+| Nia | Whirlwind Rise | 5 | COIL+4 → CoilWhirl | 0 .. +18 (19 f) | dropped buffer | late: landed or recovered |
+| Nia | Whirlwind Rise | 6 | 4 → CoilWhirl2 | 0 .. +30 (31 f) | dropped buffer | ≥30 |
+| Nia | Monsoon Finish | 2 | 4 → RisingTornado | 0 .. +29 (30 f) | late: landed or recovered | string window missed (late) |
+| Nia | Monsoon Finish | 3 | 1+2 → Ultimate | 0 .. +12 (13 f) | dropped buffer | late: landed or recovered |
+
+</details>
+
+### Round 7.2 Chords
+
+`chords.luau`: J and K pressed g frames apart in neutral (Y = signature), a keyboard player pressing J+K "together"
+(uniform 0-50 ms apart, random 60 Hz phase, 300 tries per fighter), typed kick strings (first kick, the other kick g
+frames later: S = string, C = signature), and U then I in Surge (Ultimate or string).
+
+| | before | after |
+|---|---|---|
+| J/K gap that still gives the signature | 0-2 frames | 0-4 frames |
+| J+K within 33 ms | 100 % | 100 % |
+| J+K within 50 ms (target ≥ 95 %) | 83-86 % | **100 %** |
+| J+K within 67 ms | 58-66 % | 100 % |
+| typed 3,4 (Sierra Teep Kick, Lumi Snap Crescent) | string from a 3-frame gap | string from a 5-frame (83 ms) gap |
+| U then I in Surge | Ultimate within 1 frame, else the 1,2 string | unchanged |
+
+A first kick that already started its move is upgraded in place (before its active frames) when the second arrives
+inside the window; after a chord forms the next key cannot form another one (`CombatInput_Test`).
+
+### Round 7.3 Strings as natural combos
+
+`strings.luau`: for every string, from every distance at which hit 1 connects on a standing dummy (0.1-stud steps), the
+follow-ups pressed as early as possible; after hit 1 the dummy guards whenever it is free, so a gap shows as a block.
+Before: **13 of 22** strings were natural from every hit-1 range (pushback carried the opponent out of the next hit's
+reach at the far end: Kael 1,2,1 and 2,1,2, Sierra 3,4,4, all four Goran strings, Rhys 1,2,3 and 2,4,4). After:
+**22 of 22** (`CombatCombo_Test`). How: a follow-up on hit steps in during its startup (`Sim.stringStep`, at most 0.2
+studs per frame and 1.6 per move, aiming 0.1 inside its range, never through the opponent) and may connect at most
+`StringReach` 0.3 studs past its range. An intermediate version (commit 5aec8a5) let the follow-up reach 1.3 studs
+further instead, which motion flagged: the fist or foot landed visibly short. `reachaudit.luau` (every string from
+every hit-1 range plus 72 CPU-vs-CPU matches; the distance at the moment of the hit, from where the attacker actually
+is): 5aec8a5 had 100 of 6759 strikes connect past their range, 51 by more than 0.3 studs, up to 1.05; now
+0 of 6524 strikes connect past their range, follow-ups on hit stepped in on 139 hits (0.30 studs on average, at most 1.05). `CombatCombo_Test` "no strike connects more than 0.3 studs past its range" pins it.
+
+| fighter | string | notation | hit-1 range | natural on hit (asap) | breaks | latest late press that still combos (frames into the previous move) |
+|---|---|---|---|---|---|---|
+| Kael | Jab > OneTwo > LiverHook | 1,2,1 | 2.6-4.2 | yes |  | 1,2: 20; 1,2,1: 16 |
+| Kael | Jab > OneTwo > OneTwoShin | 1,2,3 | 2.6-4.2 | yes |  | 1,2: 20; 1,2,3: 15 |
+| Kael | Cross > CrossHook > HookOverhand | 2,1,2 | 2.6-4.6 | yes |  | 2,1: 17; 2,1,2: 19 |
+| Sierra | Jab > JabKick > JabTeepHigh | 1,3,4 | 2.6-4.2 | yes |  | 1,3: 9; 1,3,4: 20 |
+| Sierra | Jab > JabKick > JabTeepLow | 1,3,3 | 2.6-4.2 | yes |  | 1,3: 16; 1,3,3: 21 |
+| Sierra | Teep > TeepKick > TeepSpinKick | 3,4,4 | 2.6-5.2 | yes |  | 3,4: 18; 3,4,4: 23 |
+| Sierra | HighRoundhouse > DoubleRoundhouse | 4,4 | 2.6-5.4 | yes |  | 4,4: 24 |
+| Goran | Jab > JabHammer > JabHammerForearm | 1,2,1 | 2.6-4.3 | yes |  | 1,2: 15; 1,2,1: 22 |
+| Goran | Jab > JabHammer > JabHammerStomp | 1,2,3 | 2.6-4.3 | yes |  | 1,2: 15; 1,2,3: 22 |
+| Goran | Hammer > DoubleHammer | 2,2 | 2.6-4.2 | yes |  | 2,2: 20 |
+| Goran | PushKick > BootForearm > BootForearmHammer | 3,2,2 | 2.6-5.0 | yes |  | 3,2: 21; 3,2,2: 18 |
+| Lumi | Palm > PalmHeel > PalmHeelHook | 1,4,4 | 2.6-4.2 | yes |  | 1,4: 15; 1,4,4: 25 |
+| Lumi | Palm > PalmHeel > PalmHeelSweep | 1,4,3 | 2.6-4.2 | yes |  | 1,4: 9; 1,4,3: 25 |
+| Lumi | SnapKick > SnapCrescent > CrescentFlyingKick | 3,4,4 | 2.6-4.7 | yes |  | 3,4: 17; 3,4,4: 22 |
+| Rhys | Jab > ReversePunch > ReverseHighKick | 1,2,4 | 2.6-4.2 | yes |  | 1,2: 9; 1,2,4: 18 |
+| Rhys | Jab > ReversePunch > ReverseLowKick | 1,2,3 | 2.6-4.2 | yes |  | 1,2: 18; 1,2,3: 19 |
+| Rhys | StraightPunch > PunchKick > PunchKickAxe | 2,4,4 | 2.6-4.6 | yes |  | 2,4: 18; 2,4,4: 24 |
+| Nia | Chop > DoubleChop > FlurryKick | 1,1,4 | 2.6-4.2 | yes |  | 1,1: 20; 1,1,4: 15 |
+| Nia | Chop > DoubleChop > DoubleChopLow | 1,1,3 | 2.6-4.2 | yes |  | 1,1: 9; 1,1,3: 15 |
+| Nia | PalmThrust > PalmKick > PalmKickHigh | 2,3,4 | 2.6-4.3 | yes |  | 2,3: 11; 2,3,4: 21 |
+| Nia | LowSpin > RisingTornado | d+3,4 | 2.6-4.0 | yes |  | d+3,4: 15 |
+| Nia | CoilWhirl > CoilWhirl2 > CoilWhirl3 | COIL+4,4,4 | 2.6-4.4 | yes |  | COIL+4,4: 20; COIL+4,4,4: 20 |
+
+### Round 7.4 Fairness
+
+Measured before tuning, on `main`: (1) CPU vs CPU at every level, both sides at the same level, every ordered pairing
+(both side assignments), deterministic seeds; (2) a human-like reference player (`refbot.luau`, no CombatAI: sees the
+opponent 20 frames late, blocks 70 % of what it sees, crouches for half the lows it sees, punishes 45 % of blocked -10
+moves with its best fast move, breaks a third of throws, plays its fighter's first listed route with ±3-frame noise)
+against every fighter's CPU, pooled over all six of its own fighters and both sides, which separates "how hard is
+this fighter's CPU" from "how strong is this fighter"; (3) the reference player against itself (character strength
+with no CPU at all); (4) AI-independent power metrics.
+
+CPU vs CPU, both sides at the same level (every ordered pairing, deterministic seeds): each fighter's overall win rate %, before → after
+
+| level | Kael | Sierra | Goran | Lumi | Rhys | Nia | spread | worst matchup (after) |
+|---|---|---|---|---|---|---|---|---|
+| Easy (n = 40 / 60 per ordered pair) | 41 → **52** | 50 → **54** | 61 → **46** | 42 → **45** | 49 → **47** | 57 → **56** | 20 → 10 | Lumi vs Nia 35 % |
+| Normal (n = 40 / 60 per ordered pair) | 42 → **51** | 40 → **51** | 63 → **46** | 43 → **49** | 53 → **50** | 59 → **54** | 22 → 8 | Sierra vs Nia 62 % |
+| Hard (n = 40 / 60 per ordered pair) | 63 → **51** | 54 → **53** | 48 → **46** | 43 → **47** | 71 → **52** | 21 → **51** | 50 → 6 | Sierra vs Nia 62 % |
+
+Before, Easy: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Easy | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 52 | 46 | 31 | 49 | 45 | 34 | **41.0** |
+| Sierra | 54 | 55 | 50 | 57 | 52 | 39 | **50.5** |
+| Goran | 69 | 50 | 45 | 64 | 59 | 62 | **60.8** |
+| Lumi | 51 | 42 | 36 | 48 | 40 | 40 | **42.0** |
+| Rhys | 55 | 48 | 41 | 60 | 60 | 41 | **49.0** |
+| Nia | 66 | 61 | 38 | 60 | 59 | 55 | **56.8** |
+
+Before, Normal: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Normal | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 55 | 57 | 31 | 48 | 44 | 31 | **42.2** |
+| Sierra | 42 | 45 | 41 | 45 | 39 | 34 | **40.2** |
+| Goran | 69 | 59 | 55 | 66 | 64 | 56 | **62.7** |
+| Lumi | 52 | 55 | 34 | 50 | 41 | 32 | **43.0** |
+| Rhys | 56 | 61 | 36 | 59 | 48 | 51 | **52.8** |
+| Nia | 69 | 66 | 44 | 68 | 49 | 48 | **59.0** |
+
+Before, Hard: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Hard | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 57 | 64 | 64 | 62 | 42 | 81 | **62.7** |
+| Sierra | 36 | 42 | 61 | 64 | 26 | 84 | **54.2** |
+| Goran | 36 | 39 | 38 | 56 | 35 | 74 | **48.0** |
+| Lumi | 38 | 36 | 44 | 45 | 29 | 69 | **43.0** |
+| Rhys | 57 | 74 | 65 | 71 | 48 | 89 | **71.2** |
+| Nia | 19 | 16 | 26 | 31 | 11 | 42 | **20.8** |
+
+After, Easy: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Easy | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 48 | 51 | 57 | 52 | 57 | 44 | **52.2** |
+| Sierra | 49 | 62 | 53 | 55 | 57 | 55 | **54.0** |
+| Goran | 43 | 47 | 42 | 50 | 41 | 48 | **45.7** |
+| Lumi | 48 | 45 | 50 | 45 | 49 | 35 | **45.3** |
+| Rhys | 43 | 42 | 59 | 51 | 63 | 40 | **47.2** |
+| Nia | 56 | 45 | 52 | 65 | 60 | 53 | **55.7** |
+
+After, Normal: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Normal | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 60 | 57 | 57 | 50 | 52 | 41 | **51.3** |
+| Sierra | 43 | 63 | 52 | 46 | 50 | 62 | **50.7** |
+| Goran | 43 | 48 | 50 | 47 | 51 | 39 | **45.5** |
+| Lumi | 50 | 54 | 53 | 52 | 46 | 42 | **49.2** |
+| Rhys | 48 | 50 | 49 | 54 | 53 | 48 | **49.7** |
+| Nia | 59 | 38 | 61 | 57 | 52 | 57 | **53.7** |
+
+After, Hard: row fighter's win rate % against the column fighter (both side assignments; diagonal = player-1 share of the mirror)
+
+| Hard | Kael | Sierra | Goran | Lumi | Rhys | Nia | overall |
+|---|---|---|---|---|---|---|---|
+| Kael | 48 | 58 | 52 | 52 | 46 | 47 | **50.8** |
+| Sierra | 42 | 48 | 48 | 58 | 53 | 62 | **52.7** |
+| Goran | 48 | 52 | 57 | 42 | 50 | 39 | **46.5** |
+| Lumi | 48 | 42 | 57 | 48 | 46 | 41 | **46.8** |
+| Rhys | 54 | 47 | 50 | 54 | 45 | 56 | **52.2** |
+| Nia | 53 | 38 | 61 | 59 | 44 | 55 | **51.0** |
+
+Reference player (human-like bot, no CombatAI) vs each fighter's CPU: the reference player's win rate %, pooled over all six of its fighters and both sides, before → after
+
+| level | Kael | Sierra | Goran | Lumi | Rhys | Nia | mean | spread (max - min) |
+|---|---|---|---|---|---|---|---|---|
+| Easy (n = 20 / 20) | 84 → **82** | 87 → **82** | 73 → **81** | 79 → **76** | 82 → **76** | 86 → **85** | 81.7 → 80.5 | 13.3 → **9.6** |
+| Normal (n = 20 / 20) | 24 → **23** | 31 → **26** | 9 → **17** | 32 → **21** | 25 → **27** | 30 → **29** | 25.3 → 23.8 | 23.8 → **12.1** |
+| Hard (n = 20 / 20) | 11 → **3** | 11 → **9** | 2 → **2** | 15 → **5** | 6 → **6** | 9 → **8** | 9.0 → 5.4 | 12.5 → **7.1** |
+
+The reference player AS each fighter against all six CPUs (character strength for a generic player), win rate %, before → after
+
+| level | Kael | Sierra | Goran | Lumi | Rhys | Nia |
+|---|---|---|---|---|---|---|
+| Easy | 92 → **91** | 77 → **83** | 63 → **59** | 82 → **83** | 86 → **83** | 90 → **83** |
+| Normal | 28 → **29** | 12 → **16** | 32 → **26** | 26 → **27** | 14 → **18** | 40 → **26** |
+| Hard | 9 → **7** | 3 → **2** | 9 → **3** | 2 → **5** | 3 → **3** | 28 → **12** |
+
+Reference player vs reference player (no CPU at all: pure character strength as a person plays it), overall win rate %, before → after
+
+| Kael | Sierra | Goran | Lumi | Rhys | Nia | spread |
+|---|---|---|---|---|---|---|
+| 47 → **48** | 33 → **50** | 69 → **61** | 46 → **47** | 50 → **53** | 55 → **42** | 36 → 19 |
+(n = 40 / 40 matches per ordered pair)
+
+AI-independent power metrics (before → after):
+
+Before (`main`):
+
+| fighter | HP | walk / back | dash | fastest (i) | i10-12 punish dmg | -13/-14 punish | -15+ (launch) punish | avg / max route | launcher (i, block) | best low (i, dmg, block, hit) | safe moves ≥-5 on block (reach ≥3.6) | best mid on block | throws | Ultimate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Kael | 100 | 5.0 / 4.0 | 3.0 in 14 f | 10 | 34 | 34 | 34 | 32 / 32 | df+2 i15 -14 | d+4 i19 14 -17 KND | 3 | -6 | 18/19 | 32 (i18) |
+| Sierra | 95 | 5.4 / 4.4 | 3.3 in 14 f | 10 | 29 | 38 | 38 | 34 / 34 | df+3 i15 -13 | db+4 i20 15 -18 KND | 6 | -4 | 17/18 | 33 (i20) |
+| Goran | 120 | 4.3 / 3.5 | 2.6 in 15 f | 10 | 32 | 41 | 41 | 36 / 39 | d+2 i16 -15 | d+4 i21 16 -17 KND | 4 | -5 | 18/20 | 36 (i22) |
+| Lumi | 90 | 5.7 / 4.6 | 3.5 in 13 f | 10 | 34 | 34 | 35 | 34 / 35 | df+4 i16 -15 | d+4 i18 13 -16 KND | 4 | -4 | 16/17 | 30 (i18) |
+| Rhys | 100 | 4.8 / 4.2 | 3.0 in 14 f | 10 | 39 | 39 | 39 | 32 / 32 | df+3 i15 -13 | b+4 i19 14 -16 KND | 5 | -2 | 18/19 | 34 (i20) |
+| Nia | 95 | 5.2 / 4.3 | 3.2 in 14 f | 10 | 35 | 35 | 35 | 34 / 39 | db+2 i15 -14 | d+3 i13 8 -11 4 | 5 | -3 | 17/18 | 32 (i19) |
+
+After:
+
+| fighter | HP | walk / back | dash | fastest (i) | i10-12 punish dmg | -13/-14 punish | -15+ (launch) punish | avg / max route | launcher (i, block) | best low (i, dmg, block, hit) | safe moves ≥-5 on block (reach ≥3.6) | best mid on block | throws | Ultimate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Kael | 100 | 5.0 / 4.0 | 3.0 in 14 f | 10 | 34 | 34 | 37 | 34 / 37 | df+2 i15 -14 | d+4 i19 14 -17 KND | 3 | -6 | 18/19 | 32 (i18) |
+| Sierra | 102 | 5.4 / 4.4 | 3.3 in 14 f | 10 | 30 | 39 | 39 | 34 / 34 | df+3 i15 -13 | db+4 i20 15 -18 KND | 6 | -4 | 17/18 | 33 (i20) |
+| Goran | 104 | 4.3 / 3.5 | 2.6 in 15 f | 10 | 31 | 41 | 41 | 35 / 38 | d+2 i16 -15 | d+4 i23 15 -17 KND | 4 | -5 | 18/18 | 36 (i22) |
+| Lumi | 98 | 5.7 / 4.6 | 3.5 in 13 f | 10 | 34 | 34 | 34 | 32 / 34 | df+4 i16 -15 | d+4 i18 13 -16 KND | 4 | -4 | 16/17 | 30 (i18) |
+| Rhys | 100 | 4.8 / 4.2 | 3.0 in 14 f | 10 | 39 | 39 | 39 | 31 / 32 | df+3 i15 -13 | b+4 i19 14 -16 KND | 5 | -2 | 18/19 | 34 (i20) |
+| Nia | 95 | 5.2 / 4.3 | 3.2 in 14 f | 10 | 34 | 34 | 34 | 31 / 36 | db+2 i15 -14 | d+3 i13 7 -11 4 | 5 | -3 | 17/18 | 32 (i19) |
+
+Why the outliers were strong or weak, and what changed:
+- **Hard's hit-confirm** pressed string follow-ups after the last frame that still combos: on `main` only 5.4 % of
+  Hard's string follow-up hits (1017) were combos, the rest gaps that a guarding opponent blocks; Nia's d+3,4 launcher
+  was blocked and launch-punished every time (Hard Nia 20.8 %, Hard Rhys 71.2 %). A confirm that cannot be in time is
+  now decided before that frame (`blindString`, Hard 0.5): **97.6 %** of Hard's follow-up hits are combos
+  (`confirmgap.luau`, `CombatAIRound7_Test`). This also makes Hard harder for a person (reference player 9.0 % → 5.4 % wins).
+- **Goran** (the strongest kit: Normal CPU 62.7 %, reference vs reference 69 %, and by far the hardest CPU for a person,
+  8.8 % at Normal): 120 HP, an armored i14 Push Kick and the hardest-hitting pokes in the cast. HP 120 → 104,
+  Jab-Hammer 12 → 11, Leg Hook i21 → i23 and 16 → 15, 2+4 throw 20 → 18. His max route stays Forearm Finish (d+2, f+3,
+  1,2,1, 38; an intermediate route list had cut it and his CPU lost CPU-vs-CPU matches: juggles decide CPU-vs-CPU fights
+  far more than fights against a person, `refdiag.luau`: Goran's CPU gets 14 juggle damage per match against the
+  reference player, Kael's 42).
+- **Sierra, Lumi, Kael** (weakest at Normal, 40-43 %): Sierra HP 95 → 102, Jab and Duck Jab 5 → 6, Teep 11 → 12;
+  Lumi HP 90 → 98, Palm 5 → 6; Kael gets CPU skill instead (his kit is fine for a person, 47-48 % reference vs
+  reference, but Normal and Easy played it badly).
+- **Nia** (Normal CPU 59 %): her d+3,4 low-into-launcher is a natural combo from an i13 low; her CPU launched 1.9 times
+  per match against other CPUs (everyone else 0.3-0.6) and Palm Thrust (2, i12 mid, +5 on hit) was a fifth of her
+  damage. Low Spin 8 → 7, Rising Whirlwind (d+3,4) 12 → 10, Palm Thrust 11 → 10. Reference vs reference she dropped from
+  55 % to 42 % (known issue below).
+- **Per-fighter CPU skill** (`CombatAI.FighterSkill`, k per level within ±`AI.SkillLimit` 0.4; parameters blended toward
+  the level below for k < 0, beyond toward the level above for k > 0; reaction never below 13 frames; Easy-only mashing
+  stays Easy-only): the same level plays some kits better than others (on `main` Hard Rhys won 71 % and Hard Nia 21 %
+  of their CPU-vs-CPU matches; at Normal the reference player beat Goran's CPU 9 % of the time and Lumi's 32 %).
+  `optimize.ps1` moved each k by the CPU-vs-CPU error and the
+  reference player's error (damped, level means held at round 6's for Easy and Normal):
+
+| level | Kael | Sierra | Goran | Lumi | Rhys | Nia |
+|---|---|---|---|---|---|---|
+| Easy | +0.15 | −0.10 | 0 | −0.05 | 0 | 0 |
+| Normal | +0.14 | +0.03 | 0 | +0.05 | +0.06 | −0.02 |
+| Hard | −0.12 | −0.18 | +0.20 | +0.04 | −0.09 | +0.12 |
+
+  Every fighter's Hard stays sharper than every fighter's Normal, which stays sharper than every fighter's Easy (reaction
+  delay, guard, routes, punishes; `CombatAI_Test`).
+
+Difficulty separation (Difficulty_Test pairing scheme and the round-6 checks): Hard beats Normal, Normal beats Easy, the
+beginner bot beats Easy and never Hard (`Difficulty_Test` green); CPU vs CPU Ultimates per round at Hard 0.26 → 0.21,
+landed 100 % → 97 % (`aistats.luau`, rounds 31 → 24 s: Hard's strings now combo).
+
+### Round 7.5 Retuned tests (justifications also in the files)
+
+- `CombatAI_Test` "Easy matchup adjustments touch only Easy" → "per-fighter skill offsets and Easy matchup adjustments
+  keep the levels ordered": round 6 asserted Normal and Hard are identical for every fighter; round 7 gives every
+  fighter's CPU a bounded offset (above), so the test now checks what players rely on: every fighter's Hard sharper than
+  every fighter's Normal sharper than every fighter's Easy, plus the Easy matchup rules on top.
+- `Difficulty_Test` "trainer does not read live input before its perception delay": the bound is the CPU's own delay
+  (`paramsFor`), which can now differ from the shared table by a frame or two.
+- `Difficulty_Test` "hard converts a launcher into a short juggle": a conversion was "3+ hits in 4 s and a knockdown";
+  Sierra's Hard CPU juggles that launch with one air hit (Spinning Back Kick, knockdown) on `main` and now, so the third
+  hit was whatever it pressed after the knockdown (11/16 for 12 needed after the skill offsets). Now: the launcher plus
+  at least one air hit, ending in a knockdown.
+- `CombatAIRound6_Test` signature use: up to three seeds per level instead of one (Kael's seed-601 match had none; his
+  CPU averages 2.1 / 2.7 uses per match at Normal / Hard). Ultimate use: Hard sampled over twelve matches instead of six
+  (shorter Hard rounds: 0.21 Ultimates per round over all 72 pairings, 36 of 37 landed; six matches held one).
+
+### Round 7.6 Known issues
+
+- Character strength for a generic player is still uneven: reference player vs reference player Goran 61 %, Nia 42 %
+  (spread 36 → 19), and as the reference player's own fighter at Normal Sierra (16 %) and Rhys (18 %) win less than
+  Kael (29 %): their strengths are their stances, which the reference player never uses. Not tuned further this round:
+  the CPU targets are met, and more data changes would move the CPU balance again.
+- Hard is harder for a person than in round 6 (the reference player wins 5.4 % instead of 9.0 %) because Hard's strings
+  are real combos now; tempered with `blindString` 0.5.
+- The per-fighter CPU skill is tuned against one model of a person; someone who plays very differently can still find
+  one fighter's CPU a little harder. Hard Lumi is sensitive to its offset (0.08 vs 0.04 moved her CPU-vs-CPU rate from
+  57 % to 47 %: the reaction delay rounds to 13 instead of 14 frames).
+- Easy CPU vs CPU (no target, players never see it): Lumi vs Nia 35/65 %, at the edge of the 35-65 % band.
+- A 3,4 string typed faster than 5 frames (83 ms) becomes the signature: the price of the 4-frame J+K window.
+- `CombatMoveList_Test` runs only in Studio (it builds GUI instances); verified there.
+
+## R6. Round 6: distinct movesets, combos, Surge and the Ultimate
 
 Harness: `OV6\work\r6-combat\harness\` (same loader, sources = the `r6-combat` worktree; `R6_SRC=<dir>` points any
 tool at other sources, e.g. an export of `main`). Tools: `sameness.luau` (`SIMPLE=1` = the baseline definition),

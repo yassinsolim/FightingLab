@@ -214,21 +214,55 @@ return function(t)
 		expect.truthy(launched >= 8, "Hard launches the blocked sweep " .. launched .. "/12")
 	end)
 
-	test("Easy matchup adjustments touch only Easy", function()
+	-- Round 7 retune (combat-balance.md, Round 7 fairness): round 6 asserted that Normal and Hard are identical for every
+	-- fighter. Round 7 gives each fighter's CPU a bounded skill offset per level (AI.FighterSkill) so that every CPU is
+	-- about equally hard to beat at a given level whoever it plays. What players rely on is kept and checked here: every
+	-- fighter's Hard is sharper than every fighter's Normal, which is sharper than every fighter's Easy, and the Easy
+	-- matchup rules (counter-attack scaling, crowd mashing, punish caps) still hold on top of the offsets.
+	test("per-fighter skill offsets and Easy matchup adjustments keep the levels ordered", function()
+		for level, list in AI.FighterSkill do
+			for id, k in list do
+				expect.truthy(Roster.get(id) ~= nil, level .. " skill entry names a fighter: " .. id)
+				expect.truthy(math.abs(k) <= AI.SkillLimit, level .. " " .. id .. " offset within the limit")
+			end
+		end
+		local worst = { Easy = {}, Normal = {}, Hard = {} } :: { [string]: { [string]: number } }
+		local function track(level: string, field: string, value: number, keepMax: boolean)
+			local cur = worst[level][field]
+			if cur == nil or (keepMax and value > cur) or (not keepMax and value < cur) then worst[level][field] = value end
+		end
 		for _, a in Roster.order do
 			for _, b in Roster.order do
-				expect.equal(AI.paramsFor("Normal", a, b), AI.params("Normal"), "Normal " .. a .. " vs " .. b)
-				expect.equal(AI.paramsFor("Hard", a, b), AI.params("Hard"), "Hard " .. a .. " vs " .. b)
+				for _, level in { "Normal", "Hard" } do
+					local p = AI.paramsFor(level, a, b)
+					if (AI.FighterSkill[level][a] or 0) == 0 then
+						expect.equal(p, AI.params(level), level .. " without an offset is the shared table: " .. a .. " vs " .. b)
+					end
+					expect.equal(p.crowdJab, 0, "only Easy mashes when crowded: " .. level .. " " .. a)
+				end
 				local easy = AI.paramsFor("Easy", a, b)
-				local scale = math.min((AI.Matchups.Easy.vs[b] or 1) * (AI.Matchups.Easy.as[a] or 1), AI.Matchups.Easy.cap / AI.params("Easy").turnTake)
+				local scale = math.min((AI.Matchups.Easy.vs[b] or 1) * (AI.Matchups.Easy.as[a] or 1), AI.Matchups.Easy.cap / easy.turnTake)
 				expect.truthy(math.abs(easy.turnScale - scale) < 1e-9, "Easy " .. a .. " vs " .. b)
-				-- even the sharpest Easy matchup counter-attacks less than Normal
+				-- even the sharpest Easy matchup counter-attacks and punishes less than Normal
 				expect.truthy(easy.turnTake * easy.turnScale < AI.params("Normal").turnTake, "Easy stays below Normal " .. a .. " vs " .. b)
 				expect.truthy(easy.blockPunish < AI.params("Normal").blockPunish and easy.whiffPunish < AI.params("Normal").whiffPunish, "Easy punishes less than Normal " .. a .. " vs " .. b)
 				expect.truthy(easy.crowdJab >= 0 and easy.crowdJab <= 1, "crowdJab is a chance " .. a .. " vs " .. b)
-				expect.equal(AI.paramsFor("Normal", a, b).crowdJab, 0, "only Easy mashes when crowded")
+				for _, level in { "Easy", "Normal", "Hard" } do
+					local p = AI.paramsFor(level, a, b)
+					track(level, "slowest", p.reactionDelay, true); track(level, "fastest", p.reactionDelay, false)
+					track(level, "guardLow", p.guardDiscipline, false); track(level, "guardHigh", p.guardDiscipline, true)
+					track(level, "routeLow", p.routeSkill, false); track(level, "routeHigh", p.routeSkill, true)
+					track(level, "punishLow", p.blockPunish, false); track(level, "punishHigh", p.blockPunish, true)
+				end
 			end
 		end
+		for _, pair in { { "Easy", "Normal" }, { "Normal", "Hard" } } do
+			local lo, hi = worst[pair[1]], worst[pair[2]]
+			expect.truthy(lo.fastest > hi.slowest, pair[1] .. "'s quickest reaction is slower than " .. pair[2] .. "'s slowest")
+			expect.truthy(lo.guardHigh < hi.guardLow, pair[1] .. " always guards less than " .. pair[2])
+			expect.truthy(lo.routeHigh < hi.routeLow, pair[1] .. " always plays fewer combo routes than " .. pair[2])
+		end
+		expect.truthy(worst.Normal.punishHigh < worst.Hard.punishLow, "Normal always punishes less than Hard")
 		expect.equal(AI.params("Easy").turnScale, 1, "the shared Easy table is not modified")
 	end)
 

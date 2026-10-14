@@ -13,15 +13,29 @@ local Config = {
 	CounterDamageMultiplier = 1.25,
 	CounterStunBonus = 6,
 	CounterHitstopBonus = 2,
-	-- Input buffering: attacks pressed up to AttackBuffer frames before the fighter can act still come out.
+	-- Input buffering: attacks pressed up to AttackBuffer frames before the fighter can act still come out. A press made
+	-- after the fighter's own move reached its active frames (the next hit of a combo, pressed during the previous
+	-- hit's hitstop or recovery) is kept up to RecoveryBuffer frames, so pressing a little early never drops it.
+	-- Hitstop never ages a press.
 	AttackBuffer = 8,
+	RecoveryBuffer = 30,
 	StepBuffer = 6,
+	-- Strings are natural combos on hit: a follow-up whose previous hit (same string) put the opponent in hitstun or a
+	-- juggle steps in during its startup (real travel: up to StringStepFrame studs per frame and StringStepIn per move,
+	-- aiming StringStepMargin inside its range; CombatSim.stringStep) and connects at most StringReach past its own
+	-- range and width, so the fist or foot never lands visibly short. On block or whiff nothing changes.
+	StringReach = 0.3,
+	StringStepIn = 1.6,
+	StringStepFrame = 0.2,
+	StringStepMargin = 0.1,
 	-- Two buttons pressed within ChordFrames form a chord (1+3 / 2+4 throws); a move already started by the first
-	-- button is upgraded in place while it is no older than ChordFrames.
+	-- button is upgraded in place while it is still in its startup.
 	ChordFrames = 3,
-	-- Tighter windows for the round-6 chords: 1+2 (the Ultimate) needs both presses on the same or the next frame and
-	-- 3+4 (the signature) within 2 frames, so quickly typed 1,2 and 3,4 strings stay strings.
-	ChordWindow = { Ultimate = 1, Kicks = 2 },
+	-- Per-chord windows: 1+2 (the Ultimate) needs both presses on the same or the next frame, so a quickly typed 1,2
+	-- stays the string (the Ultimate also has its own key); 3+4 (the signature) accepts J and K up to 4 frames apart
+	-- (a keyboard player pressing them "together", up to about 60 ms) while a typed 3,4 string (5+ frames) stays a
+	-- string. The first kick's move is upgraded in place, before its active frames.
+	ChordWindow = { Ultimate = 1, Kicks = 4 },
 	-- After a successful throw break both fighters stay locked this many frames (break animation), then neutral.
 	ThrowBreakFrames = 16,
 	LocalAuthority = true,
