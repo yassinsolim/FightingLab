@@ -513,3 +513,136 @@ stages. The camera kept the fight camera's direction, so the lamp post filled th
 - **Camera:** the client frames the return over the player's shoulder toward the arena (`Client.LobbyCamera`).
 - **World_Test** (29): "the camera view from every return point is clear" checks that nothing solid stands between
   that camera and the player, at every exit and Arrival.
+
+## Round 7 (world): maps worth picking ("map could be better")
+
+The PLAY flow now asks for a map before every fight, so each arena has to sell itself in the map picker and look like a
+distinct stage behind the two fighters. Most of the work is in the fight sets (what the fight camera sees); the
+world itself got credited mesh foliage and a light lobby pass.
+
+### Contract D: map previews (commits D1, D2)
+
+- Every arena model carries `Tagline` (at most 40 characters), `ThemeColor` and a `PreviewCam` part (anchored, no
+  collide/query/touch, Transparency 1, attribute `FieldOfView` = 70). Values live in `Layout.LOOKS`.
+- D2 moved every PreviewCam inside its fight set: `previewCam` / `previewLook` are (world bearing, flat distance from
+  FightOrigin, height above the floor). All cameras stand 33 studs out (inside the set's 38-stud `MIN_RADIUS`), 15 up,
+  on the south side of the ring, and look north across it at the set's landmark, which the default fight camera also
+  faces.
+- **How a menu shows a map:** `StageController.previewArena(arenaModel)` (client only) applies the arena's mood and
+  fight set, hides the district and runs the set's animation; put the camera on `arena.PreviewCam.CFrame` with
+  `FieldOfView` from its attribute. `previewArena(nil)` or `clearArena()` ends it; `setArena()` for a real fight
+  replaces it. `StageController.previewing()` tells whether a preview is up. Returns false on the server.
+
+### Fight sets rebuilt (`World.FightSets`)
+
+- **All round:** every set now surrounds the fight (`covers()` is true for every bearing), so any fight line has a
+  backdrop. The landmark always stands at bearing 0 (`focusBearing()`), where the default fight camera looks.
+- **Depth layers:** ground disc under the ring area, near props and crowd, mid structures, far hills or skyline, sky
+  elements (aurora, god rays, searchlights), and moving life (crowd, gulls, swinging crane load, aircraft, swaying
+  lanterns, particles).
+- **Crowds** are small 3D people (about 4 parts each: legs, shirt, head, optional hat/glow stick/belt) instead of
+  SurfaceGui silhouettes; they cheer or bob through `StageController` (attribute `FightSetAnim`).
+- **Per arena:**
+  - **Midnight Rooftop:** a terrace deck with glass rail and neon trim, light poles and bulb strings, a two-row
+    glow-stick crowd, the Sky Bar, neighbouring roofs rising from the street with tanks, antennas and signs (KUMO
+    KARAOKE, SKY BAR), the NIGHT SHIFT billboard across the street at bearing 0, far towers, sweeping searchlights,
+    aircraft, drizzle.
+  - **Harbor Dusk:** plank deck over water, dock props, dock workers in hard hats, container stacks with line names,
+    the Pier 9 Freight warehouse (lit windows, sign, loading bays), quay bulb strings, a crane swinging a container, a
+    freighter, islands, gulls, sun dust.
+  - **Jungle Ruins:** ferns, bushes and mossy rocks, explorers, fallen columns, jungle trees and palms (meshes), the
+    sun temple with a glowing shrine, sun disc and braziers, a ruined gate, a waterfall, canopy, god rays, mist,
+    fireflies.
+  - **Summit Observatory:** snow ground and banks, stained rocks, a telescope, hikers, small and tall snowy firs
+    (meshes) with a gap in the default view, prayer flags, the observatory dome and radio dish, low-poly peaks,
+    seven aurora ribbons in frame, snowfall and powder.
+  - **Training Bay:** pebble and grass ground, veranda bays with paper screens and swaying lanterns, students in belts,
+    cherry trees (meshes), stone lanterns, the vermilion gate and the pagoda, smooth low-poly mountains, morning rays,
+    petals.
+- **Budget per set:** at most 600 parts (`FightSets.PART_BUDGET`), at most one light, no shadows. Now: Rooftop 590,
+  Harbor 323 (1 light), Jungle 432, Summit 473, Dojo 582.
+
+### District hide during a fight (`StageController`)
+
+- Hidden on the fighting client (LocalTransparencyModifier 1): `Lobby`, `Walkways`, `Seascape`, the other arenas, and
+  the active arena's own pieces outside `KEEP_RADIUS` = 27.6 studs (the podium, ring, rails and stairs stay), plus its
+  banners and every tree model (`HIDE_MODELS`) at any distance. Rule: `StageController.hidesInOwnFight(part, centre)`.
+- SurfaceGuis and BillboardGuis on hidden parts are pushed away with `MaxDistance` (never `Enabled`, which belongs to
+  `StationBoards`); emitters, beams and lights are switched off; pad tags in PlayerGui adorned to hidden parts are
+  hidden too. `LobbyAmbience` keeps a pad's light column off while its holder is hidden. `clearArena()` restores all.
+- **Animation:** `StageController.animOffset(kind, t, rate, amp, phase)` (Cheer, Bob, Sway, Sweep, Orbit); the set's
+  animated parts move together through `workspace:BulkMoveTo` at 30 Hz.
+
+### Credited meshes (`World.AssetKit`)
+
+- A catalogue of free Creator Store models, used only through their mesh and texture ids (SpecialMesh FileMesh on a
+  quiet Part). Nothing is inserted at runtime, so no script from any model can reach the game.
+- `AssetKit.place(parent, key, cf, scale, opts)` places an asset with its pivot at the trunk foot; `AssetKit.reach()`
+  gives its flat reach so placement keeps pieces out of the camera orbit; `AssetKit.assetIds()` lists the credited
+  models.
+- Assets: Falling Blossom Cherry Tree (softlypoetic, 8651908577), Jungle Tree (TetoBagetto, 136959608628696), Trees /
+  Foliage - Tropical, Jungle, Island (PSY0PZ, 12157426374: palm and bush), Fern Tropical PBR Plants (Ironsto4032,
+  119253821008946), Snowy Pine Tree (V1VEX, 11590212184), Small Snowy Pine Tree (Striatp, 76188132698241), Realistic
+  Stained Rock (bearduckmonkey, 4141555239), Rock realistic / Medium Moss Boulder (omarllollo, 9217425479). Credits:
+  `data/world-assets.json` -> `CREDITS.md` and `Credits.luau` (run `tools/build-data.ps1`).
+- Gotcha: foliage textures with cut-out alpha need Transparency >= 0.02; at 0 the leaves render as black cards.
+- Skyboxes were tried and dropped: under the moods' Atmosphere they barely read.
+
+### In-world (everyone's world)
+
+- `Props.tree` / `palm` / `pine` / `bush` now place AssetKit meshes (cherry for a blossom palette, jungle tree
+  otherwise; palm; snowy fir, without snow below the snow line; bush), with an invisible wooden `TrunkCollider` so
+  bumping into trees and the walk planner are unchanged. This covers the dojo cherries, the Jungle and Summit stage
+  trees, the lantern garden, the beach, the planters, the islets and the hills.
+- Ember Square: fern and bush clusters (at most 1.5 studs tall, quiet) at the rim lamps and between the beacon court
+  benches. The daylight skyline's windows take the scene light (`Props.tower` option `windowLight` = 0.65), so they no
+  longer glow like stickers at golden hour; night sets keep glowing windows.
+
+### Numbers (Play in my Studio copy; before = main, after = this branch)
+
+- World parts: 3,892 -> 3,262 (ceiling main + 25 % = 4,865). Lights: 92 -> 92, none casting shadows. Build 0.23 s ->
+  0.24 s.
+- Set parts: Rooftop 86 -> 590, Harbor 202 -> 323, Jungle 191 -> 432, Summit 188 -> 473, Dojo 273 -> 582.
+- Frame time in real CPU fights, 8 s of RenderStepped plus Stats (the frame is capped at 60 fps; Studio window
+  1920 x 1080):
+
+| Scene | frame dt mean / p95 ms | render CPU ms | render GPU ms | draw calls | triangles |
+|---|---|---|---|---|---|
+| Lobby | 16.7 / 17.7 -> 16.7 / 17.5 | 3.3 -> 4.3 | 1.0 -> 1.8 | 349 -> 545 | 246k -> 403k |
+| Midnight Rooftop | 16.7 / 17.6 -> 16.7 / 17.5 | 3.6 -> 3.7 | 1.2 -> 1.9 | 265 -> 242 | 221k -> 204k |
+| Harbor Dusk | 16.7 / 17.8 -> 16.7 / 17.7 | 3.6 -> 3.5 | 1.9 -> 1.9 | 256 -> 242 | 224k -> 233k |
+| Jungle Ruins | 16.7 / 17.6 -> 16.7 / 17.6 | 3.4 -> 3.8 | 2.0 -> 2.2 | 211 -> 293 | 213k -> 688k |
+| Summit Observatory | 16.7 / 17.7 -> 16.7 / 17.5 | 3.6 -> 4.0 | 2.0 -> 2.2 | 250 -> 285 | 233k -> 372k |
+| Training Bay | 16.7 / 17.7 -> 16.7 / 17.8 | 3.7 -> 4.0 | 2.0 -> 2.2 | 224 -> 264 | 235k -> 268k |
+
+### Tests
+
+- **ArenaLook_Test:** each set has 150 to 600 parts, at most 2 lights, no shadows and a matching `PartCount`; it covers
+  every bearing with its landmark at 0; nothing stands in the camera orbit band; the background in a real fight frame
+  has no more than two empty 15-degree bins; at least 20 3D people, no SurfaceGui crowd panels, enough animated parts
+  and at least 30 parts in the default fight frame; every AssetKit model is credited, sets hold no scripts and
+  `place()` makes SpecialMeshes; `hidesInOwnFight` on Harbor (pads, board and banners hide; the floor stack stays);
+  `animOffset`; `previewArena` is false on the server.
+- **World_Test:** Contract D (Tagline, ThemeColor, PreviewCam framing the ring); parts within main + 25 %
+  (`PART_CEILING` 4,865); at most 100 lights (`LIGHT_CEILING`); no light casts shadows.
+- Full suite in Play: `[SUMMARY] 637 run, 637 passed, 0 failed`.
+
+### Known issues
+
+- The lobby changed least: the plaza and the skyline are the round-6 ones with mesh trees, greenery and calmer
+  windows. The skyline towers are still plain boxes with window grids.
+- The wide shots of the stages from the plaza only gained the mesh trees; the stages themselves (podium, rails,
+  boards) are unchanged. The map picker uses the PreviewCam view of the set instead.
+- Meshes cost draw calls: the Jungle set reaches about 690k triangles and the lobby about 545 draw calls (GPU still
+  about 2 ms on this PC).
+- The Rooftop's neon gate signs and the stairs stay visible in its fights (inside `KEEP_RADIUS`).
+- Crowd people are simple block figures; up close they read as toys rather than people.
+
+### REQUESTs
+
+- **Play agent:** in the map picker call `StageController.previewArena(arenaModel)` and put the camera on the arena's
+  `PreviewCam` (FieldOfView attribute); end with `previewArena(nil)` or `clearArena()`.
+- **ClientModules_Test owner:** add the new `StageController` functions (`previewArena`, `previewing`, `animOffset`,
+  `hidesInOwnFight`) to the client module API list if it enumerates them.
+- **Integrator:** regenerate `CREDITS.md` and `Credits.luau` with `tools/build-data.ps1` after merging, since other
+  branches may add credits too.
