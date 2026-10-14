@@ -291,16 +291,20 @@ function PracticeTools.mount(env: Env): any
 		local def = UIHelpers.fighterDef(Roster, env.fighter())
 		M.title.Text = "COMBO TRIALS" .. (if def then "  ·  " .. def.displayName else "")
 		for i, info in list do
-			local row: TextButton = make("TextButton", { Name = "Combo" .. i, Text = "", AutoButtonColor = false, Selectable = false, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 74), LayoutOrder = i, Parent = M.rowsFrame })
+			-- Three lines left of the buttons: name; difficulty, damage, tags and CLEARED; the notation.
+			local row: TextButton = make("TextButton", { Name = "Combo" .. i, Text = "", AutoButtonColor = false, Selectable = false, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 86), LayoutOrder = i, Parent = M.rowsFrame })
 			UIHelpers.corner(row, 4)
 			local stroke = UIHelpers.outline(row, WHITE, 1, 0.85)
 			text(row, "Index", string.format("%02d", i), T.number, 16, T.gold, { Position = UDim2.fromOffset(14, 8), Size = UDim2.fromOffset(30, 20) })
-			text(row, "Name", info.name, T.title, 21, T.text, { Position = UDim2.fromOffset(50, 6), Size = UDim2.fromOffset(300, 26), TextTruncate = Enum.TextTruncate.AtEnd })
-			local meta = stars(info.difficulty) .. "   " .. tostring(info.damage) .. " DMG" .. (if info.counter then "   COUNTER HIT" else "") .. (if info.surge then "   SURGE" else "")
-			text(row, "Meta", meta, T.heavy, 12, T.muted, { Position = UDim2.fromOffset(352, 10), Size = UDim2.fromOffset(150, 18), TextTruncate = Enum.TextTruncate.AtEnd, RichText = true })
+			text(row, "Name", info.name, T.title, 21, T.text, { Position = UDim2.fromOffset(50, 6), Size = UDim2.new(1, -270, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd })
+			local metaRow = make("Frame", { Name = "MetaRow", BackgroundTransparency = 1, Position = UDim2.fromOffset(50, 33), Size = UDim2.new(1, -270, 0, 16), Parent = row })
+			UIHelpers.list(metaRow, true, 12, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+			text(metaRow, "Meta", stars(info.difficulty) .. "   " .. tostring(info.damage) .. " DMG", T.heavy, 12, T.muted, { Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, RichText = true })
+			if info.counter then text(metaRow, "Counter", "COUNTER HIT", T.heavy, 12, T.gold, { Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2 }) end
+			if info.surge then text(metaRow, "Surge", "SURGE", T.heavy, 12, T.ember, { Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 3 }) end
+			local cleared = text(metaRow, "Cleared", "CLEARED", T.heavy, 12, T.ok, { Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 4, Visible = false })
 			local notation = UIHelpers.notationRow(row, info.notation, { height = 24, name = "Notation" })
-			notation.Position = UDim2.fromOffset(50, 40)
-			local cleared = text(row, "Cleared", "CLEARED", T.heavy, 11, T.ok, { Position = UDim2.fromOffset(470, 46), Size = UDim2.fromOffset(60, 16), Visible = false })
+			notation.Position = UDim2.fromOffset(50, 54)
 			local try = UIHelpers.button(row, "Try", { text = "TRY IT", size = UDim2.fromOffset(96, 30), textSize = 13, accent = T.gold, primary = true })
 			try.button.AnchorPoint = Vector2.new(1, 0.5); try.button.Position = UDim2.new(1, -116, 0.5, 0); try.button.Selectable = false
 			local show = UIHelpers.button(row, "Show", { text = "SHOW ME", size = UDim2.fromOffset(96, 30), textSize = 13, accent = T.cool })
