@@ -962,3 +962,106 @@ Coverage after round 6: 77 kick-type moves (24 kick string follow-ups) and 49 pu
   (each test well under the runner's 5 s).
 - Surge: a pulsing body glow (Highlight outline in the surge colour) over the floor aura, a stronger Surge burst, and
   every aura particle cleared at once when Surge ends, a fighter is put back on its mark or a round resets.
+
+## 16. Round 7: feet that stand, a tumble that rolls, juggles that build up
+
+The user: "character select characters like kael and sierra have their feet jumping but in a weird way that doesnt
+look normal almost ragdoll like" and "it doesnt feel very refined at all".
+
+### 16.1 Fighter select previews (root causes and fix)
+
+- Round-6 previews (`MotionPlayer.namedPose` + `CharacterPresenter.posePreview`) kept the root and the pelvis pinned
+  and raised the floor by the pose's `rootOffset.Y`; the pose had no contact channel use (`footLock = false`) and no
+  clock. The bouncing stances (`Stance`: Kael, Lumi; `Stance_Kickboxer`: Sierra; root bob 0.12-0.14 leg lengths) moved
+  the FEET 0.23-0.42 studs up and down and back and forth under a still body. The select then stood the rig on the
+  posed feet of whatever frame it was shown at (round-6 calibration: Kael sank up to 0.31 studs, Sierra floated 0.28).
+- `MotionPlayer.previewPose(id, name, t, rootHeight, legLength)`: a preview frame posed like the fight (contacts,
+  world foot locks, the clock `t` for lock release and IK continuity, guard self clearance, sole clearance).
+  `namedPose` stays the one-off pose (standingHeights and other single measurements).
+- `MotionPlayer.apply(rig, pose, floorY, bodyOffset?)`: `bodyOffset` (studs, heading frame) moves the body through the
+  Root joint while the root part stays; previews pass the pose's `rootOffset`, so the bob moves the body over planted
+  feet, exactly as the fight moves the root.
+- `CharacterPresenter.posePreview`: the floor is `RootHeight` under the root; a preview is continuous (keeps its foot
+  locks) while id, pose and root stay and `t` advances by less than `PreviewGap` (0.25 s), else the rig is reset.
+  `previewBodyOffset(model)`: the world offset of the latest bob (FighterSelect fits its camera to the height without
+  it). Roster tiles (`FighterSelect` pose()), the lobby portrait and the HUD portraits call the same function.
+- `FighterSelect.placeShown`: the rig stands at its `RootHeight` over the platform (no measuring of posed feet).
+- Stance foot anchor (`States.STANCE_ANCHOR` 0.5, previews only): feet of looping stances that travel at least
+  `STANCE_ANCHOR_MIN` (0.06 leg lengths) are held halfway to their loop mean (the shuffle read as skating in the
+  close-up). The fight keeps the clip's footwork (`styleAdjust(..., anchorW = 0)`): anchoring there moved the feet every
+  move and reaction starts from and cost QA edge cases.
+- Not changed: the confirm pose (`Intro` at `os.clock()`, a one-shot clip clamped to its last frame, blended in over
+  `POSE_BLEND`) shows the fighter's ready pose under "LOCKED IN"; it is not animated through the bow.
+
+### 16.2 Feet in the fight (stance, walks)
+
+- Sole clearance (`MotionPlayer.SoleClearance`, `SoleRate` 0.06 studs/frame; `Pose.soleClear` for the motion keys
+  `Stance`, `Walk`, `Backwalk` and the previews): a near-floor foot of an upright body is shown at least as high as the
+  clip holds it over the clip's own floor (`rig.soleFloor`, which follows an airborne root), raise only. The shipped
+  rigs' hips sit 0.5-0.8 studs lower under the root than the clips' reference, so hip-relative targets ended 0.15-0.55
+  studs under the floor: Kael's idle feet never left the floor and slid, the walks of Kael, Goran and Rhys dragged their
+  swing feet. Rate limited (the correction fades over a few frames when a move or a reaction takes over).
+- Contact hold release (`HoldReleaseRate` 0.25/frame, the same keys only): a foot's floor rest lets go gradually
+  (mocap contacts drop 0.65 -> 0.5 in a frame while the heel already lifts: a 0.05-stud toe pop). Kicks and steps
+  release at once (a held kicking foot flipped Rhys's knee 265 degrees in a frame in CrescentStep).
+- Tried and left out: keeping the heel raised on the ball of the foot (worse skating without a toe-pivot lock); a
+  symmetric flatten release (`FlattenRate` on the way up: limit +2..+6 on Kael, Goran, Rhys).
+- Headless numbers, main -> r7 (`tools`: `preview_feet.luau`, 60 fps, real rigs; skate = toe/heel points touching
+  the floor three frames in a row, studs per second of travel):
+
+| | select: lower foot range (studs) | select: pelvis range | fight idle skate | walk skate | backwalk skate |
+|---|---|---|---|---|---|
+| Kael | 0.376 -> 0.122 | 0.002 -> 0.378 | 5.59 -> 1.71 | 22.91 -> 1.44 | 17.00 -> 3.53 |
+| Sierra | 0.417 -> 0.012 | 0.001 -> 0.411 | 2.45 -> 2.45 | 2.01 -> 2.08 | 3.26 -> 3.37 |
+| Goran | 0.054 -> 0.001 | 0.001 -> 0.052 | 0.17 -> 0.17 | 20.09 -> 2.90 | 15.25 -> 4.74 |
+| Lumi | 0.226 -> 0.162 | 0.002 -> 0.358 | 0.35 -> 0.38 | 0.30 -> 0.30 | 0.48 -> 0.48 |
+| Rhys | 0.067 -> 0.000 | 0.001 -> 0.067 | 0.09 -> 0.09 | 19.12 -> 0.93 | 17.59 -> 2.48 |
+| Nia | 0.067 -> 0.000 | 0.001 -> 0.066 | 0.11 -> 0.11 | 0.89 -> 1.08 | 1.03 -> 1.21 |
+
+  The select's absolute floor (lower foot vs the platform) on main: Kael -0.09..+0.29, Sierra +0.04..+0.46, Goran
+  +0.43..+0.49, Rhys +0.26..+0.32, Nia +0.37..+0.44 (made up for by the per-frame calibration); r7: -0.01..+0.16 for
+  all six. In Play (`MotionPreview_Test`, Studio): Kael -0.001..+0.083, Sierra -0.001..+0.149 (the kickboxer's hop
+  lifts both feet at its top, with the body), Goran/Rhys/Nia within 0.003, Lumi -0.001..+0.100; worst foot step 0.075
+  studs/frame, skating at most 1.84 studs/s.
+
+### 16.3 Tumble
+
+`Core.AirTumble` (`movespecs.py` `air_tumble`) rolls about the line from the ankles' midpoint to the head (it rolled
+about head -> pelvis, which stood the body upright around frame 12), with an ease-out: keys every 3 frames, about 22
+degrees a frame on the hit, settling into the falling pose by frame 24.
+
+### 16.4 Combo readability (EffectsController, AudioController)
+
+- Juggle hits: the first hit on a flying body keeps 0.68 of a grounded hit (`AirScaleFirst`), every further hit grows
+  by `AirComboGrowth` (0.09) up to `AirScaleMax` (1.1): sparks, ring and camera shake build up over a juggle. A tumbling
+  hit reads at least as heavy as a grounded one and adds a whoosh (`TumbleWhoosh`).
+- Air landings (`States.floorImpact` tracker `fromAir`): more dust (`AirLandDust` 34 vs 26), a stronger camera impulse
+  (`AirLandShake` 0.05 vs 0.035) and a layered thud (`Layers.AirLand`: Knockdown + ThrowImpact) on the frame the body
+  lands; standing knockdowns keep theirs.
+- Sound: a capped pitch ladder on juggle hits (`JuggleStep` 0.025 per hit after the second, `JuggleMax` 0.125, a little
+  louder too; `AudioController.play(name, at, lift)`), a deep whoosh on the tumble (`TumbleLift` -0.22).
+- Presentation only, driven by the same sim events and floor-impact frames as before: no sim cost.
+
+### 16.5 Tests and QA
+
+- `MotionPreview_Test`: every fighter's preview stance, one loop + seam at 60 fps on the real rig stood at RootHeight:
+  lower foot within -0.03..0.2 of the floor, range <= 0.2, foot steps <= 0.12 studs/frame, skating <= 2 studs/s, the
+  pelvis carrying the bob; plus a reset test (moved/new pose). All six fail on main (Kael, Sierra, Lumi on every bounce
+  check, Goran, Rhys, Nia on the floor and the body bob).
+- `VfxCombo_Test`: juggle escalation and its cap, the tumble hit, the audio ladder, the air landing marked and heavier.
+- Full suite in Play on the merged branch (r7-combat merged): `[SUMMARY] 656 run, 656 passed, 0 failed`.
+- MotionQA (headless runs of `MotionQA` on the real rigs, states, moves, transitions, throws, ultimates and stances of
+  all six; box-shaped body profiles, so compare headless with headless): every category equal or better than main for
+  every fighter except Goran transition 36 -> 37 (`launch>fallFaceDown>getup>idle` f12 LeftAnkle 54.8 degrees: the same
+  jump main shows at that frame, flagged only because r7's following frames are smoother, 23/13 degrees vs main's
+  41/52, below the ratio test). Report: `OV6/handoff/motion-shots/round7/README.md`.
+
+### 16.6 Known issues (round 7)
+
+- String follow-ups after r7-combat's `StringReach` (1.3) connect up to 1.85 studs past their range (Goran
+  BootForearmHammer, JabHammerForearm; Sierra TeepSpinKick 1.45): 93 of 289 follow-up hits in a string sweep land past
+  range, 47 by more than 0.5 studs. The clips' lunge is only ever scaled down (`LungeSpacing`), so such a hit lands with
+  the fist or foot short of the body.
+- A launch's first airborne frame turns the ankle about 55 degrees (the flattened foot lets go of the floor at once);
+  a release rate fixed it but cost limit/pop elsewhere.
+- Sierra's preview and idle stance still skate about 1.8-2.5 studs/s (the planted foot twists about its lock).
