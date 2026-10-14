@@ -704,6 +704,24 @@ function PlayFlow.mount(env: Env): Controller
 			end
 		end)
 	end
+	-- The preview holds while the map screens are up: one that could not start (its arena or shot not there yet, e.g.
+	-- right after joining) is retried, and a shot something else moved (a camera reset when the character respawns) is
+	-- put back. Never during a dip, so the cut stays hidden.
+	local function holdPreview()
+		local want = S.previewId
+		if not want or (dipGui and dipGui.Enabled) then return end
+		local c = camera()
+		if not c then return end
+		if cam.shown ~= want then
+			applyPreview()
+		elseif c.CameraType ~= Enum.CameraType.Scriptable then
+			local shot = PlayFlow.previewFrame(cam.model or PlayFlow.arenaModel(env.world(), want))
+			if shot then
+				c.CameraType = Enum.CameraType.Scriptable
+				c.CFrame = shot
+			end
+		end
+	end
 	local function previewWanted(cards: { Card }): string?
 		local s = S.state
 		if not S.open then return nil end
@@ -1001,6 +1019,7 @@ function PlayFlow.mount(env: Env): Controller
 		end,
 		tick = function(_dt: number)
 			if not S.open or destroyed then return end
+			holdPreview()
 			if S.state.pending and clock() - S.pendingSince > PlayFlow.PENDING_SECONDS then
 				S.state.pending = false
 				S.state.notice = "NO ANSWER YET  ·  PRESS FIGHT! AGAIN"

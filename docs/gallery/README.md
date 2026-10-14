@@ -199,3 +199,27 @@ Goran's Ultimate "Landslide" in real Play: an armored charge, the drag-up and kn
 The fight HUD with real data: SURGE and the [L] ULTIMATE indicator in Free Training, the Ultimate's title card with letterbox, the hit counter during the cinematic and Surge refilling afterwards.
 
 ![Surge and Ultimate HUD](34-surge-and-ultimate-hud.jpg)
+
+## Round 7: the PLAY flow
+
+PLAY asks one question per screen. Left: who do you want to fight (VS PLAYER, VS CPU, PRACTICE). Right: pick a map, with the focused map shown on its own stage behind the cards and the CPU level on the same screen.
+
+![PLAY flow](35-play-flow.jpg)
+
+## Round 7: Combo Trials
+
+A combo trial cleared by hand: every step lights up as it lands, and COMBO CLEAR! shows the damage. A miss names the reason (too early, too late, wrong move, blocked, missed), and SHOW ME plays the combo first.
+
+![Combo trial cleared](36-combo-trial-clear.jpg)
+
+## Round 7: fight stages
+
+All five arenas from the fight camera, before (left) and after (right): every fight is surrounded by its arena's own stage, with a landmark behind the fighters, a moving crowd and credited free trees, ferns and rocks.
+
+![Fight stages before and after](37-fight-stages-before-after.jpg)
+
+## Round 7: fighter select feet
+
+Sierra in the fighter select, before (top) and after (bottom): her feet used to lift and shuffle under a still body; now both feet stay planted while the body bobs.
+
+![Select feet before and after](38-select-feet-before-after.jpg)

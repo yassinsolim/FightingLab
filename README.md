@@ -16,11 +16,16 @@ fighter specs, the build tools and the design docs. More screenshots: [docs/gall
    the Studio window. (A phone preset shrinks the game, adds a phone frame and touch buttons.)
 3. To try player-vs-player in Studio, use Test > Clients and Servers with 2 players (solo Play has one player).
 
-The lobby ("Ember Square"): every arena is a short walk from the spawn (at most about 33 studs). The bar at the bottom
-does everything in two clicks or presses:
-- **PLAY** (F, or RB on a gamepad): Quick Duel (matchmaking against another player, with "Fight CPU instead" after
-  12 s alone), Fight CPU (Easy / Normal / Hard), Practice (free training, guided lesson or Versus CPU) or Go To any
-  arena or the plaza. You are taken straight there and the fight starts.
+The lobby ("Ember Square"): every arena is a short walk from the spawn (at most about 33 studs). Press **PLAY** (F, or
+RB on a gamepad) and answer one question per screen:
+1. **Who do you want to fight?** VS PLAYER, VS CPU or PRACTICE.
+2. **Pick a map.** Each map is shown on its own stage behind the cards while you browse (for VS CPU the Easy / Normal
+   / Hard level sits on the same screen). VS PLAYER offers "Any map" first (matchmaking), or pick a map and wait on
+   its circle; "Fight CPU" is offered after 12 s alone.
+3. **Fight!** Your current fighter is shown with a CHANGE shortcut; confirm and you are taken straight there.
+
+PRACTICE offers Free Training, Combo Trials, the Guided Lesson and Practice vs CPU. Backspace (or B, or the Back
+button) goes back one screen; F closes the flow.
 - **FIGHTERS** (C, or LB): change fighter from anywhere (the Fighter Kiosk still works too).
 - **MENU** (Tab, or Y): Fighters, How to Play, Move List, Settings, Credits.
 - Hold **Shift** to sprint in the lobby (L3 on a gamepad, an on-screen toggle on touch).
@@ -49,7 +54,10 @@ Fighting (keyboard). The same scheme is shown in the fight (G), in How to Play a
 - G: controls guide.
 - Practice: R reset positions, T Training / Versus CPU, 1 / 2 / 3 CPU difficulty, Y dummy mode (Stand / Guard /
   Fight back), P pause (opens the practice panel), Backspace leave practice. In Free Training you are always in
-  Surge, so the Ultimate can be tried any time.
+  Surge, so the Ultimate can be tried any time. The practice panel also has an input display (your last 10 inputs
+  with their frame gaps), a frame-advantage readout (e.g. "+1 ON BLOCK") and Combo Trials: pick one of your fighter's
+  listed combos, each step lights up as it lands, a miss tells you why (too early, too late, wrong move, blocked,
+  missed), and SHOW ME plays it for you.
 
 Fighting (gamepad): stick or D-pad move, X / Y / A / B = 1 / 2 / 3 / 4, RB throw, RT Ultimate, Start pause, Select guide.
 
@@ -151,7 +159,29 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   builds hand-keyed clips and two-person throws, clipsheet.py renders a clip offline exactly as the game plays it,
   cliplint.py checks credits headers, decoding and move keys). See `docs/design/motioncore.md`.
 - Tests: ServerStorage.UnitTest. In Play, on the server: `require(game.ServerStorage.UnitTest.RunUnitTest)(nil, 5)`
-  Final result: `[SUMMARY] 632 run, 632 passed, 0 failed`
+  Final result: `[SUMMARY] 687 run, 687 passed, 0 failed`
+
+## Update: easier combos, fair fighters, a simple PLAY flow, better maps (2026-10-13)
+
+- Combos are learnable: presses made early during your own move are kept for 30 frames (was 8), string follow-ups
+  typed early queue up, juggle follow-ups turn toward the airborne opponent, and J+K (the signature) accepts presses
+  up to 4 frames apart (was 2; 100% registered at 50 ms apart, was 83-86%). Every fighter's first listed combo is an
+  easy route (START HERE on the COMBOS page) and the difficulty labels come from measurements: typed through the real
+  input path with ±3 frames of timing noise every listed combo lands 100% of the time (main: 5-43%), and every easy
+  route lands 100% at any noise tested. Strings are natural combos on hit from every range (13 of 22 -> 22 of 22): a
+  follow-up steps in during its startup instead of hitting from out of reach.
+- Fair fighters: CPU vs CPU over every matchup, each fighter's overall win rate is now 46-54% at Normal and 46-53% at
+  Hard (main: 21-71%), no matchup is worse than 38/62 at Normal or Hard, and every fighter's CPU is about equally hard
+  for a human-like player. Hard's strings are real hit-confirmed combos (5% -> 98%), and Goran's health went from 120
+  to 104.
+- PLAY is one decision per screen: who (VS PLAYER / VS CPU / PRACTICE), pick a map (each map shown on its own stage
+  behind the cards), fight. Practice adds Combo Trials (step-by-step checks with plain-word failure reasons and SHOW
+  ME), an input display and a frame-advantage readout.
+- Maps: every fight is surrounded by its arena's own stage (a landmark behind the fighters, depth layers, a moving 3D
+  crowd, credited free trees, ferns and rocks) at the same frame rate.
+- Animation: the boxers' feet stand naturally in the fighter select (the body bobs over planted feet), feet no longer
+  skate in the fight stance and walks, a tumbling body rolls instead of passing through upright, and juggle hits,
+  tumbles and air landings hit harder visually and audibly.
 
 ## Update: distinct fighters, combos, Surge and the Ultimate, a premium look (2026-10-12)
 
@@ -287,10 +317,16 @@ matplotlib). If Windows blocks the scripts, run them as `powershell -ExecutionPo
   Uppercut sinks a little into a launched opponent, and in two throws a hand briefly grazes the thrown fighter (Rhys
   on Goran's RamSlam, Nia on Rhys's Throw). The rebuilt side roll bends the kneeling foot past its natural range.
 - In the Ultimates a few frames still overlap a little: Goran's drag-up (0.2-0.4 studs) and Kael's overhand finisher,
-  whose glove grazes the opponent's head; a tumbling body passes through upright for a moment mid-roll.
+  whose glove grazes the opponent's head. A launched fighter's ankle snaps on the first airborne frame, and the
+  fighter-select confirm pose holds still instead of animating.
 - The fighters' faces are the best free catalog heads found so far (no better free head was available); Goran's beard
   does not follow his jaw when his mouth opens.
-- The arena crowds are flat silhouettes.
+- The arena crowds look toy-like up close, the plaza towers are plain boxes, and the stages look the same as before
+  from the plaza (the new stage dressing shows in fights and the map picker).
+- Balance is measured CPU vs CPU; for a human the fighters are not perfectly even yet (a simulated player does a little
+  better with Goran than with Nia, and does not use Sierra's and Rhys's stances).
+- Gamepad, touch and a real two-player session of the new PLAY flow are covered by automated tests only; SHOW ME for a
+  counter-hit combo plays your inputs but cannot make the dummy attack on cue.
 - R15 rigs have no finger bones: open-hand fighters keep the catalog hand shape and Kael / Sierra wear gloves.
 - Studio-only review hooks exist (the FightingLabDuelDebug bindable and a stub world that is only built when the real
   world is missing); they are ignored outside Studio.

@@ -414,6 +414,10 @@ return function(t: Runner.T)
 			t.expect.truthy(stage.WinnerCard.Visible, "winner card after the K.O. beat")
 			t.expect.equal(stage.WinnerCard.Title.Text, "VICTORY")
 			t.expect.equal(stage.WinnerCard.Score.Text, "2  —  1")
+			-- practice Versus CPU rematches at once: the new round must not keep the old result card
+			Hud.update(frame({ phase = "Ready", round = 1, scores = { 0, 0 } }))
+			t.expect.falsy(stage.WinnerCard.Visible, "the result card goes away when a rematch starts")
+			t.expect.equal(stage.BannerHolder.Banner.Text, "ROUND 1", "the rematch shows its round intro")
 		end)
 	end)
 

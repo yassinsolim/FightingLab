@@ -1200,6 +1200,48 @@ return function(t: Runner.T)
 		world:Destroy()
 	end)
 
+	-- Live bug (round 7 integration): on the very first open after joining, the focused map's preview could fail to
+	-- start (or the camera was reset under it) and nothing retried, so the lobby view stayed behind the first map card
+	-- until the focus moved. The flow's tick now retries a preview that did not start and puts back a moved shot.
+	t.test("PLAY flow: a map preview that could not start is retried, and a shot something else moved is put back", function()
+		local world = Instance.new("Folder")
+		local arenasFolder = Instance.new("Folder"); arenasFolder.Name = "Arenas"; arenasFolder.Parent = world
+		local shotA = CFrame.lookAt(Vector3.new(0, 20, 20), Vector3.new(0, 0, 60))
+		local cam = Instance.new("Camera")
+		cam.Parent = world
+		local lobbyView = CFrame.lookAt(Vector3.new(0, 8, -20), Vector3.new(0, 4, 0))
+		local extra = { camera = function() return cam end, world = function() return world end }
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1)
+			local flow = m.ctl.playFlow()
+			cam.CameraType = Enum.CameraType.Custom
+			cam.CFrame = lobbyView
+			-- The arena is not in the world yet: the map screen opens on the lobby view.
+			press(m, key("lobby", "play"))
+			press(m, Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Map")
+			t.expect.equal(flow.previewArena(), "Arena_A", "the first map is the one to preview")
+			t.expect.equal(cam.CFrame, lobbyView, "no shot yet")
+			-- It arrives: the next tick puts the preview up without any key press.
+			local model = Instance.new("Model"); model.Name = "Arena_A"; model:SetAttribute("StageId", "Arena_A")
+			local origin = Instance.new("Part"); origin.Name = "FightOrigin"; origin.Anchored = true; origin.Position = shotA.Position + shotA.LookVector * 30; origin.Parent = model
+			local previewCam = Instance.new("Part"); previewCam.Name = "PreviewCam"; previewCam.Anchored = true; previewCam.CFrame = shotA; previewCam.Parent = model
+			model.Parent = arenasFolder
+			m.ctl.tick(0.016)
+			t.expect.equal(cam.CameraType, Enum.CameraType.Scriptable, "the preview took the camera")
+			t.expect.truthy((cam.CFrame.Position - shotA.Position).Magnitude < 1e-3, "on its PreviewCam")
+			-- Something resets the camera under the preview (a respawn): the next tick puts the shot back.
+			cam.CameraType = Enum.CameraType.Custom
+			cam.CFrame = lobbyView
+			m.ctl.tick(0.016)
+			t.expect.equal(cam.CameraType, Enum.CameraType.Scriptable, "the shot is back")
+			t.expect.truthy((cam.CFrame.Position - shotA.Position).Magnitude < 1e-3, "back on its PreviewCam")
+			m.ctl.closePlay()
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "closing hands a following camera back")
+		end, true, extra)
+		world:Destroy()
+	end)
+
 	t.test("PLAY flow: a busy map is refused with the next free one offered, in place (READY) or by reopening the flow", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
 			station(m, "Arena_A", "Duel", 1, "Fighting")

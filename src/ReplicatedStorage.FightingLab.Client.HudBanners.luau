@@ -285,6 +285,10 @@ function M.showWinner(b: Banners, title: string, color: Color3, fighter: string,
 	tween(b.winner, 0.3, { Size = UDim2.new(1, 0, 0, 230) }, Enum.EasingStyle.Quint)
 end
 
+function M.hideWinner(b: Banners)
+	b.winner.Visible = false
+end
+
 function M.hideAll(b: Banners)
 	b.token += 1
 	b.ultToken += 1

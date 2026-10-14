@@ -892,6 +892,9 @@ function M.update(f: RenderFrame)
 		if lastPhase == "Ready" and f.phase ~= "Fight" and b then HudBanners.hideCentre(b) end
 		if f.phase == "Ready" and f.mode ~= "Training" then
 			roundEndShown = false
+			-- A new round after a finished match (the practice Versus CPU rematch): the old result card goes away.
+			if b then HudBanners.hideWinner(b) end
+			if refs.bannerSub then refs.bannerSub.Text = "" end
 			local winsNeeded = if f.config and f.config.WinsNeeded then f.config.WinsNeeded else 2
 			showBanner(HudBanners.roundIntroText(f.round, f.scores, winsNeeded), WHITE, nil, 0)
 		end
