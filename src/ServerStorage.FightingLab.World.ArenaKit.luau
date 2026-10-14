@@ -28,6 +28,7 @@ function ArenaKit.new(def: ArenaDef): Model
 	model:SetAttribute("Order", def.order)
 	model:SetAttribute("AccentColor", def.accent)
 	model:SetAttribute("Tagline", def.tagline)
+	model:SetAttribute("ThemeColor", def.theme)
 	model:SetAttribute("FightRadius", Layout.FIGHT_RADIUS)
 	local origin = Instance.new("Part")
 	origin.Name = "FightOrigin"
@@ -41,6 +42,7 @@ function ArenaKit.new(def: ArenaDef): Model
 	origin.CFrame = CFrame.new(def.origin)
 	origin.Parent = model
 	model.PrimaryPart = origin
+	ArenaKit.previewCam(model, def)
 	-- scenery (this stage's and its neighbours') never stands on the podium or through the status board
 	Kit.keepOut(def.origin, Layout.STAGE_RADIUS + 1.5)
 	Kit.keepOut(def.origin - def.inward * Layout.BOARD_DISTANCE, 16.5)
@@ -53,6 +55,34 @@ end
 -- Arena-local position: x towards `right`, y up from the floor top, z towards the plaza.
 function ArenaKit.at(def: ArenaDef, x: number, y: number, z: number): Vector3
 	return Layout.at(def, x, y, z)
+end
+
+ArenaKit.PREVIEW_FOV = 70 -- the field of view the PreviewCam shots are framed for (attribute FieldOfView)
+
+-- The map picker's beauty shot (Contract D): world CFrame of an arena's PreviewCam.
+function ArenaKit.previewFrame(def: ArenaDef): CFrame
+	local cam = Layout.at(def, def.previewCam.X, def.previewCam.Y, def.previewCam.Z)
+	local look = Layout.at(def, def.previewLook.X, def.previewLook.Y, def.previewLook.Z)
+	return CFrame.lookAt(cam, look)
+end
+
+-- PreviewCam: an invisible marker the menus put the camera on to show the arena (anchored, no collision, queries,
+-- touches or shadow).
+function ArenaKit.previewCam(model: Model, def: ArenaDef): Part
+	local p = Instance.new("Part")
+	p.Name = "PreviewCam"
+	p.Size = Vector3.new(1, 1, 1)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.CFrame = ArenaKit.previewFrame(def)
+	p:SetAttribute("FieldOfView", ArenaKit.PREVIEW_FOV)
+	p.Parent = model
+	Kit.stats.parts += 1
+	return p
 end
 
 -- Upright disc centred on FightOrigin's vertical axis with its top face at `top`.

@@ -24,11 +24,18 @@ export type ArenaDef = {
 	floorY: number,
 	origin: Vector3,
 	accent: Color3,
-	tagline: string,
+	tagline: string, -- one line for the map picker (Contract D: at most 40 characters)
+	theme: Color3, -- the arena's colour in menus (Contract D: model attribute ThemeColor)
+	-- PreviewCam (Contract D): the map picker's beauty shot, arena-local (x towards `right`, y above the fight floor,
+	-- z towards the plaza): the camera position and the point it looks at
+	previewCam: Vector3,
+	previewLook: Vector3,
 	inward: Vector3, -- unit (XZ) from FightOrigin towards the plaza centre
 	right: Vector3, -- unit (XZ): screen-right for someone facing the stage from the plaza
 	stairWidth: number, -- the stair from the plaza up to the stage
 }
+
+export type ArenaLook = { tagline: string, theme: Color3, previewCam: Vector3, previewLook: Vector3 }
 
 local Layout = {}
 
@@ -101,7 +108,7 @@ local function dir(bearing: number): Vector3
 	return Vector3.new(math.sin(r), 0, -math.cos(r))
 end
 
-local function arena(id: string, stageId: string, displayName: string, kind: string, order: number, bearing: number, distance: number, floorY: number, stairWidth: number, accent: Color3, tagline: string): ArenaDef
+local function arena(id: string, stageId: string, displayName: string, kind: string, order: number, bearing: number, distance: number, floorY: number, stairWidth: number, accent: Color3, look: ArenaLook): ArenaDef
 	local out = dir(bearing)
 	local d = distance
 	local r = math.rad(bearing)
@@ -116,7 +123,10 @@ local function arena(id: string, stageId: string, displayName: string, kind: str
 		floorY = floorY,
 		origin = Vector3.new(out.X * d, floorY, out.Z * d),
 		accent = accent,
-		tagline = tagline,
+		tagline = look.tagline,
+		theme = look.theme,
+		previewCam = look.previewCam,
+		previewLook = look.previewLook,
 		inward = -out,
 		right = Vector3.new(math.cos(r), 0, math.sin(r)),
 		stairWidth = stairWidth,
@@ -131,12 +141,23 @@ local function bearingOf(k: number): number
 	return (Layout.PLAZA_HEAD_BEARING + half + k * Layout.ARENA_SPACING) % 360
 end
 
+-- Map picker look (Contract D): tagline, theme colour and the PreviewCam beauty shot (arena-local, see ArenaDef). Each
+-- shot stands a little to one side of the stair, high enough that the whole ring reads as a circle, with the arena's
+-- landmark behind the ring (tuned on real renders; World_Test checks the ring is framed and in clear view).
+Layout.LOOKS = {
+	MidnightRooftop = { tagline = "Neon rain on a rooftop above the city", theme = Color3.fromRGB(255, 64, 190), previewCam = Vector3.new(-15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
+	HarborDusk = { tagline = "Sunset pier among the cranes and gulls", theme = Color3.fromRGB(255, 146, 48), previewCam = Vector3.new(15, 14, 45), previewLook = Vector3.new(0, 3, -8) },
+	JungleRuins = { tagline = "A sun temple lost under the canopy", theme = Color3.fromRGB(84, 214, 112), previewCam = Vector3.new(-15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
+	SnowSummit = { tagline = "Aurora skies over a snowbound dome", theme = Color3.fromRGB(116, 198, 255), previewCam = Vector3.new(15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
+	TrainingBay = { tagline = "Open-air dojo under cherry blossoms", theme = Color3.fromRGB(232, 66, 54), previewCam = Vector3.new(15, 14, 45), previewLook = Vector3.new(0, 3, -8) },
+} :: { [string]: ArenaLook }
+
 Layout.ARENAS = {
-	arena("Arena_MidnightRooftop", "MidnightRooftop", "Midnight Rooftop", "Duel", 1, bearingOf(4), Layout.ARENA_DISTANCE, 4.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 72, 196), "Neon rooftop stage above the city lights"),
-	arena("Arena_HarborDusk", "HarborDusk", "Harbor Dusk", "Duel", 2, bearingOf(0), Layout.ARENA_DISTANCE, 1.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 152, 54), "Timber dock ring over the evening tide"),
-	arena("Arena_JungleRuins", "JungleRuins", "Jungle Ruins", "Duel", 3, bearingOf(2), Layout.ARENA_DISTANCE, 2.4, Layout.STAIR_WIDTH, Color3.fromRGB(126, 226, 88), "Sun temple ring in the overgrowth"),
-	arena("Arena_SnowSummit", "SnowSummit", "Summit Observatory", "Duel", 4, bearingOf(1), Layout.ARENA_DISTANCE, 3.0, Layout.STAIR_WIDTH, Color3.fromRGB(120, 208, 255), "Observatory deck above the snowline"),
-	arena("Arena_TrainingBay", "TrainingBay", "Training Bay", "Practice", 5, bearingOf(3), Layout.ARENA_DISTANCE, 1.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 206, 92), "Open-air dojo on the bay"),
+	arena("Arena_MidnightRooftop", "MidnightRooftop", "Midnight Rooftop", "Duel", 1, bearingOf(4), Layout.ARENA_DISTANCE, 4.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 72, 196), Layout.LOOKS.MidnightRooftop),
+	arena("Arena_HarborDusk", "HarborDusk", "Harbor Dusk", "Duel", 2, bearingOf(0), Layout.ARENA_DISTANCE, 1.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 152, 54), Layout.LOOKS.HarborDusk),
+	arena("Arena_JungleRuins", "JungleRuins", "Jungle Ruins", "Duel", 3, bearingOf(2), Layout.ARENA_DISTANCE, 2.4, Layout.STAIR_WIDTH, Color3.fromRGB(126, 226, 88), Layout.LOOKS.JungleRuins),
+	arena("Arena_SnowSummit", "SnowSummit", "Summit Observatory", "Duel", 4, bearingOf(1), Layout.ARENA_DISTANCE, 3.0, Layout.STAIR_WIDTH, Color3.fromRGB(120, 208, 255), Layout.LOOKS.SnowSummit),
+	arena("Arena_TrainingBay", "TrainingBay", "Training Bay", "Practice", 5, bearingOf(3), Layout.ARENA_DISTANCE, 1.2, Layout.STAIR_WIDTH, Color3.fromRGB(255, 206, 92), Layout.LOOKS.TrainingBay),
 } :: { ArenaDef }
 
 Layout.P1_COLOR = Color3.fromRGB(255, 104, 36)
