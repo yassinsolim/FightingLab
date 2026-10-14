@@ -413,7 +413,8 @@ function Session:leave(): boolean
 	return false
 end
 
--- PLAY panel (round 5): Quick Duel / Fight CPU / Practice through the server queue; only from the lobby.
+-- PLAY (round 5 panel, round 7 flow): VS PLAYER / VS CPU / Practice through the server; only from the lobby. Duel and
+-- Cpu take an optional `arena` (the map the player picked; none = any map).
 function Session:quickPlay(opts: { [string]: any }?): boolean
 	if self.current ~= "Lobby" then return false end
 	local o: any = opts or {}
@@ -423,6 +424,8 @@ function Session:quickPlay(opts: { [string]: any }?): boolean
 	if mode == "Practice" then
 		payload.practice = if o.practice == "Cpu" then "Cpu" else "Training"
 		payload.opponent = NetProtocol.validFighter(o.opponent)
+	else
+		payload.arena = NetProtocol.validArenaId(o.arena)
 	end
 	self:fireLobby("QuickPlay", payload)
 	return true

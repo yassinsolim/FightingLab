@@ -182,13 +182,14 @@ if RunService:IsStudio() then
 			end
 			return true
 		elseif command == "quickStub" then
-			-- quickStub(mode?, fighterId?, name?): a stub player in the plaza sends QuickPlay (default "Duel": joins the
-			-- Quick Duel queue, so one real player can test pairing alone). Returns the stub's name.
+			-- quickStub(mode?, fighterId?, name?, arenaId?): a stub player in the plaza sends QuickPlay (default "Duel": joins
+			-- the Quick Duel queue, so one real player can test pairing alone; with an arena it waits on that arena's circle).
+			-- Returns the stub's name.
 			local name = args[3] or ("Quick" .. tostring(#Players:GetPlayers() + math.random(10, 99)))
 			local at = spawnFrame()
 			local stub = { UserId = -200 - math.random(1, 99), Name = name, DisplayName = name, fighterId = args[2] or "Goran", position = if at then at.Position + Vector3.new(0, 3, 0) else Vector3.new(0, 3, 0) }
 			service:addPlayer(stub)
-			service:onLobby(stub, "QuickPlay", { mode = args[1] or "Duel", difficulty = "Normal" })
+			service:onLobby(stub, "QuickPlay", { mode = args[1] or "Duel", difficulty = "Normal", arena = args[4] })
 			return name
 		elseif command == "quickState" then
 			-- quickState(): queue / reservation summary of the PLAY panel matchmaking.
@@ -198,7 +199,7 @@ if RunService:IsStudio() then
 			end
 			for _, id in service.stationOrder do
 				local st = service.stations[id]
-				table.insert(out, string.format("%s %s reserved=%s", id, st.state, tostring(st.reserved)))
+				table.insert(out, string.format("%s %s reserved=%s incoming=%s", id, st.state, tostring(st.reserved), tostring(next(st.incoming) ~= nil)))
 			end
 			return table.concat(out, "\n")
 		elseif command == "stubAi" then
