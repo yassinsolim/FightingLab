@@ -37,6 +37,8 @@ export type Fighter = {
 	-- Round 6: signature stance (state "Stance"), Surge / Ultimate, tumble.
 	stance: string?, stanceFrame: number, surge: boolean, surgeFree: boolean, ultUsed: boolean, ultStartPending: boolean,
 	tumbled: boolean, tumbling: boolean,
+	-- Round 7: studs a string follow-up has stepped in so far (Sim.stringStep), reset by every move start.
+	stringStep: number,
 }
 export type Event = { kind: string, attacker: number, target: number, move: string, damage: number, advantage: number, frame: number, point: Vector3, combo: number, air: boolean, counter: boolean?, launch: boolean?, knockdown: boolean?, tier: string?, archetype: string?, height: string?, limb: string?, evaded: boolean?, tumble: boolean?, punish: boolean? }
 export type TrainerDifficulty = "Easy" | "Normal" | "Hard"
@@ -114,6 +116,7 @@ function Sim.newFighter(name: string, pos: Vector3, facing: Vector3, characterId
 		aiNextAttack=0, aiPressureUntil=0, aiLastLauncherFrame=-1000, chainMove=nil, armorUsed=false, throwInfo=nil, lastDefendedMove=nil,
 		aiIntent=nil, aiIntentUntil=0, aiIntentX=0, aiIntentZ=0, aiIntentBlock=false, aiIntentCrouch=false, ai=nil,
 		stance=nil, stanceFrame=0, surge=false, surgeFree=false, ultUsed=false, ultStartPending=false, tumbled=false, tumbling=false,
+		stringStep=0,
 	}
 end
 
@@ -238,15 +241,19 @@ function Sim.reach(a: Fighter, t: Fighter, name: string): (boolean, number, numb
 	return along > 0 and along <= effectiveRange and side <= v.width, along, side
 end
 
--- Strings are natural combos on hit: a string follow-up reaches an opponent that the previous hit of the same string
--- put in hitstun (or juggles), up to Config.StringReach further than its own range, so the earlier hits' pushback
--- never makes it whiff. On block or whiff the follow-up keeps its normal reach.
-function Sim.stringReach(a: Fighter, t: Fighter, def: Roster.MoveDef, along: number, side: number): boolean
-	if def.chainFrom == nil or along <= 0 then return false end
+-- Strings are natural combos on hit. A string follow-up whose previous hit (of the same string) holds the opponent in
+-- hitstun or a juggle is "on hit": during its startup it steps in (Sim.stringStep, real travel the animation shows) so
+-- that it lands from inside its own reach, and it may connect at most Config.StringReach (0.3 studs) past its range and
+-- width, never further. On block or whiff a follow-up keeps its normal reach and travel.
+function Sim.stringOnHit(a: Fighter, t: Fighter, def: Roster.MoveDef): boolean
+	if def.chainFrom == nil then return false end
 	local hit = t.lastHit
 	if hit == nil or hit.move ~= def.chainFrom or (hit.kind ~= "Hit" and hit.kind ~= "Counter") then return false end
-	if not (t.state == "Hitstun" or (t.state == "Airborne" and not t.airLocked)) then return false end
-	return along <= def.range + Config.StringReach and side <= def.width + 0.4
+	return t.state == "Hitstun" or (t.state == "Airborne" and not t.airLocked)
+end
+function Sim.stringReach(a: Fighter, t: Fighter, def: Roster.MoveDef, along: number, side: number): boolean
+	if along <= 0 or not Sim.stringOnHit(a, t, def) then return false end
+	return along <= def.range + Config.StringReach and side <= def.width + Config.StringReach
 end
 
 -- Input --------------------------------------------------------------------------------------------------------------
@@ -553,6 +560,23 @@ local function keepApart(f: Fighter, o: Fighter)
 	local dir = if n > 0.0001 then d / n else -f.facing
 	f.pos = Vector3.new(o.pos.X, f.pos.Y, o.pos.Z) + dir * Config.Separation
 end
+-- One frame of an on-hit string follow-up's step-in (its startup up to and including the first active frame): moves
+-- the attacker toward the opponent until it is Config.StringStepMargin inside the move's range, counting the root
+-- motion still to come; at most Config.StringStepFrame studs per frame and Config.StringStepIn per move, never closer
+-- than the separation (keepApart moves only the attacker).
+function Sim.stringStep(f: Fighter, o: Fighter, v: Roster.MoveDef)
+	local along = flat(o.pos - f.pos):Dot(f.facing)
+	if along <= 0 then return end
+	local framesLeft = math.max(1, v.startup + 2 - f.moveFrame)
+	local rootLeft = if v.advance > 0 then v.advance / math.max(1, v.startup) * (framesLeft - 1) else 0
+	local need = along - rootLeft - (v.range - Config.StringStepMargin)
+	local stepped = f.stringStep or 0
+	local stepNow = math.min(need, Config.StringStepFrame, Config.StringStepIn - stepped)
+	if stepNow <= 0 then return end
+	f.pos += f.facing * stepNow
+	f.stringStep = stepped + stepNow
+	keepApart(f, o)
+end
 function Sim.separate(a: Fighter, b: Fighter)
 	for _=1,3 do
 		local d=flat(b.pos-a.pos); local n=d.Magnitude
@@ -644,7 +668,7 @@ local function startMove(f: Fighter, key: string): boolean
 	local prev = f.move
 	f.stringIndex = if def.chainFrom ~= nil and prev == def.chainFrom then f.stringIndex + 1 else 1
 	f.move=key; f.moveName=def.name; f.moveFrame=1; f.hasHit=false; f.state="Startup"; f.crouched=def.crouching
-	f.chainMove=nil; f.armorUsed=false; f.guard=nil; f.evaded=false; f.crouchFrames=0
+	f.chainMove=nil; f.armorUsed=false; f.guard=nil; f.evaded=false; f.crouchFrames=0; f.stringStep=0
 	f.dash=0; f.dashFrame=0; f.dashTotal=0; f.stepFrame=0; f.stepDir=0
 	f.stance=nil; f.stanceFrame=0
 	promoteQueued(f, key, nil)
@@ -905,6 +929,10 @@ local function advance(m: Match, f: Fighter, o: Fighter, events: { Event }, inde
 			-- Root motion: `advance` studs spread over the frames up to and including the first active frame.
 			f.pos += f.facing * (v.advance / math.max(1, v.startup))
 			keepApart(f, o)
+		end
+		if f.moveFrame <= v.startup + 1 and Sim.stringOnHit(f, o, v) then
+			-- A string follow-up on hit steps in during its startup (natural strings without reach the body cannot show).
+			Sim.stringStep(f, o, v)
 		end
 		if f.moveFrame<=v.startup then f.state="Startup"
 		elseif f.moveFrame<=activeEnd then f.state="Active"

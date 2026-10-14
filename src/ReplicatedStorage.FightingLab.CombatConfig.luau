@@ -20,9 +20,14 @@ local Config = {
 	AttackBuffer = 8,
 	RecoveryBuffer = 30,
 	StepBuffer = 6,
-	-- Strings are natural combos on hit: a follow-up reaches this much further than its range when the previous hit of
-	-- its string put the opponent in hitstun (CombatSim.stringReach), so pushback never breaks a string that hit.
-	StringReach = 1.3,
+	-- Strings are natural combos on hit: a follow-up whose previous hit (same string) put the opponent in hitstun or a
+	-- juggle steps in during its startup (real travel: up to StringStepFrame studs per frame and StringStepIn per move,
+	-- aiming StringStepMargin inside its range; CombatSim.stringStep) and connects at most StringReach past its own
+	-- range and width, so the fist or foot never lands visibly short. On block or whiff nothing changes.
+	StringReach = 0.3,
+	StringStepIn = 1.6,
+	StringStepFrame = 0.2,
+	StringStepMargin = 0.1,
 	-- Two buttons pressed within ChordFrames form a chord (1+3 / 2+4 throws); a move already started by the first
 	-- button is upgraded in place while it is still in its startup.
 	ChordFrames = 3,

@@ -280,4 +280,96 @@ return function(t)
 		end
 		print(string.format("[STRINGS] %d of %d strings are natural combos on hit", natural, total))
 	end)
+
+	-- Round 7 (motion request): natural strings must not come from reach the animation cannot show. A follow-up on hit
+	-- steps in during its startup (real travel) and may connect at most Config.StringReach (0.3 studs) past its range;
+	-- the distance is measured from where the attacker actually is when the hit connects (root advance and step-in
+	-- included). Round-7 head before this fix: 51 strikes in 72 CPU matches and the string sweeps connected more than
+	-- 0.3 studs past their range, up to 1.05.
+	test("round 7: no strike connects more than 0.3 studs past its range; strings on hit step in instead", function()
+		local Config = require(Lab:WaitForChild("CombatConfig"))
+		local BUTTON = { LP = "LeadPunch", RP = "RearPunch", LK = "LeadKick", RK = "RearKick" }
+		local lastAlong: { [any]: { move: string, along: number } } = {}
+		local original = Sim.reach
+		local worst, worstWhat, checked, stepped = -math.huge, "", 0, 0
+		local function check(m: Sim.Match, e: Sim.Event, label: string, blockedRun: boolean)
+			if e.kind ~= "Hit" and e.kind ~= "KO" and e.kind ~= "Block" then return end
+			local a = m.fighters[e.attacker]
+			local rec = lastAlong[a]
+			local def = a.character.moves[e.move]
+			if rec == nil or rec.move ~= e.move or def == nil or def.height == "Throw" or def.cinematic ~= nil then return end
+			checked += 1
+			local excess = rec.along - def.range
+			if excess > worst then worst, worstWhat = excess, string.format("%s %s %s", label, a.characterId, e.move) end
+			local step = (a :: any).stringStep or 0
+			if step > 0 then stepped += 1 end
+			expect.truthy(step <= ((Config :: any).StringStepIn or math.huge) + 1e-6, "step-in within its cap: " .. label .. " " .. e.move)
+			if blockedRun then expect.equal(step, 0, "a follow-up on block never steps in: " .. label .. " " .. e.move) end
+		end
+		local ok, err = pcall(function()
+			Sim.reach = function(a: any, t: any, name: string)
+				local inReach, along, side = original(a, t, name)
+				lastAlong[a] = { move = name, along = along }
+				return inReach, along, side
+			end
+			-- Every string, from several distances its first hit reaches; once on hit (the dummy guards after hit 1) and
+			-- once guarded from the start.
+			for _, id in Roster.order do
+				local c = Roster.get(id)
+				for _, key in c.moveOrder do
+					local def = c.moves[key]
+					if def.chainFrom == nil or def.stance ~= nil then continue end
+					local path = { key }
+					while c.moves[path[1]].chainFrom do table.insert(path, 1, c.moves[path[1]].chainFrom :: string) end
+					local root = c.moves[path[1]]
+					if root.stance ~= nil or root.toStance ~= nil then continue end
+					for _, blockedRun in { false, true } do
+						local d10 = 26
+						while d10 <= math.floor((root.range + root.advance) * 10) do
+							local m = Sim.newMatch("Training", id, "Goran")
+							local a, t = m.fighters[1], m.fighters[2]
+							a.pos = Vector3.zero; t.pos = Vector3.new(d10 / 10, 0, 0)
+							if blockedRun then Sim.setDummy(m, "Guard") end
+							Sim.queueAttack(a, path[1])
+							local k, hits = 2, 0
+							for _ = 1, 300 do
+								if k <= #path and a.move == path[k - 1] and a.moveFrame >= 2 and m.hitstop == 0 then
+									Sim.press(m, 1, BUTTON[string.match(c.moves[path[k]].input, "([%a]+)%s*$")])
+									k += 1
+								end
+								for _, e in Sim.step(m) do
+									check(m, e, string.format("%s from %.1f%s", table.concat(path, ","), d10 / 10, if blockedRun then " guarded" else ""), blockedRun)
+									if e.attacker == 1 and (e.kind == "Hit" or e.kind == "KO") then
+										hits += 1
+										if hits == 1 then Sim.setDummy(m, "Guard") end
+									end
+								end
+								if k > #path and a.move == nil then break end
+							end
+							d10 += 4
+						end
+					end
+				end
+			end
+			-- CPU vs CPU at Hard (strings, juggles, punishes).
+			for i, id in Roster.order do
+				local m = Sim.newMatch("Match", id, Roster.order[i % #Roster.order + 1])
+				m.difficulty = "Hard"
+				m.aiSeed = 70 + i
+				local guard = 0
+				while m.phase ~= "MatchOver" and guard < 30000 do
+					guard += 1
+					Sim.trainerInput(m, 1); Sim.trainerInput(m, 2)
+					for _, e in Sim.step(m) do check(m, e, "Hard CPU", false) end
+				end
+			end
+		end)
+		Sim.reach = original
+		if not ok then error(err) end
+		print(string.format("[REACH] %d strikes, %d stepped in; the furthest connected %.2f studs past its range (%s)", checked, stepped, worst, worstWhat))
+		expect.truthy(checked > 500, "strikes checked " .. checked)
+		expect.truthy(stepped > 0, "strings on hit step in")
+		expect.truthy(Config.StringReach <= 0.3, "the extra reach is at most 0.3 studs")
+		expect.truthy(worst <= 0.3 + 1e-6, string.format("no strike connects more than 0.3 studs past its range (%.2f: %s)", worst, worstWhat))
+	end)
 end
