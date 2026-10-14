@@ -17,8 +17,10 @@ local Layout = require(WorldModules.Layout)
 local CameraDirector = require(ReplicatedStorage.FightingLab.Client.CameraDirector) :: any
 
 local STAGE_IDS = { MidnightRooftop = true, HarborDusk = true, JungleRuins = true, SnowSummit = true, TrainingBay = true }
--- the world's part count before the round-5 compact layout (main @ 64e1496, measured in Play); it may not grow past it
-local PART_CEILING = 3944
+-- round 7 budget: the world may grow at most 25 % over main's 3,892 parts (round 6, measured in Play)
+local PART_CEILING = 4865
+-- and keep its lights few, none casting shadows (main: 92 lights, 0 shadows)
+local LIGHT_CEILING = 100
 -- walking bounds from every spawn to every pad (studs of PathfindingService path); fixed here, not read from Layout,
 -- so an older (wider) layout fails them
 local WALK_WORST = 40
@@ -286,6 +288,70 @@ return function(t)
 			local toPlaza = flat(-origin.Position).Unit
 			expect.truthy(board.CFrame.LookVector:Dot(toPlaza) > 0.9, "board faces the plaza")
 			expect.truthy(flat(board.Position - origin.Position):Dot(toPlaza) < -40, "board stands behind the stage")
+		end
+	end)
+
+	-- Contract D (round 7): the map picker shows each arena with its tagline, theme colour and a beauty shot.
+	t.test("every arena carries its map preview: Tagline, ThemeColor and a PreviewCam beauty shot of the ring", function()
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { world() :: Instance }
+		local themes: { [string]: Color3 } = {}
+		for _, def in Layout.ARENAS do
+			local model = arenaModel(def.id) :: Model
+			local tagline = model:GetAttribute("Tagline")
+			expect.truthy(typeof(tagline) == "string" and #tagline >= 8 and #tagline <= 40, def.id .. ": Tagline of 8 to 40 characters")
+			local theme = model:GetAttribute("ThemeColor")
+			expect.truthy(typeof(theme) == "Color3", def.id .. ": ThemeColor is a Color3")
+			if typeof(theme) == "Color3" then
+				for otherId, other in themes do
+					local d = math.sqrt((theme.R - other.R) ^ 2 + (theme.G - other.G) ^ 2 + (theme.B - other.B) ^ 2)
+					expect.truthy(d > 0.2, string.format("%s / %s theme colours tell the arenas apart (%.2f)", def.id, otherId, d))
+				end
+				themes[def.id] = theme
+			end
+			-- the anchors and attributes from before stay
+			for _, key in { "ArenaId", "StageId", "DisplayName", "Kind", "Order", "FightRadius" } do
+				expect.truthy(model:GetAttribute(key) ~= nil, def.id .. " keeps " .. key)
+			end
+			local cam = model:FindFirstChild("PreviewCam")
+			expect.truthy(cam and cam:IsA("BasePart"), def.id .. ".PreviewCam is a BasePart")
+			if not (cam and cam:IsA("BasePart")) then continue end
+			expect.truthy(cam.Anchored and not cam.CanCollide and not cam.CanQuery and not cam.CanTouch, def.id .. ": PreviewCam is a ghost")
+			expect.equal(cam.Transparency, 1, def.id .. ": PreviewCam invisible")
+			local origin = (model:FindFirstChild("FightOrigin") :: BasePart).Position
+			local cf = cam.CFrame
+			local toRing = origin - cf.Position
+			expect.truthy(cf.LookVector:Dot(toRing.Unit) > 0.95, def.id .. ": PreviewCam looks at the ring")
+			local height = cf.Position.Y - origin.Y
+			expect.truthy(height >= 6 and height <= 40, string.format("%s: PreviewCam %.1f studs above the floor", def.id, height))
+			local range = flat(toRing).Magnitude
+			expect.truthy(range >= 25 and range <= 90, string.format("%s: PreviewCam %.1f studs out", def.id, range))
+			-- both circles (the edge ring at the fight radius and an inner circle) fit the frame at 16:9 and 4:3
+			local fov = cam:GetAttribute("FieldOfView")
+			expect.truthy(typeof(fov) == "number" and fov >= 40 and fov <= 80, def.id .. ": PreviewCam FieldOfView")
+			local outside = {}
+			for _, aspect in { 16 / 9, 4 / 3 } do
+				for k = 0, 15 do
+					local a = k * math.pi / 8
+					for _, r in { Layout.EDGE_INNER + 0.2, 10 } do
+						local p = origin + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+						local v = CameraDirector._normalizedViewportPoint(cf, fov :: number, aspect, p)
+						if not (v and v.X > 0.03 and v.X < 0.97 and v.Y > 0.04 and v.Y < 0.96) then
+							table.insert(outside, string.format("r%.0f @%d %.2f", r, k, aspect))
+						end
+					end
+				end
+			end
+			expect.equal(#outside, 0, def.id .. ": ring points outside the PreviewCam frame: " .. table.concat(outside, ", "))
+			-- in clear view: nothing solid between the lens and the middle of the ring
+			local target = origin + Vector3.new(0, 1, 0)
+			local hit = workspace:Raycast(cf.Position, (target - cf.Position) * 0.99, params)
+			expect.truthy(hit == nil or hit.Instance.Transparency > 0.5 or flat(hit.Position - origin).Magnitude < Layout.BAND_OUTER + 1,
+				def.id .. ": PreviewCam view blocked by " .. (if hit then hit.Instance:GetFullName() else "?"))
+			for _, p in workspace:GetPartBoundsInRadius(cf.Position, 1.5) do
+				expect.truthy(p.Transparency > 0.9, def.id .. ": PreviewCam inside " .. p:GetFullName())
+			end
 		end
 	end)
 
@@ -850,7 +916,7 @@ return function(t)
 		local w = world() :: Instance
 		local parts = allParts()
 		expect.truthy(#parts <= Layout.PART_BUDGET, "part count " .. #parts .. " within budget")
-		expect.truthy(#parts <= PART_CEILING, "part count " .. #parts .. " no higher than before the compact layout (" .. PART_CEILING .. ")")
+		expect.truthy(#parts <= PART_CEILING, "part count " .. #parts .. " within main's + 25 % (" .. PART_CEILING .. ")")
 		for _, p in parts do
 			if not p.Anchored then
 				expect.truthy(false, "unanchored part " .. p:GetFullName())
@@ -860,16 +926,18 @@ return function(t)
 		expect.truthy(typeof(seconds) == "number", "BuildSeconds recorded")
 		expect.truthy((seconds :: number) < 1, string.format("build took %.2f s", seconds :: number))
 		expect.equal(w:GetAttribute("PartCount"), #parts, "PartCount attribute matches")
-		local lights, emitters = 0, 0
+		local lights, emitters, shadows = 0, 0, 0
 		for _, d in w:GetDescendants() do
 			if d:IsA("Light") then
 				lights += 1
+				if d.Shadows then shadows += 1 end
 			elseif d:IsA("ParticleEmitter") then
 				emitters += 1
 				expect.truthy(d.Rate <= 40, "particle rate kept low: " .. d:GetFullName())
 			end
 		end
-		expect.truthy(lights <= 220, "light count " .. lights)
+		expect.truthy(lights <= LIGHT_CEILING, "light count " .. lights)
+		expect.equal(shadows, 0, "no world light casts shadows")
 		expect.truthy(emitters <= 60, "emitter count " .. emitters)
 	end)
 

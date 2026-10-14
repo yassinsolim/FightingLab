@@ -160,6 +160,11 @@ local function step(now: number)
 				cam.Y - c.at.Y,
 				localFight
 			)
+			-- StageController hides the district (LocalTransparencyModifier 1) for a fight or a map preview
+			local holder = c.beam.Parent
+			if holder and holder:IsA("BasePart") and holder.LocalTransparencyModifier >= 1 then
+				show = false
+			end
 			if c.beam.Enabled ~= show then
 				c.beam.Enabled = show
 			end

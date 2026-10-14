@@ -143,6 +143,14 @@ FightingLab's fighters, names, moves, stages and code are original. The fighters
 | Jungle Dripping 1 (SFX) | ProSoundEffects | Audio | LobbyAmbience positional loop at Arena_JungleRuins (re-used from Stages.JungleRuins.Ambience, already in the game) | https://create.roblox.com/store/asset/9112807078 |
 | Plasma Trails Constant Airy Whooshing Windy (SFX) | ProSoundEffects | Audio | LobbyAmbience positional loop at Arena_SnowSummit (re-used from Stages.SnowSummit.Ambience, already in the game) | https://create.roblox.com/store/asset/9125742262 |
 | Aircraft Carrier Ambience 1 (SFX) | ProSoundEffects | Audio | LobbyAmbience positional loop at Arena_TrainingBay (re-used from Stages.TrainingBay.Ambience, already in the game) | https://create.roblox.com/store/asset/9112739113 |
+| Falling Blossom Cherry Tree | softlypoetic | Model (meshes and textures) | Training Bay fight set: cherry trees in bloom over the veranda (trunk, blossom and fallen-petal meshes); the cherry trees of the dojo and the lantern garden | https://create.roblox.com/store/asset/8651908577 |
+| Jungle Tree | TetoBagetto | Model (meshes and textures) | Jungle Ruins fight set: the great jungle trees; the broadleaf trees of the Jungle Ruins stage and the jungle hills | https://create.roblox.com/store/asset/136959608628696 |
+| Trees / Foliage - Tropical, Jungle, Island | PSY0PZ | Model (meshes and textures) | Jungle Ruins fight set: palms and broadleaf bushes; every palm and bush of the district (beach, islets, jungle stage, plaza) | https://create.roblox.com/store/asset/12157426374 |
+| Fern Tropical PBR Plants | Ironsto4032 | Model (mesh and texture) | Jungle Ruins fight set: the fern understory; ferns round the plaza lamps and the beacon court | https://create.roblox.com/store/asset/119253821008946 |
+| Snowy Pine Tree | V1VEX | Model (meshes and textures) | Summit Observatory fight set: tall snowy firs; the firs of the Summit stage and the southern hills | https://create.roblox.com/store/asset/11590212184 |
+| Small Snowy Pine Tree | Striatp | Model (mesh and texture) | Summit Observatory fight set: small firs by the snow banks | https://create.roblox.com/store/asset/76188132698241 |
+| Realistic Stained Rock (Mesh) | bearduckmonkey | Model (meshes and texture) | Summit and Jungle fight sets: rocks, boulders and the waterfall cliff | https://create.roblox.com/store/asset/4141555239 |
+| Rock realistic (Medium Moss Boulder) | omarllollo | Model (mesh and texture) | Jungle Ruins fight set: mossy boulders | https://create.roblox.com/store/asset/9217425479 |
 
 ## All marketplace items
 
