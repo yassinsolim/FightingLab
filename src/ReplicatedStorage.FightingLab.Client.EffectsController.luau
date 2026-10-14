@@ -252,9 +252,19 @@ function M._specForEvent(e: CombatEvent): EffectSpec
 	if e.kind == "Crush" or e.kind == "Whiff" then return { color = Color3.fromRGB(180, 170, 255), core = 0, sparks = 0, dust = 0, ring = 0.9, life = 0.12, flashAlpha = 1, shake = 0.012 } end
 	if e.kind == "KO" then return { color = Color3.fromRGB(255, 240, 170), core = 18, sparks = 56, dust = 28, ring = 3.5, life = 0.24, flashAlpha = 0.36, shake = 0.09 } end
 	if e.counter then return { color = Color3.fromRGB(255, 72, 105), core = spec.core + 4, sparks = spec.sparks + 12, dust = spec.dust, ring = spec.ring + 0.55, life = math.min(0.23, spec.life + 0.04), flashAlpha = math.min(0.72, spec.flashAlpha - 0.12), shake = math.min(0.08, spec.shake + 0.015) } end
-	local airScale = if e.air == true and e.launch ~= true then 0.68 else 1
+	-- Juggle hits (round 7): the first hit on a flying body stays light, every further hit of the juggle reads heavier
+	-- than the one before (AirComboGrowth per hit, up to AirScaleMax): a long juggle builds up instead of fading out.
+	local combo = if type(e.combo) == "number" then e.combo else 0
+	local airScale = if e.air == true and e.launch ~= true then math.min(M.AirScaleFirst + math.max(combo - 1, 0) * M.AirComboGrowth, M.AirScaleMax) else 1
+	if e.tumble == true then airScale = math.max(airScale, 1) end
 	return { color = eventColor(e), core = math.max(1, math.floor(spec.core * airScale)), sparks = math.max(2, math.floor(spec.sparks * airScale)), dust = spec.dust, ring = spec.ring * (0.86 + 0.14 * airScale), life = spec.life, flashAlpha = spec.flashAlpha, shake = spec.shake * airScale }
 end
+M.AirScaleFirst = 0.68
+M.AirComboGrowth = 0.09
+M.AirScaleMax = 1.1
+M.TumbleWhoosh = 14
+M.AirLandDust = 34
+M.AirLandShake = 0.05
 
 -- Surge and Ultimate (round 6, docs/design/ultimates.md) -------------------------------------------------------------
 -- Surge aura: a fighter with `surge = true` glows (CharacterPresenter's Highlight: an outline around the whole body in
@@ -622,6 +632,8 @@ function M.onEvent(e: CombatEvent)
 		end
 	end
 	if e.launch == true or e.tier == "Launch" then emitWhoosh(point + Vector3.new(0, 0.35, 0), Vector3.yAxis, spec.color, 18) end
+	-- A hit that sends the body tumbling: a whoosh rises around the spinning body (round 7).
+	if e.tumble == true and e.kind ~= "Block" then emitWhoosh(point, Vector3.yAxis, spec.color, M.TumbleWhoosh) end
 	if e.kind == "ThrowHit" or (e.knockdown and e.kind ~= "UltHit") then emitDust(point - Vector3.new(0, 1.9, 0), 24, 1.25) end
 	if e.kind == "UltHit" and e.knockdown == true and target then emitDust(Vector3.new(target.Position.X, origin.Y + 0.1, target.Position.Z), 28, 1.5) end
 	if e.kind == "KO" then flash(flashFrame, spec.color, spec.flashAlpha, 0.34) elseif e.counter then flash(edgeFrame, spec.color, spec.flashAlpha, 0.18) else flash(flashFrame, spec.color, spec.flashAlpha, spec.life) end
@@ -809,8 +821,11 @@ function M.update(f: RenderFrame)
 			end
 			local c = ctx
 			if States.floorImpact(tracker, r, if c then c.config else nil, f.now) then
-				emitDust(origin + Vector3.new(r.pos.X, 0.1, r.pos.Z), 26, 1.35)
-				if c and c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(0.035) end
+				-- A body falling out of a juggle (or a tumble) lands heavier than one knocked down standing (round 7).
+				local air = tracker.fromAir == true
+				emitDust(origin + Vector3.new(r.pos.X, 0.1, r.pos.Z), if air then M.AirLandDust else 26, if air then 1.6 else 1.35)
+				if c and c.gui:GetAttribute("CameraShakeDisabled") ~= true then c.modules.Camera.impulse(if air then M.AirLandShake else 0.035) end
+				if c then c.gui:SetAttribute("LastFloorImpact", if air then "Air" else "Ground") end
 			end
 		end
 	end

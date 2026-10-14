@@ -98,7 +98,7 @@ function M._soundNameForEvent(e: CombatEvent): string
 	return "HitLight"
 end
 
-function M.play(name: string, at: Vector3?)
+function M.play(name: string, at: Vector3?, lift: number?)
 	local now = os.clock()
 	local minGap = if name == "Whiff" or name == "Dash" then 0.055 elseif name == "HitLight" then 0.026 else 0.038
 	if (lastPlayedAt[name] or -math.huge) + minGap > now then return end
@@ -112,8 +112,10 @@ function M.play(name: string, at: Vector3?)
 	if name == "Counter" or name == "HitLaunch" or name == "KO" then
 		gain += 0.08
 	end
-	s.PlaybackSpeed = math.clamp(template.PlaybackSpeed + detune, 0.82, 1.22)
-	s.Volume = math.clamp(template.Volume * gain, 0, 1.4)
+	-- lift: a pitch offset (the juggle ladder raises it, a deep whoosh lowers it); a raised hit also plays louder.
+	local l = lift or 0
+	s.PlaybackSpeed = math.clamp(template.PlaybackSpeed + detune + l, 0.7, 1.4)
+	s.Volume = math.clamp(template.Volume * (gain + math.max(l, 0) * 0.8), 0, 1.4)
 	if at then
 		local p = Instance.new("Part")
 		p.Name = "FightingLabOneShotAudio"
@@ -165,7 +167,21 @@ M.Layers = {
 	UltHit = { { "HitHeavy", 0.9, 1.15 }, { "Counter", 0.84, 0.6 } },
 	UltFinish = { { "KO", 0.84, 1.2 }, { "ThrowImpact", 0.78, 1.0 }, { "HitLaunch", 0.72, 0.8 } },
 	UltLand = { { "Knockdown", 0.88, 1.1 }, { "ThrowImpact", 0.9, 0.5 } },
+	-- A body falling out of a juggle or a tumble hits the floor (round 7): the knockdown thud with a low impact under it.
+	AirLand = { { "Knockdown", 0.92, 1.15 }, { "ThrowImpact", 0.86, 0.45 } },
 } :: { [string]: { { any } } }
+
+-- Juggle ladder (round 7): every further hit on a flying body plays a step higher (and a little louder) than the one
+-- before, up to JuggleMax, so a long juggle audibly climbs; the launcher and grounded hits keep their pitch.
+M.JuggleStep = 0.025
+M.JuggleMax = 0.125
+function M._juggleLift(e: CombatEvent): number
+	if e.air ~= true or e.launch == true or (e.kind ~= "Hit" and e.kind ~= "KO") then return 0 end
+	local combo = if type(e.combo) == "number" then e.combo else 0
+	return math.clamp((combo - 2) * M.JuggleStep, 0, M.JuggleMax)
+end
+-- A hit that sends the body tumbling adds a deep whoosh (the Whiff sound pitched down by this much).
+M.TumbleLift = -0.22
 
 function M.playLayered(kind: string, at: Vector3?)
 	local layers = M.Layers[kind]
@@ -209,12 +225,13 @@ function M.onEvent(e: CombatEvent)
 		return
 	end
 	local soundName = M._soundNameForEvent(e)
-	M.play(soundName, at)
+	M.play(soundName, at, M._juggleLift(e))
 	if e.launch == true or e.tier == "Launch" then
 		M.play("HitHeavy", at)
 	elseif e.counter == true and soundName ~= "Counter" then
 		M.play("Counter", at)
 	end
+	if e.tumble == true and e.kind ~= "Block" then M.play("Whiff", at, M.TumbleLift) end
 end
 
 function M.onPhase(old: string, new: string)
@@ -298,7 +315,8 @@ function M.update(f: any)
 			end
 			local c = ctx
 			if States.floorImpact(tracker, r, if c then c.config else nil, f.now) then
-				M.play("Knockdown", origin + Vector3.new(r.pos.X, 0.2, r.pos.Z))
+				local at = origin + Vector3.new(r.pos.X, 0.2, r.pos.Z)
+				if tracker.fromAir == true then M.playLayered("AirLand", at) else M.play("Knockdown", at) end
 			end
 		end
 	end
