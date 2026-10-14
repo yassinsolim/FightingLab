@@ -690,8 +690,8 @@ define({
 	combos = {
 		{ name = "Palm Lift Flurry", kind = "launch", notation = "db+2, 1, 3, 2,3", damage = 31, difficulty = 3, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "1" }, { wait = 23, input = "3" }, { wait = 29, input = "2" }, { wait = 8, input = "3" } } },
 		{ name = "Coil Whirl", kind = "stance", notation = "db+2, 4, 3+4, COIL+4,4", damage = 32, difficulty = 4, steps = { { wait = 0, input = "db+2" }, { wait = 32, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
-		{ name = "Whirlwind Rise", kind = "low", notation = "d+3,4, 4, 3+4, COIL+4,4", damage = 39, difficulty = 4, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
-		{ name = "Monsoon Finish", kind = "ultimate", notation = "d+3,4, 1+2", damage = 44, difficulty = 3, surge = true, steps = { { wait = 0, input = "d+3" }, { wait = 3, input = "4" }, { wait = 50, input = "1+2" } } },
+		{ name = "Whirlwind Rise", kind = "low", notation = "d+3,4, 4, 3+4, COIL+4,4", damage = 39, difficulty = 4, steps = { { wait = 0, input = "d+3" }, { wait = 10, input = "4" }, { wait = 43, input = "4" }, { wait = 15, input = "3+4" }, { wait = 8, input = "COIL+4" }, { wait = 6, input = "4" } } },
+		{ name = "Monsoon Finish", kind = "ultimate", notation = "d+3,4, 1+2", damage = 44, difficulty = 3, surge = true, steps = { { wait = 0, input = "d+3" }, { wait = 10, input = "4" }, { wait = 43, input = "1+2" } } },
 	},
 	signature = { kind = "stance", key = "Coil", name = "Coil", summary = "3+4: wind the body like a spring. COIL+4 starts the whirl: three spinning kicks (COIL+4,4,4: mid, high, mid knockdown) whose 2nd and 3rd hits can be delayed; COIL+d+4 floor sweep. Cancel 4 / 2,3 / b+2 into it; hold back to leave." },
 	stances = {
