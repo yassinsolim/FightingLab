@@ -140,6 +140,10 @@ return function(t)
 		expect.truthy(counts.Hard > counts.Normal and counts.Normal > counts.Easy, string.format("punish order %d/%d/%d", counts.Easy, counts.Normal, counts.Hard))
 	end)
 
+	-- Round 7 retune: a conversion used to be "3+ hits within 4 s and a knockdown". Sierra's Hard CPU juggles this launch
+	-- with one air hit (Spinning Back Kick, knockdown) in round 6 and round 7 alike, so the third hit was whatever it
+	-- pressed after the knockdown, which moved with the round-7 per-fighter skill offsets (11/16 for 12 needed). A
+	-- conversion is now what the name says: the launcher plus at least one air hit, ending in a knockdown.
 	test("hard converts a launcher into a short juggle and easy barely follows up", function()
 		local function conversions(diff: string): (number, number)
 			local success, totalHits = 0, 0
@@ -151,17 +155,20 @@ return function(t)
 				place(m, 3)
 				m.fighters[1].dummy = "Stand"
 				Sim.queueAttack(m.fighters[2], "SwitchKick")
-				local hits, knockdown = 0, false
+				local hits, airHits, knockdown = 0, 0, false
 				for _ = 1, 240 do
 					Sim.trainerInput(m, 2)
 					for _, e in Sim.step(m) do
-						if e.attacker == 2 and (e.kind == "Hit" or e.kind == "KO") then hits += 1 end
+						if e.attacker == 2 and (e.kind == "Hit" or e.kind == "KO") then
+							hits += 1
+							if e.air then airHits += 1 end
+						end
 						if e.attacker == 2 and e.knockdown == true then knockdown = true end
 					end
 					settle(m)
 				end
 				totalHits += hits
-				if hits >= 3 and knockdown then success += 1 end
+				if airHits >= 2 and knockdown then success += 1 end
 			end
 			return success, totalHits
 		end
@@ -171,6 +178,8 @@ return function(t)
 		expect.truthy(easyHits < hardHits, "Easy lands fewer juggle hits " .. easyHits .. " vs " .. hardHits)
 	end)
 
+	-- Round 7 retune: each fighter's CPU now has its own skill offset per level (CombatAI.FighterSkill), so its perception
+	-- delay can differ from the level's shared table by a frame or two; the bound is the CPU's own delay (paramsFor).
 	test("trainer does not read live input before its perception delay", function()
 		for _, diff in { "Normal", "Hard" } do
 			local m = Sim.newMatch("Training", "Sierra", "Kael")
@@ -180,7 +189,7 @@ return function(t)
 			Sim.queueAttack(m.fighters[1], "LowSweep")
 			Sim.trainerInput(m, 2)
 			expect.falsy(cpu.input.crouch, "no pre-startup input-buffer read")
-			for _ = 1, Sim.difficultyParams(diff).reactionDelay - 1 do
+			for _ = 1, AI.paramsFor(diff, "Kael", "Sierra").reactionDelay - 1 do
 				Sim.step(m)
 				Sim.trainerInput(m, 2)
 				expect.falsy(cpu.input.crouch, diff .. " has no zero-reaction low guard")

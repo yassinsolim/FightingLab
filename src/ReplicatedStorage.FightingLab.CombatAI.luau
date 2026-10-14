@@ -34,6 +34,9 @@ export type Params = {
 	-- chosen (`signature`), the chance to play a listed combo route after a launcher (`routeSkill`, Roster combos),
 	-- and the chance to take an Ultimate opportunity (punish, combo ender) when it is ready (`ultimateUse`).
 	signature: number, routeSkill: number, ultimateUse: number,
+	-- Round 7: hit-confirming CPUs (Hard) that cannot see a string hit in time decide before the last frame that still
+	-- combos: they continue a safe follow-up with this chance (an unsafe one with 0.43 of it) without seeing the result.
+	blindString: number,
 	-- Legacy names (tests/tools): blockChance = guardDiscipline, lowBlockChance = lowReact, punishChance = blockPunish,
 	-- throwBreakChance = throwBreak, stringChance = stringContinue, sidestepChance = stepChance.
 	blockChance: number, lowBlockChance: number, punishChance: number, throwBreakChance: number, stringChance: number,
@@ -57,6 +60,7 @@ local function params(t: { [string]: any }): Params
 	t.signature = t.signature or 0
 	t.routeSkill = t.routeSkill or 0
 	t.ultimateUse = t.ultimateUse or 0
+	t.blindString = t.blindString or 0.7
 	return (t :: any) :: Params
 end
 
@@ -84,7 +88,7 @@ local PARAMS: { [string]: Params } = {
 		attackCadence = 28, attackCadenceJitter = 26, aggression = 0.7, stepGap = 270, stepChance = 0.08,
 		backdashChance = 0.08, dashIn = 0.35, meaty = 0.5, meatyError = 2, getupRoll = 0.35, turnTake = 0.55, pressure = 0.55, readSkill = 0.85, holdGuard = 1,
 		throwChance = 0.1, lowChance = 0.12, launcherChance = 0.03, patience = 90,
-		signature = 0.85, routeSkill = 0.95, ultimateUse = 0.9 }),
+		signature = 0.85, routeSkill = 0.95, ultimateUse = 0.9, blindString = 0.5 }),
 }
 
 function AI.params(level: string?): Params
@@ -109,10 +113,65 @@ local MATCHUP: { [string]: { vs: { [string]: number }, as: { [string]: number },
 }
 AI.Matchups = MATCHUP
 
+-- Round 7 (fairness, combat-balance.md, Round 7): per-fighter skill at each level. The same level plays some movesets better
+-- than others (a string-heavy kit gains more from Hard's confirms, a low-heavy one from Normal's slower guard), so each
+-- fighter's CPU gets a skill offset k in [-0.4, 0.4]: its parameters are blended toward the level below (k < 0) or
+-- above (k > 0; above Hard = further along Normal -> Hard), with chances clamped to [0, 1] and frame counts to sane
+-- minimums. |k| <= 0.4 keeps every fighter's Normal below every fighter's Hard and above every fighter's Easy (even
+-- after rounding frame counts). Tuned with harness matrix.luau (CPU vs CPU) and refpool.luau (a human-like reference
+-- player vs each CPU).
+local FIGHTER_SKILL: { [string]: { [string]: number } } = {
+	Easy = { Kael = 0.15, Sierra = -0.1, Lumi = -0.05 },
+	Normal = { Kael = 0.14, Sierra = 0.03, Lumi = 0.05, Rhys = 0.06, Nia = -0.02 },
+	Hard = { Kael = -0.12, Sierra = -0.18, Goran = 0.2, Lumi = 0.04, Rhys = -0.09, Nia = 0.12 },
+}
+AI.FighterSkill = FIGHTER_SKILL
+AI.SkillLimit = 0.4
+local LEVEL_ORDER = { "Easy", "Normal", "Hard" }
+local CHANCE_FIELDS = { "guardDiscipline", "lowReact", "lowRead", "duckHighs", "duckThrows", "blockPunish", "whiffPunish",
+	"throwBreak", "throwRead", "stringContinue", "noise", "aggression", "stepChance", "backdashChance", "dashIn", "meaty",
+	"getupRoll", "turnTake", "pressure", "readSkill", "holdGuard", "throwChance", "lowChance", "launcherChance", "crowdJab",
+	"signature", "routeSkill", "ultimateUse" }
+local FRAME_FIELDS = { reactionDelay = 13, reactionJitter = 1, decisionMin = 8, decisionMax = 12, attackCadence = 16,
+	attackCadenceJitter = 4, stepGap = 200, meatyError = 0, patience = 60 }
+local blendCache: { [string]: Params } = {}
+local function blended(level: string, k: number): Params
+	local cacheKey = level .. ":" .. tostring(k)
+	local cached = blendCache[cacheKey]
+	if cached then return cached end
+	local i = table.find(LEVEL_ORDER, level) or 2
+	local base = PARAMS[level]
+	-- The neighbour toward k, and the direction (extrapolate past the end levels along the Normal-to-end line).
+	local from, to, t
+	if k > 0 then
+		if i < #LEVEL_ORDER then from, to, t = base, PARAMS[LEVEL_ORDER[i + 1]], k
+		else from, to, t = base, PARAMS[LEVEL_ORDER[i - 1]], -k end
+	else
+		if i > 1 then from, to, t = base, PARAMS[LEVEL_ORDER[i - 1]], -k
+		else from, to, t = base, PARAMS[LEVEL_ORDER[i + 1]], k end
+	end
+	local out = table.clone(base :: any)
+	for field, value in base :: any do
+		if typeof(value) == "number" and typeof((to :: any)[field]) == "number" then
+			out[field] = value + ((to :: any)[field] - value) * t
+		end
+	end
+	for _, field in CHANCE_FIELDS do out[field] = math.clamp(out[field], 0, 1) end
+	for field, minimum in FRAME_FIELDS do out[field] = math.max(minimum, math.floor(out[field] + 0.5)) end
+	if level ~= "Easy" then out.crowdJab = (base :: any).crowdJab end
+	out.decisionMax = math.max(out.decisionMax, out.decisionMin + 4)
+	out.juggleHits = math.max(1, math.floor(out.juggleHits + 0.5))
+	local result = params(out)
+	blendCache[cacheKey] = result
+	return result
+end
+
 -- The parameters a CPU playing `meId` uses against `foeId` at `level`.
 function AI.paramsFor(level: string?, meId: string, foeId: string): Params
-	local base = AI.params(level)
-	local adj = MATCHUP[level or "Normal"]
+	local lv = level or "Normal"
+	local k = math.clamp((FIGHTER_SKILL[lv] or {})[meId] or 0, -AI.SkillLimit, AI.SkillLimit)
+	local base = if k ~= 0 and PARAMS[lv] then blended(lv, k) else AI.params(level)
+	local adj = MATCHUP[lv]
 	if adj == nil then return base end
 	local scale = math.min((adj.vs[foeId] or 1) * (adj.as[meId] or 1), adj.cap / base.turnTake)
 	local crowd = adj.crowdVs[foeId] or 1
@@ -1069,12 +1128,26 @@ local function continueString(m: Sim.Match, me: Sim.Fighter, foe: Sim.Fighter, i
 		if nextDef.delay and chance(s, p.signature * 0.5) then plan.pressAt = math.min(windowEnd - 1, src.startup + src.active + rint(s, 4, Sim.ChainLate + nextDef.delay)) end
 	end
 	if plan.confirm then
+		-- Hit-confirm: decide when the hit is seen (reaction delay), but a follow-up pressed after the last frame that
+		-- still combos (the source's hitstun runs out before it lands) would be a gap. When the confirm cannot be in time,
+		-- decide before that frame instead, without seeing the result: a safe follow-up usually, an unsafe one sometimes.
+		local stun = Sim.derivedHitStun(src)
+		local latest = math.min(windowEnd, src.startup + stun - nextDef.startup - 1)
 		local knowAt = src.startup + 1 + s.delay
-		if me.moveFrame < math.min(knowAt, windowEnd) then return end
-		local landed = me.hasHit and (foe.state == "Hitstun" or foe.state == "Airborne" or foe.state == "Landing" or foe.state == "KO")
-		if not landed then
-			-- Blocked or whiffed: stop, except a safe follow-up now and then.
-			if not (me.hasHit and nextDef.onBlock > -10 and chance(s, 0.4)) then plan.depth = plan.done return end
+		if knowAt > latest then
+			if plan.blind == nil then
+				plan.blind = chance(s, if nextDef.onBlock > -10 then p.blindString else p.blindString * 0.43)
+				plan.pressAt = math.max(2, math.min(plan.pressAt, latest - 1))
+			end
+			if not plan.blind then plan.depth = plan.done return end
+			if me.moveFrame < plan.pressAt then return end
+		else
+			if me.moveFrame < math.min(knowAt, windowEnd) then return end
+			local landed = me.hasHit and (foe.state == "Hitstun" or foe.state == "Airborne" or foe.state == "Landing" or foe.state == "KO")
+			if not landed then
+				-- Blocked or whiffed: stop, except a safe follow-up now and then.
+				if not (me.hasHit and nextDef.onBlock > -10 and chance(s, 0.4)) then plan.depth = plan.done return end
+			end
 		end
 	elseif me.moveFrame < plan.pressAt then
 		return
