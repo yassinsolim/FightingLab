@@ -8,8 +8,10 @@ Owner: ui. Exports: `OV6\handoff\ui-src\` (18 files, UTF-8, LF, no BOM, baseline
 | file | what |
 |---|---|
 | `Client.UIHelpers` | legacy helpers kept + the UI kit: Theme (original palette "ember/gold/cool" on ink, Montserrat Heavy Italic display), Controls access (`controls()`, `keyLabel`, `keyCodes`, `keyMatches`, `legend`, `actionText`, `legendOptions`, `notationOf`, `notationTokens`, `notationText`, `formatMoveInput`; `_setControlsForTests`), glyphs (key caps / gamepad face buttons / pills / arrows), buttons, segment bars, `edgeCard`, `fitToScreen`, `holdPlayerList`, `attributes` (cast-relative select bars) |
-| `Client.UIState` | pure models: lobby view (incl. the Quick Duel `Searching` mode), E-prompt specs, pickers (cpu / training / versus), practice lesson (10 steps), PLAY panel (`playRows`, `playNav`, `playRequest`, `playDefaultFocus`) |
-| `Client.LobbyUI` | lobby HUD, bottom action bar (FIGHTERS · PLAY · MENU), PLAY panel, quick-travel fade, pickers, countdown, result card, toasts, practice panel, lesson card, Tab menu (Fighters / How to Play / Move List / Settings / Credits), fighter-select host, practice keys T / 1-3 / Backspace |
+| `Client.UIState` | pure models: lobby view (incl. the Quick Duel `Searching` mode), E-prompt specs, pickers (cpu / training / versus), practice lesson (10 steps); round 7: `offerDelay` (the PLAY panel model moved to `Client.PlayFlow`) |
+| `Client.LobbyUI` | lobby HUD, bottom action bar (FIGHTERS · PLAY · MENU), quick-travel fade, pickers, countdown, result card, toasts, practice panel, lesson card, Tab menu (Fighters / How to Play / Move List / Settings / Credits), fighter-select host, practice keys T / 1-3 / Backspace; hosts `PlayFlow` and `PracticeTools` |
+| `Client.PlayFlow` | (round 7) the PLAY flow: one decision per screen (who → map with a live camera preview → FIGHT!), pure step model + view |
+| `Client.PracticeTools` | (round 7) input display, frame advantage readout, combo trials (Contract C) with SHOW ME |
 | `Client.LobbyPrompts` | (round 5, split out of LobbyUI) custom E-prompt style and the world prompt set (kiosk + pads); re-exported as `LobbyUI.PromptStyle` / `LobbyUI.worldPrompts` |
 | `Client.LobbySprint` | (round 5) lobby-only sprint controller and its Controls bindings |
 | `Client.FlashDetector` | (round 5) bare-frame / pose-pop detector: the reveal check every preview gate uses and the live QA recorder |
@@ -18,7 +20,7 @@ Owner: ui. Exports: `OV6\handoff\ui-src\` (18 files, UTF-8, LF, no BOM, baseline
 | `Client.HudController` | fight HUD: bars + damage trail, portraits, names/tags, diamond round pips, clock, combo counter, call-outs, banners, controls guide (G) |
 | `Client.StationBoards`, `Client.Leaderboard`, `Client.CreditsScreen` | restyled boards; credits "MOTION CAPTURE & ADDITIONAL CREDITS" section (wrapping rows, licence + used-for line) |
 | `Client.FrontEnd` | `start()` / `onSnapshot(entry)` / Studio-only DevMock (scenes for every screen, used for captures) |
-| tests | `LobbyUI_Test`, `UIFrontend_Test`, `UIPrompts_Test`, `UIControls_Test`, `UITutorial_Test`, `HudController_Test`, `CreditsScreen_Test`, `FlashDetector_Test` |
+| tests | `LobbyUI_Test`, `UIFrontend_Test`, `UIPrompts_Test`, `UIControls_Test`, `UITutorial_Test`, `HudController_Test`, `CreditsScreen_Test`, `FlashDetector_Test`, `PlayFlow_Test`, `PracticeTools_Test` |
 
 ## Controls (contract §2)
 
@@ -107,7 +109,7 @@ fight"), in place of the objective pill, until PLAY has been opened once. The ob
 reads "PRESS PLAY TO FIGHT"; while searching it shows SEARCHING + clock with CANCEL, and FIGHT CPU after
 `NetProtocol.QuickCpuOfferSeconds` = 12 s. Touch: a SPRINT toggle above the jump button.
 
-**PLAY panel** (ScreenGui `FightingLabPlay`, DisplayOrder 35; pure model `UIState.playRows/playNav/playRequest/
+**PLAY panel** (round 5; replaced in round 7 by the PLAY flow, see "Round 7" below) (ScreenGui `FightingLabPlay`, DisplayOrder 35; pure model `UIState.playRows/playNav/playRequest/
 playDefaultFocus`): VERSUS A PLAYER (QUICK DUEL; while searching FIGHT CPU INSTEAD + CANCEL SEARCH), FIGHT CPU (Easy /
 Normal / Hard), PRACTICE (Free training / Guided lesson / Versus CPU), GO TO (every arena from the Stations folder in
 `Order`, then PLAZA; three per line so every name fits). Every action is two steps (open PLAY, pick). Input: click /
@@ -393,3 +395,148 @@ Fixes from the integrator's playtest. Evidence: `OV6\handoff\look-shots\round6\f
 
 Full suite on the integrated build with these fixes: `[SUMMARY] 601 run, 600 passed, 1 failed`. The one failure is
 the known VfxUltimate_Test timeout, which motion is fixing.
+
+## Round 7 (play): PLAY in a few clear steps, the map you want, practice tools for combos
+
+Owner: play (branch `r7-play`). Evidence: `OV6\handoff\play-shots\round7\` (README there has a verdict per image).
+
+The user's feedback: the F panel was "so hard to navigate, a lot to look at instead of just play, vs someone, or cpu,
+then pick map, then go fight". Combos were "difficult". Round 7 replaces the panel with a step-by-step flow, lets the
+server honor the map you pick, and adds practice tools that make combos learnable.
+
+**Before → after.**
+
+| | before (round 5 panel) | after (round 7 flow) |
+|---|---|---|
+| CPU fight, keyboard | F, ↓, →, Enter (a level card on the grid): 4 presses, map chosen for you | F, →, Enter, Enter, Enter: VS CPU → map → FIGHT! (5 presses; the map is now yours to pick, the level rides along) |
+| CPU fight, mouse | 2 clicks (PLAY, a level) on a 13-button grid | 4 clicks (PLAY, VS CPU, a map, FIGHT!) on 2–4 big cards, one decision per screen |
+| on screen at once | 4 rows (VERSUS A PLAYER, FIGHT CPU, PRACTICE, GO TO), 13 buttons + tabs + help | 3 cards (who), 4 map cards + CPU level (map), 2 cards (ready), 4 cards (practice) |
+| VS PLAYER | QUICK DUEL only (any arena) | ANY MAP (recommended) or a map: you wait on its free circle |
+| bottom bar | FIGHTERS 186x54 · PLAY 236x68 · MENU 160x54 | FIGHTERS 148x44 · **PLAY 286x78** · MENU 124x44 |
+| LobbyUI | 192,060 characters | 187,821 characters (the panel moved out; the flow lives in `PlayFlow`, the tools in `PracticeTools`) |
+
+Captures: `00-before-r5-play-panel.png` / `00-before-r5-lobby-bar.png` (round 5) against `01-after-lobby-bar.png`,
+`02`–`14` (every step of the flow), `27`–`34` (the map picker on each map's own stage, FIGHT! from it, CHANGE FIGHTER
+and back) and `15`–`25`, `35`–`39` (practice tools and combo trials).
+
+### The PLAY flow (`Client.PlayFlow`)
+
+ScreenGui `FightingLabPlay` (DisplayOrder 35). The pure step model (`PlayFlow.new / cards / act / rejected`) is tested
+without Instances; `PlayFlow.mount(env)` builds the view and drives the preview camera. LobbyUI hosts it (`openPlay`,
+`closePlay`, `isPlayOpen`, `playFlow`, `playAction`, `playSelect(id)`) and owns the keys.
+
+1. **WHO DO YOU WANT TO FIGHT?** VS PLAYER · VS CPU · PRACTICE.
+2. **VS CPU → PICK A MAP.** One card per duel arena from `Stations` (in `Order`; dojo excluded) with the world's
+   `DisplayName`, `Tagline` and `ThemeColor` (Contract D; fallbacks: `AccentColor`, ember, the Stations name, no
+   tagline) and its state (OPEN / PLAYER WAITING / LIVE FIGHT / BUSY). Behind the panel the focused map is shown the
+   way its fighters see it: `StageController.previewArena(arena)` (world, Contract D) puts up the arena's fight set and
+   mood and hides the district, and the camera sits on the arena's `PreviewCam` at its `FieldOfView` attribute
+   (fallback without a PreviewCam: a shot computed from `FightOrigin` and `Arrival` of the plain world). Every map is
+   its own stage, so moving between maps cuts under a short dip to dark (`DIP_IN` 0.09 s, `DIP_OUT` 0.2 s, ScreenGui
+   `FightingLabPlayDip` under the panel) instead of gliding through the hidden city; leaving the map screens dips
+   back to the lobby view and `previewArena(nil)` puts the district back. Only thin top and bottom shades cover the
+   scene. A big name, tagline and state chip
+   sit over the preview. **CPU LEVEL** (Easy / Normal / Hard, default Normal, remembered) is a chip row under the header
+   (Up to reach it, or click), on a dark backing so its one-line hint reads over any map. Your fighter is shown top
+   right with CHANGE.
+3. **READY?** FIGHT! (one confirm; "Kael vs CPU (Hard) at Harbor Dusk") or CHANGE FIGHTER (the preview ends before
+   the select takes the camera; the flow and its preview come back on READY). FIGHT! sends
+   `QuickPlay {mode = "Cpu", arena, difficulty}` once; the travel fade holds black until the fight camera has taken
+   over. The stage and the shot are handed to the fight: its `StageController.setArena` replaces the preview and the
+   fight camera glides from the shot (if no fight takes the stage within `HANDOVER_SECONDS` = 6 s, the district and the
+   lobby camera come back).
+4. **VS PLAYER → PICK A MAP.** ANY MAP first and RECOMMENDED (today's matchmaking), then the four arenas ("OPEN · WAIT
+   THERE", or "1 WAITING · FIGHT NOW" when someone already waits there). A map sends you onto its free circle to wait; the lobby camera is framed once
+   over your shoulder at the ring (`LobbyCamera` knows the duel circles). The objective pill reads WAITING FOR A
+   CHALLENGER with CANCEL, and FIGHT CPU after `UIState.QUICK_CPU_OFFER` = 12 s (`offerDelay`; a walk-in on a circle
+   keeps the short offer). The PLAY button is the clock (`SEARCHING 0:07` / `WAITING 0:07`). F while waiting opens the
+   **search screen**: FIGHT CPU INSTEAD (after 12 s) and CANCEL (focused until then).
+5. **PRACTICE.** FREE TRAINING · COMBO TRIALS · GUIDED LESSON · PRACTICE VS CPU (all at the dojo; COMBO TRIALS opens
+   the trial list once practice starts).
+
+Back steps back one screen (Backspace / gamepad B / the BACK button; on the first screen it closes). F (PLAY key)
+toggles the flow from any screen, C opens the select, Tab the menu. Keyboard (arrows / WASD + Enter), gamepad (DPad /
+left stick + A / B), mouse and touch (every card is a button); the first press is never dropped (the flow owns the
+keys from the frame it opens). A busy map is refused by the server with the next free one offered: on READY the card
+swaps to it ("HARBOR DUSK IS BUSY · NEXT FREE: JUNGLE RUINS"); a VS PLAYER pick reopens the flow on the map screen.
+
+The preview camera never hands back a frozen camera (`PlayFlow.lobbyCameraType`): a preview that starts while a
+practice exit still holds the fight camera for a few frames used to restore that Scriptable shot, and the lobby
+camera stayed stuck (found in live QA, regression test in LobbyUI_Test).
+
+### Server: the map you pick (`NetProtocol`, `DuelService`)
+
+| Lobby kind | payload (new in round 7) | server |
+|---|---|---|
+| `QuickPlay` | `arena` (optional ArenaId, `NetProtocol.validArenaId`; Duel and Cpu) | **Cpu + arena**: that arena if free, else rejected `ArenaBusy {arena, next}` (the next free duel arena, or ""). Unknown arena or the dojo: `NoArena`. Already alone on a circle at that arena: the CPU joins there (`NotAlone` if a challenger is on the way). **Duel + arena**: you are moved onto its free circle (Teleport reason `Wait`) and wait there; `ArenaBusy {arena, next}` if both circles are taken or a match runs. **No arena**: unchanged (any free arena / the matchmaking queue). |
+
+Stations publish `Reserved`; a circle a player is being moved to counts as taken (`incoming[side]`) for pad polling,
+matchmaking and CPU requests, so two players can never be sent to the same circle. Debug: `FightingLabDuelDebug`
+`quickStub(mode, fighter, name, arenaId)` (a stub player picking a map) and `quickState()` (reserved / incoming).
+
+### Practice tools (`Client.PracticeTools`)
+
+ScreenGui `FightingLabPractice` (DisplayOrder 12), practice sessions only. The practice panel gains a COMBO TRIALS
+row and a SHOW: INPUTS / FRAME DATA chip row.
+
+- **Input display** (left, under the HUD): the last `INPUT_ROWS` = 10 inputs as notation icons (1-4, arrows, chords)
+  with the frame gap since the previous input (`+8`); a pause over `LONG_GAP` = 90 frames shows "—". Fed by
+  `HudController.recordInput` → `HudController.inputLog()`. Turns on by itself during a trial.
+- **Frame advantage** (top centre, under the clock): on hit / block, `+3` (green), `−3` (gold), `−12 · PUNISHABLE`
+  (red) with ON HIT / ON BLOCK / ON COUNTER HIT and the move name, from the player's side (the opponent's moves read
+  with the sign flipped, "THEIRS ON BLOCK"); launchers and knockdowns read LAUNCH / DOWN; juggle hits show nothing.
+  From the sim's own event `advantage`. Shows `FRAME_SECONDS` = 3 s.
+- **Combo trials** (Contract C, `ComboTrial` from combat): the list (`COMBO TRIALS · KAEL`) has one row per listed
+  combo: name; difficulty stars, damage, COUNTER HIT / SURGE tags and CLEARED; the notation; TRY IT and SHOW ME.
+  A trial card (right) lists the steps vertically; each step lights green when it lands, the next one is outlined. A
+  failure shows a big banner with the reason in plain words for `FAIL_SECONDS` = 1.3 s, then the trial resets:
+  TOO EARLY · TOO LATE · WRONG MOVE · BLOCKED · MISSED · TOO SLOW (`PracticeTools.REASONS`). Success: COMBO CLEAR! with
+  the damage for `CLEAR_SECONDS` = 2.4 s, the row is marked CLEARED. NEXT / ALL / END on the card; P during a trial
+  opens the list. **SHOW ME** plays `ComboTrial.demo` through the real practice runner (player input blocked, the
+  steps light as it plays, "WATCH: the combo plays itself"), then "YOUR TURN!". A demo's success is not counted as a
+  clear. Without the module (`ComboTrial` missing) the list says so and nothing breaks.
+
+### Tests (round 7)
+
+- **PlayFlow_Test (7, new)**: the four-press CPU route with map and level; Back; busy map + next free (in place and by
+  reopening); VS PLAYER (Any map first, a waiting map = fight now); PRACTICE options; search / wait offers after 12 s;
+  map facts with Contract D fallbacks; `previewFov`.
+- **PracticeTools_Test (5, new)**: input rows and gaps; the readout from both sides; trial list / steps / failure
+  reasons / reset / success against a stub with Contract C's exact API; SHOW ME plays the demo frame by frame with
+  player input off; with the real `ComboTrial`, SHOW ME through a practice MatchRunner clears every standing combo of
+  all six fighters.
+- **LobbyUI_Test**: the old panel tests replaced by flow tests (first press never dropped, Back, CHANGE FIGHTER comes
+  back, VS PLAYER search / wait / CANCEL / FIGHT CPU, busy map, PRACTICE → trials, the practice panel tools), the
+  frozen-camera regression, and the stage preview (each map on its own stage via a fake `StageController`: the
+  PreviewCam shot and field of view, `previewArena(nil)` on Back, kept for the fight, ended for CHANGE FIGHTER and
+  back on READY); the bar test checks the new sizes.
+- **Duel_Test (+3)**: Cpu + arena (taken there and held while the move is pending; busy → ArenaBusy + the next free
+  map, which then works; every map busy → no offer; dojo / unknown → NoArena; malformed → Invalid); Duel + arena (wait
+  on its circle; a second player there or an Any map searcher starts the duel); waiting on a chosen map (cancel, a CPU
+  right there, switching maps, two players arriving at once). **DuelProtocol_Test (+1)**: `arena` validation.
+  **FightSession_Test**: `quickPlay` passes `arena`.
+- **LobbyCamera_Test (+1)**: a wait on a chosen map frames the ring from the circle.
+- **ClientModules_Test**: the new APIs (PlayFlow, PracticeTools, LobbyCamera.facingOf, and world's
+  `StageController.previewArena / previewing / animOffset / hidesInOwnFight`).
+
+Full suite on `r7-play` (r7-combat at 5aec8a5 and the final r7-world 2e85639 merged, in Play):
+`[SUMMARY] 673 run, 673 passed, 0 failed`.
+
+FlashDetector during the flow (CPU fights started from the flow and from the stage preview, VS PLAYER wait and cancel,
+CHANGE FIGHTER and the fighter select, practice, trials, SHOW ME): **0 bare frames, 0 pose pops** over 49,414 frames
+(run 2) and 29,435 frames (run 4, with the stage preview) (`flashdetector-round7.txt`). One earlier run flagged 14
+frames on the CPU opponent's HUD portrait (a texture briefly reported "Loading"); the burst captures of those frames
+show the portrait dressed, and the case did not reproduce from a cold start (details in the evidence file).
+
+### Known issues
+
+- Counter-hit trials (`COUNTER HIT` tag) set the dummy to fight back; their SHOW ME only plays the inputs, it cannot
+  make the dummy attack on cue (combat's documented limitation of `ComboTrial.demo`).
+- Practice keys in a trial: R resets the attempt; P opens the trial list instead of a plain pause.
+- The PreviewCam shots and the stage preview are world's (Contract D; D2 moved the PreviewCams inside each fight set,
+  `StageController.previewArena` shows the set); the flow uses them as given.
+
+### REQUESTs
+
+- combat: `Controls.actionText.play` still reads "Play: Quick Duel, Fight CPU, Practice, Arenas"; with the flow it
+  should read "Play: VS Player, VS CPU, Practice" (How to Play and legends show it).
