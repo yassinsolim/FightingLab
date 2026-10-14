@@ -122,5 +122,13 @@ return {
 		{ name = "Jungle Dripping 1 (SFX)", creator = "ProSoundEffects", kind = "Audio", usedFor = "LobbyAmbience positional loop at Arena_JungleRuins (re-used from Stages.JungleRuins.Ambience, already in the game)", id = 9112807078 },
 		{ name = "Plasma Trails Constant Airy Whooshing Windy (SFX)", creator = "ProSoundEffects", kind = "Audio", usedFor = "LobbyAmbience positional loop at Arena_SnowSummit (re-used from Stages.SnowSummit.Ambience, already in the game)", id = 9125742262 },
 		{ name = "Aircraft Carrier Ambience 1 (SFX)", creator = "ProSoundEffects", kind = "Audio", usedFor = "LobbyAmbience positional loop at Arena_TrainingBay (re-used from Stages.TrainingBay.Ambience, already in the game)", id = 9112739113 },
+		{ name = "Falling Blossom Cherry Tree", creator = "softlypoetic", kind = "Model (meshes and textures)", usedFor = "Training Bay fight set: cherry trees in bloom over the veranda (trunk, blossom and fallen-petal meshes)", id = 8651908577 },
+		{ name = "Jungle Tree", creator = "TetoBagetto", kind = "Model (meshes and textures)", usedFor = "Jungle Ruins fight set: the great jungle trees", id = 136959608628696 },
+		{ name = "Trees / Foliage - Tropical, Jungle, Island", creator = "PSY0PZ", kind = "Model (meshes and textures)", usedFor = "Jungle Ruins fight set: palms and broadleaf bushes", id = 12157426374 },
+		{ name = "Fern Tropical PBR Plants", creator = "Ironsto4032", kind = "Model (mesh and texture)", usedFor = "Jungle Ruins fight set: the fern understory", id = 119253821008946 },
+		{ name = "Snowy Pine Tree", creator = "V1VEX", kind = "Model (meshes and textures)", usedFor = "Summit Observatory fight set: tall snowy firs", id = 11590212184 },
+		{ name = "Small Snowy Pine Tree", creator = "Striatp", kind = "Model (mesh and texture)", usedFor = "Summit Observatory fight set: small firs by the snow banks", id = 76188132698241 },
+		{ name = "Realistic Stained Rock (Mesh)", creator = "bearduckmonkey", kind = "Model (meshes and texture)", usedFor = "Summit and Jungle fight sets: rocks, boulders and the waterfall cliff", id = 4141555239 },
+		{ name = "Rock realistic (Medium Moss Boulder)", creator = "omarllollo", kind = "Model (mesh and texture)", usedFor = "Jungle Ruins fight set: mossy boulders", id = 9217425479 },
 	},
 }

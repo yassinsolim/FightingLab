@@ -162,8 +162,12 @@ return function(t)
 			local set = folder:FindFirstChild(def.stageId)
 			expect.truthy(set ~= nil, def.stageId .. " has a fight set")
 			if not set then continue end
-			local parts = 0
+			local parts, lights = 0, 0
 			for _, d in set:GetDescendants() do
+				if d:IsA("Light") then
+					lights += 1
+					expect.falsy(d.Shadows, "set lights cast no shadows: " .. d:GetFullName())
+				end
 				if d:IsA("BasePart") then
 					parts += 1
 					expect.truthy(d.Anchored and not d.CanCollide and not d.CanQuery and not d.CanTouch, "quiet part " .. d:GetFullName())
@@ -181,18 +185,139 @@ return function(t)
 					end
 				end
 			end
-			expect.truthy(parts > 40 and parts <= 450, def.stageId .. " set size " .. parts)
-			-- the plaza side is covered; the arena's own backdrop side never is
-			expect.truthy(FightSets.covers(def, (def.bearing + 180) % 360), def.stageId .. " covers the plaza side")
-			expect.falsy(FightSets.covers(def, def.bearing), def.stageId .. " leaves its own backdrop alone")
-			if def.stageId ~= "MidnightRooftop" then
-				expect.truthy(FightSets.covers(def, 0), def.stageId .. " covers the default camera's view (north)")
+			-- round 7 budget: about 600 parts per set (one set, one client), at most two lights
+			expect.truthy(parts > 150 and parts <= FightSets.PART_BUDGET, def.stageId .. " set size " .. parts)
+			expect.truthy(lights <= 2, def.stageId .. " set lights " .. lights)
+			expect.equal(set:GetAttribute("PartCount"), parts, def.stageId .. " PartCount attribute")
+			-- round 7: every set surrounds the fight (the district and the stage's own pieces hide during it)
+			for b = 0, 359, 30 do
+				expect.truthy(FightSets.covers(def, b), def.stageId .. " covers bearing " .. b)
 			end
+			expect.equal(FightSets.focusBearing(def), 0, def.stageId .. " landmark in the default camera's view (north)")
 		end
 		expect.equal(#workspace:GetChildren() > 0, true)
 		for _, child in workspace:GetChildren() do
 			expect.falsy(string.sub(child.Name, 1, 20) == "FightingLabFightSet_", "no set left in the Workspace on the server")
 		end
+	end)
+
+	-- Round 7: what the fight camera sees round the ring, measured on each set from the four fight-line orientations of
+	-- the real CameraDirector framing: something of the set (not sky) stands behind the fighters in every direction,
+	-- and each set has a crowd of 3D spectators (no flat silhouettes) and moving life.
+	t.test("fight sets fill the fight camera's background in every direction, with a 3D crowd and moving pieces", function()
+		local CameraDirector = require(Client:WaitForChild("CameraDirector")) :: any
+		local folder = ReplicatedStorage.FightingLab:FindFirstChild(FightSets.FOLDER)
+		if not folder then expect.truthy(false, "FightSets folder"); return end
+		for _, def in Layout.ARENAS do
+			local set = folder:FindFirstChild(def.stageId) :: Model
+			-- bearings (from FightOrigin) covered by visible set parts between 38 and 260 studs out that rise above the
+			-- fighters' heads (each part marks the 15-degree bins its width spans)
+			local hits: { [number]: boolean } = {}
+			local people, flatCrowd, animated = 0, 0, 0
+			for _, d in set:GetDescendants() do
+				if d:IsA("BasePart") and d.Transparency < 0.9 and d.Size.Magnitude > 2 then
+					local v = Vector3.new(d.Position.X - def.origin.X, 0, d.Position.Z - def.origin.Z)
+					local dist = v.Magnitude
+					if dist > 38 and dist < 260 and d.Position.Y + d.Size.Y * 0.4 > def.floorY + 4 then
+						local b = math.deg(math.atan2(v.X, -v.Z))
+						local half = math.deg(math.atan2(math.max(d.Size.X, d.Size.Z) * 0.5, dist))
+						for k = math.floor((b - half) / 15), math.floor((b + half) / 15) do
+							hits[k % 24] = true
+						end
+					end
+				elseif d:IsA("Model") and d.Name == "Person" then
+					people += 1
+				elseif d.Name == "CrowdPanel" then
+					flatCrowd += 1
+				end
+				if d:GetAttribute(FightSets.ANIM_ATTRIBUTE) ~= nil then animated += 1 end
+			end
+			local missing = {}
+			for k = 0, 23 do
+				if not hits[k] then table.insert(missing, tostring(k * 15)) end
+			end
+			expect.truthy(#missing <= 2, def.stageId .. ": empty background bearings " .. table.concat(missing, ","))
+			expect.truthy(people >= 20, def.stageId .. ": 3D spectators " .. people)
+			expect.equal(flatCrowd, 0, def.stageId .. ": no flat crowd panels")
+			expect.truthy(animated >= people, def.stageId .. ": moving pieces " .. animated)
+			-- the default fight camera (fight line along X) sees the landmark: a tall piece near bearing 0 in frame
+			local plan = CameraDirector._plan(Vector3.new(-3.5, 0, 0), Vector3.new(3.5, 0, 0), "Fight", 0, 1 / 60, Vector3.new(0, 0, -1), 0, false, nil)
+			local cam = CFrame.lookAt(def.origin + plan.position, def.origin + plan.focus)
+			local inFrame = 0
+			for _, d in set:GetDescendants() do
+				if d:IsA("BasePart") and d.Transparency < 0.9 then
+					local v = CameraDirector._normalizedViewportPoint(cam, plan.fov, 16 / 9, d.Position)
+					if v and v.X > 0.05 and v.X < 0.95 and v.Y > 0.02 and v.Y < 0.7 then inFrame += 1 end
+				end
+			end
+			expect.truthy(inFrame >= 30, def.stageId .. ": set pieces in the default fight frame " .. inFrame)
+		end
+	end)
+
+	t.test("set assets are free Creator Store meshes, credited in the credits data", function()
+		local AssetKit = require(WorldModules:WaitForChild("AssetKit"))
+		local Credits = require(ReplicatedStorage.FightingLab:WaitForChild("Credits")) :: any
+		local credited: { [number]: boolean } = {}
+		for _, w in Credits.world or {} do credited[w.id] = true end
+		for id in AssetKit.assetIds() do
+			expect.truthy(credited[id], "asset " .. id .. " is credited (data/world-assets.json -> Credits.world)")
+		end
+		for key, a in AssetKit.ASSETS do
+			expect.truthy(#a.pieces > 0 and a.height > 0 and a.radius > 0, key .. " asset data")
+			for _, p in a.pieces do
+				expect.truthy(string.match(p.mesh, "^rbxassetid://%d+$") ~= nil, key .. " mesh id")
+			end
+		end
+		-- the sets carry only parts and meshes from code: no scripts from any model
+		local folder = ReplicatedStorage.FightingLab:FindFirstChild(FightSets.FOLDER) :: Instance
+		for _, d in folder:GetDescendants() do
+			expect.falsy(d:IsA("LuaSourceContainer"), "no script in a set: " .. d:GetFullName())
+		end
+		local m = AssetKit.place(workspace, "Rock", CFrame.new(0, -500, 0), 2)
+		local mesh = m:FindFirstChildWhichIsA("BasePart", true)
+		expect.truthy(mesh and mesh:FindFirstChildOfClass("SpecialMesh"), "placed asset pieces are textured meshes")
+		expect.equal(m:GetAttribute("AssetId"), AssetKit.ASSETS.Rock.assetId)
+		m:Destroy()
+	end)
+
+	t.test("during its own fight an arena keeps only its podium: pads, board and banners hide; the floor stack stays", function()
+		local model = arenaModel("Arena_HarborDusk") :: Model
+		local origin = (model:FindFirstChild("FightOrigin") :: BasePart).Position
+		local function hides(name: string): boolean?
+			local p = model:FindFirstChild(name, true)
+			if not (p and p:IsA("BasePart")) then return nil end
+			return StageController.hidesInOwnFight(p, origin)
+		end
+		for _, name in { "PadP1", "PadP2", "ExitP1", "StatusBoard", "Arrival", "Banner" } do
+			expect.equal(hides(name), true, name .. " hides in the fight")
+		end
+		for _, name in { "FightFloor", "EdgeLine", "EdgeBand", "Apron", "Podium", "FightOrigin", "PreviewCam" } do
+			expect.equal(hides(name), false, name .. " stays in the fight")
+		end
+		-- every barrier post and stage light (on the podium) stays
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and (d.Name == "EdgePost" or d:FindFirstAncestor("StageLights")) then
+				expect.falsy(StageController.hidesInOwnFight(d, origin), "stays: " .. d:GetFullName())
+			end
+		end
+	end)
+
+	t.test("set animation: cheer hops up only, sways and sweeps swing about the rest pose, orbits go round", function()
+		local SC = StageController :: any
+		for _, t0 in { 0, 0.3, 1.1, 2.7 } do
+			local cheer = SC.animOffset("Cheer", t0, 6, 0.5, 0)
+			expect.truthy(cheer.Position.Y >= -1e-6 and cheer.Position.Y <= 0.5 + 1e-6, "cheer hop in [0, amp]")
+			local bob = SC.animOffset("Bob", t0, 2, 0.3, 1)
+			expect.truthy(math.abs(bob.Position.Y) <= 0.3 + 1e-6, "bob within amp")
+		end
+		expect.truthy(SC.animOffset("Sway", 0, 1, 0.1, 0).Position.Magnitude < 1e-6, "sway keeps the pivot")
+		local o1 = SC.animOffset("Orbit", 0, 1, 10, 0)
+		local o2 = SC.animOffset("Orbit", math.pi / 2, 1, 10, 0)
+		expect.truthy(o1.LookVector:Dot(o2.LookVector) < 0.1, "orbit turns a quarter in a quarter period")
+		expect.equal(SC.animOffset("Unknown", 1, 1, 1, 1), CFrame.identity)
+		-- the map preview is client only
+		expect.falsy(SC.previewArena(arenaModel("Arena_SnowSummit")), "no preview on the server")
+		expect.equal(SC.previewing(), nil)
 	end)
 	t.test("stair name mats: one word per line at a fixed size that fits, never a word split across lines", function()
 		expect.equal(table.concat(ArenaKit.nameLines("Harbor Dusk"), "|"), "HARBOR|DUSK")

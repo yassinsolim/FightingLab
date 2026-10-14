@@ -17,8 +17,10 @@ local Layout = require(WorldModules.Layout)
 local CameraDirector = require(ReplicatedStorage.FightingLab.Client.CameraDirector) :: any
 
 local STAGE_IDS = { MidnightRooftop = true, HarborDusk = true, JungleRuins = true, SnowSummit = true, TrainingBay = true }
--- the world's part count before the round-5 compact layout (main @ 64e1496, measured in Play); it may not grow past it
-local PART_CEILING = 3944
+-- round 7 budget: the world may grow at most 25 % over main's 3,892 parts (round 6, measured in Play)
+local PART_CEILING = 4865
+-- and keep its lights few, none casting shadows (main: 92 lights, 0 shadows)
+local LIGHT_CEILING = 100
 -- walking bounds from every spawn to every pad (studs of PathfindingService path); fixed here, not read from Layout,
 -- so an older (wider) layout fails them
 local WALK_WORST = 40
@@ -914,7 +916,7 @@ return function(t)
 		local w = world() :: Instance
 		local parts = allParts()
 		expect.truthy(#parts <= Layout.PART_BUDGET, "part count " .. #parts .. " within budget")
-		expect.truthy(#parts <= PART_CEILING, "part count " .. #parts .. " no higher than before the compact layout (" .. PART_CEILING .. ")")
+		expect.truthy(#parts <= PART_CEILING, "part count " .. #parts .. " within main's + 25 % (" .. PART_CEILING .. ")")
 		for _, p in parts do
 			if not p.Anchored then
 				expect.truthy(false, "unanchored part " .. p:GetFullName())
@@ -924,16 +926,18 @@ return function(t)
 		expect.truthy(typeof(seconds) == "number", "BuildSeconds recorded")
 		expect.truthy((seconds :: number) < 1, string.format("build took %.2f s", seconds :: number))
 		expect.equal(w:GetAttribute("PartCount"), #parts, "PartCount attribute matches")
-		local lights, emitters = 0, 0
+		local lights, emitters, shadows = 0, 0, 0
 		for _, d in w:GetDescendants() do
 			if d:IsA("Light") then
 				lights += 1
+				if d.Shadows then shadows += 1 end
 			elseif d:IsA("ParticleEmitter") then
 				emitters += 1
 				expect.truthy(d.Rate <= 40, "particle rate kept low: " .. d:GetFullName())
 			end
 		end
-		expect.truthy(lights <= 220, "light count " .. lights)
+		expect.truthy(lights <= LIGHT_CEILING, "light count " .. lights)
+		expect.equal(shadows, 0, "no world light casts shadows")
 		expect.truthy(emitters <= 60, "emitter count " .. emitters)
 	end)
 

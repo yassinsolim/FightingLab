@@ -46,11 +46,29 @@ local rig: Rig? = nil
 local fightSet: Instance? = nil
 type Person = { frame: GuiObject, base: UDim2, phase: number, rate: number }
 local crowdPeople: { Person } = {}
--- The rest of the district (the plaza and the other stages) is hidden on the fighting client while its fight set is
--- up: neighbouring podiums stand only 35 studs from a fight's edge, inside any backdrop. Everything is put back.
-type Hidden = { parts: { BasePart }, ltm: { number }, toggled: { Instance } }
+-- Moving set pieces (World.FightSets attribute FightSetAnim): people cheering, lanterns swaying, gulls, searchlights.
+-- Each keeps its parts' offsets from its pivot so a whole update is one BulkMoveTo.
+type SetAnim = { kind: string, base: CFrame, rate: number, amp: number, phase: number, parts: { BasePart }, offsets: { CFrame } }
+local setAnims: { SetAnim } = {}
+local animParts: { BasePart } = {}
+local animFrames: { CFrame } = {}
+local animClock = 0
+M.ANIM_ATTRIBUTE = "FightSetAnim"
+M.ANIM_HZ = 30
+-- The rest of the district is hidden on the fighting client while its fight set is up (round 7: every set surrounds
+-- the fight, 360 degrees): the plaza, the other stages, the grounds and the seascape, and the active arena's own
+-- pieces outside its podium (status board, pads, stair, in-world backdrop) and its banners. Parts get a
+-- LocalTransparencyModifier of 1; lights, emitters, beams and billboards are switched off; SurfaceGuis are pushed out
+-- of range through MaxDistance (their Enabled flag belongs to StationBoards). Everything is put back exactly.
+type Hidden = { parts: { BasePart }, ltm: { number }, toggled: { Instance }, guis: { any }, guiRange: { number } }
 local hidden: Hidden? = nil
+local hiddenSet: { [BasePart]: boolean } = {}
+-- Map preview (Contract D): the arena shown the way its fighters see it, for a menu camera on its PreviewCam.
+local previewModel: Instance? = nil
+local previewConn: RBXScriptConnection? = nil
 M.HIDE_DISTRICT = true
+M.KEEP_RADIUS = 27.6 -- the active arena keeps what stands on its podium (top radius 27): floor, barrier, stage lights
+M.HIDE_ROOTS = { "Lobby", "Walkways", "Seascape" }
 
 local function collect(inst: Instance): ({ BasePart }, { { gui: SurfaceGui, enabled: boolean } })
 	local parts: { BasePart } = {}
@@ -119,7 +137,10 @@ end
 
 local function applyAlpha(o: Occluder, alpha: number)
 	o.alpha = alpha
-	for _, p in o.parts do p.LocalTransparencyModifier = alpha end
+	local h = hidden
+	for _, p in o.parts do
+		if not (h and hiddenSet[p]) then p.LocalTransparencyModifier = alpha end
+	end
 	for _, g in o.guis do g.gui.Enabled = g.enabled and alpha < 0.6 end
 end
 
@@ -237,6 +258,10 @@ function M.clearArena()
 	table.clear(flickers)
 	table.clear(blinks)
 	arenaModel = nil
+	previewModel = nil
+	local pc = previewConn
+	previewConn = nil
+	if pc then pc:Disconnect() end
 	LightingProfile.restore()
 	local r = rig
 	rig = nil
@@ -244,34 +269,88 @@ function M.clearArena()
 	local set = fightSet
 	fightSet = nil
 	table.clear(crowdPeople)
+	table.clear(setAnims)
+	table.clear(animParts)
+	table.clear(animFrames)
 	if set then set:Destroy() end
 	local h = hidden
 	hidden = nil
+	table.clear(hiddenSet)
 	if h then
 		for i, p in h.parts do p.LocalTransparencyModifier = h.ltm[i] end
 		for _, inst in h.toggled do (inst :: any).Enabled = true end
+		for i, g in h.guis do if g.Parent then g.MaxDistance = h.guiRange[i] end end
 	end
 end
 
--- Hides (locally) the plaza and every other stage for the fight in `active`; returns how many parts it hid.
+-- Flat distance from FightOrigin's axis to a part's oriented box (at the part's height).
+local function flatDistanceTo(part: BasePart, centre: Vector3): number
+	local cf = part.CFrame
+	local l = cf:PointToObjectSpace(Vector3.new(centre.X, cf.Y, centre.Z))
+	local s = part.Size * 0.5
+	local c = cf:PointToWorldSpace(Vector3.new(math.clamp(l.X, -s.X, s.X), math.clamp(l.Y, -s.Y, s.Y), math.clamp(l.Z, -s.Z, s.Z)))
+	return Vector3.new(c.X - centre.X, 0, c.Z - centre.Z).Magnitude
+end
+
+-- Whether a piece of the active arena hides during its own fight: everything off the podium (outside KEEP_RADIUS),
+-- the banners on it (lettered signage that would stand behind the fighters) and its trees (their crowns overhang the
+-- podium edge).
+M.HIDE_MODELS = { Tree = true, Palm = true, Pine = true, CherryTree = true, JungleTree = true, SnowPine = true, SmallPine = true }
+function M.hidesInOwnFight(part: BasePart, centre: Vector3): boolean
+	if part.Name == "FightOrigin" or part.Name == "PreviewCam" then return false end
+	if string.sub(part.Name, 1, 6) == "Banner" then return true end
+	local model = part:FindFirstAncestorWhichIsA("Model")
+	if model and M.HIDE_MODELS[model.Name] then return true end
+	return flatDistanceTo(part, centre) > M.KEEP_RADIUS
+end
+
+-- Hides (locally) everything but the active arena's podium for the fight in `active`; returns how many parts it hid.
 local function hideDistrict(active: Instance): number
 	local world = workspace:FindFirstChild("FightingLabWorld")
 	if not world then return 0 end
 	local roots: { Instance } = {}
-	local lobby = world:FindFirstChild("Lobby")
-	if lobby then table.insert(roots, lobby) end
+	for _, name in M.HIDE_ROOTS do
+		local r = world:FindFirstChild(name)
+		if r then table.insert(roots, r) end
+	end
 	local arenas = world:FindFirstChild("Arenas")
 	if arenas then
 		for _, a in arenas:GetChildren() do if a ~= active then table.insert(roots, a) end end
 	end
-	local h: Hidden = { parts = {}, ltm = {}, toggled = {} }
+	local h: Hidden = { parts = {}, ltm = {}, toggled = {}, guis = {}, guiRange = {} }
+	local function hidePart(p: BasePart)
+		table.insert(h.parts, p); table.insert(h.ltm, p.LocalTransparencyModifier)
+		p.LocalTransparencyModifier = 1
+		hiddenSet[p] = true
+	end
+	local function hideExtra(d: Instance)
+		if d:IsA("SurfaceGui") or d:IsA("BillboardGui") then
+			-- out of range instead of disabled: StationBoards owns their Enabled flags
+			table.insert(h.guis, d); table.insert(h.guiRange, (d :: any).MaxDistance);
+			(d :: any).MaxDistance = 0.001
+		elseif d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Light") then
+			if (d :: any).Enabled then (d :: any).Enabled = false; table.insert(h.toggled, d) end
+		end
+	end
 	for _, root in roots do
 		for _, d in root:GetDescendants() do
-			if d:IsA("BasePart") then
-				table.insert(h.parts, d); table.insert(h.ltm, d.LocalTransparencyModifier)
-				d.LocalTransparencyModifier = 1
-			elseif d:IsA("SurfaceGui") or d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Light") then
-				if (d :: any).Enabled then (d :: any).Enabled = false; table.insert(h.toggled, d) end
+			if d:IsA("BasePart") then hidePart(d) else hideExtra(d) end
+		end
+	end
+	-- the active arena: only its podium stays
+	for _, d in active:GetDescendants() do
+		if d:IsA("BasePart") and M.hidesInOwnFight(d, origin) then
+			hidePart(d)
+			for _, x in d:GetDescendants() do hideExtra(x) end
+		end
+	end
+	-- floating tags in the player's gui that are adorned to hidden pieces (the pad tags)
+	local player = Players.LocalPlayer
+	local gui = player and player:FindFirstChildOfClass("PlayerGui")
+	if gui then
+		for _, d in gui:GetDescendants() do
+			if d:IsA("BillboardGui") and d.Adornee and d.Adornee:IsA("BasePart") and hiddenSet[d.Adornee :: BasePart] then
+				hideExtra(d)
 			end
 		end
 	end
@@ -327,12 +406,33 @@ local function showFightSet(stageId: string)
 	clone.Parent = workspace
 	fightSet = clone
 	table.clear(crowdPeople)
+	table.clear(setAnims)
 	for _, d in clone:GetDescendants() do
 		if d.Name == "Person" and d:IsA("GuiObject") then
 			local phase, rate = d:GetAttribute("Phase"), d:GetAttribute("Rate")
 			table.insert(crowdPeople, { frame = d, base = d.Position, phase = if typeof(phase) == "number" then phase else 0, rate = if typeof(rate) == "number" then rate else 2 })
 		end
+		local kind = d:GetAttribute(M.ANIM_ATTRIBUTE)
+		if typeof(kind) == "string" and (d:IsA("Model") or d:IsA("BasePart")) then
+			local rate, amp, phase = d:GetAttribute("AnimRate"), d:GetAttribute("AnimAmp"), d:GetAttribute("AnimPhase")
+			local base = (d :: PVInstance):GetPivot()
+			local a: SetAnim = {
+				kind = kind, base = base, parts = {}, offsets = {},
+				rate = if typeof(rate) == "number" then rate else 1, amp = if typeof(amp) == "number" then amp else 0,
+				phase = if typeof(phase) == "number" then phase else 0,
+			}
+			local list: { Instance } = d:GetDescendants()
+			if d:IsA("BasePart") then table.insert(list, d) end
+			for _, p in list do
+				if p:IsA("BasePart") then
+					table.insert(a.parts, p)
+					table.insert(a.offsets, base:ToObjectSpace(p.CFrame))
+				end
+			end
+			table.insert(setAnims, a)
+		end
 	end
+	animClock = 0
 end
 
 -- Spectators in the fight set sway a little (a few pixels on their panel).
@@ -340,6 +440,41 @@ local function swayCrowd(now: number)
 	for _, p in crowdPeople do
 		local lift = math.max(0, math.sin(now * p.rate + p.phase)) * 3
 		p.frame.Position = p.base - UDim2.fromOffset(0, math.floor(lift + 0.5))
+	end
+end
+
+-- The offset a set animation applies to its piece's pivot at time `t` (World.FightSets: FightSetAnim, AnimRate,
+-- AnimAmp, AnimPhase). Cheer: hops (people); Bob: up and down; Sway: a pendulum about the pivot; Sweep: a yaw
+-- swing (searchlights); Orbit: a circle about the pivot (gulls, aircraft).
+function M.animOffset(kind: string, t: number, rate: number, amp: number, phase: number): CFrame
+	local w = t * rate + phase
+	if kind == "Cheer" then
+		return CFrame.new(0, amp * math.max(0, math.sin(w)), 0)
+	elseif kind == "Bob" then
+		return CFrame.new(0, amp * math.sin(w), 0)
+	elseif kind == "Sway" then
+		return CFrame.Angles(amp * math.sin(w), 0, amp * 0.6 * math.sin(w * 0.8 + 1))
+	elseif kind == "Sweep" then
+		return CFrame.Angles(0, amp * math.sin(w), 0)
+	elseif kind == "Orbit" then
+		return CFrame.Angles(0, w, 0) * CFrame.new(0, 0.6 * math.sin(t * 1.3 + phase), 0)
+	end
+	return CFrame.identity
+end
+
+-- Moves every animated set piece (at most ANIM_HZ times a second), all of them in one BulkMoveTo.
+local function animateSet(now: number)
+	table.clear(animParts)
+	table.clear(animFrames)
+	for _, a in setAnims do
+		local cf = a.base * M.animOffset(a.kind, now, a.rate, a.amp, a.phase)
+		for i, p in a.parts do
+			table.insert(animParts, p)
+			table.insert(animFrames, cf * a.offsets[i])
+		end
+	end
+	if #animParts > 0 then
+		workspace:BulkMoveTo(animParts, animFrames, Enum.BulkMoveMode.FireCFrameChanged)
 	end
 end
 
@@ -364,6 +499,40 @@ function M.setArena(model: Instance?, newOrigin: Vector3?)
 		c.gui:SetAttribute("ArenaId", if model then model.Name else "")
 		c.gui:SetAttribute("ArenaMood", LightingProfile.activeArena() or "")
 	end
+end
+
+-- Map preview (Contract D, client only): shows an arena the way its fighters see it (its mood, its fight set and the
+-- district hidden, the crowd moving) for a menu camera placed on the arena's PreviewCam. `model` is an arena under
+-- workspace.FightingLabWorld.Arenas; nil ends the preview. Returns whether a preview is up. clearArena(),
+-- setArena() and a new previewArena() replace it; nothing is left behind.
+function M.previewArena(model: Instance?): boolean
+	M.clearArena()
+	if not model or not RunService:IsClient() then return false end
+	local stageId = model:GetAttribute("StageId")
+	local fo = model:FindFirstChild("FightOrigin")
+	if typeof(stageId) ~= "string" or not (fo and fo:IsA("BasePart")) then return false end
+	origin = fo.Position
+	LightingProfile.applyArena(stageId)
+	local cam = model:FindFirstChild("PreviewCam")
+	if cam and cam:IsA("BasePart") then LightingProfile.setFocus((cam.Position - origin).Magnitude) end
+	showFightSet(stageId)
+	if fightSet and M.HIDE_DISTRICT then hideDistrict(model) end
+	previewModel = model
+	previewConn = RunService.RenderStepped:Connect(function(dt: number)
+		if not fightSet then return end
+		swayCrowd(os.clock())
+		animClock += dt
+		if animClock >= 1 / M.ANIM_HZ then
+			animClock = 0
+			animateSet(os.clock())
+		end
+	end)
+	return true
+end
+
+-- The arena being previewed, if any.
+function M.previewing(): Instance?
+	return previewModel
 end
 
 -- Tagged pieces the active arena fades (tests and tools).
@@ -413,7 +582,14 @@ function M.update(f: RenderFrame)
 	end
 	LightingProfile.setFocus(len)
 	local now = if typeof(f.now) == "number" then f.now else os.clock()
-	if fightSet then swayCrowd(os.clock()) end
+	if fightSet then
+		swayCrowd(os.clock())
+		animClock += dt
+		if animClock >= 1 / M.ANIM_HZ and #setAnims > 0 then
+			animClock = 0
+			animateSet(os.clock())
+		end
+	end
 	for _, item in flickers do
 		local wave = (math.noise(now * item.rate, item.base) + 1) * 0.5
 		item.light.Brightness = item.base * (item.min + (item.max - item.min) * wave)
@@ -422,7 +598,7 @@ function M.update(f: RenderFrame)
 		local on = (now % item.period) < item.period * 0.5
 		local inst = item.inst
 		if inst:IsA("BasePart") then
-			inst.LocalTransparencyModifier = if on then 0 else 0.65
+			if not hiddenSet[inst] then inst.LocalTransparencyModifier = if on then 0 else 0.65 end
 		elseif inst:IsA("Light") then
 			inst.Enabled = on and item.enabled ~= false
 		end
