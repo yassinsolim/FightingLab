@@ -215,4 +215,69 @@ return function(t)
 			expect.truthy(string.find(line, "Jab", 1, true) ~= nil, "only jabs may match: " .. line)
 		end
 	end)
+
+	test("round 7: every string is a natural combo on hit from every range its first hit reaches", function()
+		-- Each follow-up pressed as early as possible; after the first hit the dummy guards whenever it is free, so a gap
+		-- would be blocked and pushback that carried it out of reach would whiff. (Round 6: 13 of 22 strings.)
+		local BUTTON = { LP = "LeadPunch", RP = "RearPunch", LK = "LeadKick", RK = "RearKick" }
+		local natural, total = 0, 0
+		for _, id in Roster.order do
+			local c = Roster.get(id)
+			local followers: { [string]: { string } } = {}
+			for _, key in c.moveOrder do
+				local from = c.moves[key].chainFrom
+				if from then followers[from] = followers[from] or {}; table.insert(followers[from], key) end
+			end
+			local paths: { { string } } = {}
+			local function walk(path: { string })
+				local nexts = followers[path[#path]]
+				if not nexts then if #path > 1 then table.insert(paths, table.clone(path)) end return end
+				for _, k in nexts do local p = table.clone(path); table.insert(p, k); walk(p) end
+			end
+			for _, key in c.moveOrder do if c.moves[key].chainFrom == nil and followers[key] then walk({ key }) end end
+			for _, path in paths do
+				total += 1
+				local root = c.moves[path[1]]
+				local ok, reached = true, 0
+				local d10 = 26
+				while d10 <= math.floor((root.range + root.advance) * 10) + 3 do
+					local m = Sim.newMatch("Training", id, "Goran")
+					local a, t = m.fighters[1], m.fighters[2]
+					a.pos = Vector3.zero; t.pos = Vector3.new(d10 / 10, 0, 0)
+					if root.stance then Sim.enterStance(a, root.stance); a.stanceFrame = c.stances[root.stance].cancelFrom end
+					Sim.queueAttack(a, path[1])
+					local k, hits, result = 2, 0, nil
+					for _ = 1, 400 do
+						if k <= #path and a.move == path[k - 1] and a.moveFrame >= 2 and m.hitstop == 0 then
+							Sim.press(m, 1, BUTTON[string.match(c.moves[path[k]].input, "([%a]+)%s*$")])
+							k += 1
+						end
+						for _, e in Sim.step(m) do
+							if e.attacker == 1 then
+								if e.kind == "Hit" or e.kind == "KO" then
+									hits += 1
+									if hits == 1 then Sim.setDummy(m, "Guard") end
+									if hits > 1 and e.combo < 2 then result = "gap" end
+								elseif e.kind == "Block" or e.kind == "Whiff" then
+									result = if hits == 0 then "nohit" else string.lower(e.kind)
+								end
+							end
+						end
+						if result or hits == #path then break end
+					end
+					if result ~= "nohit" then
+						reached += 1
+						if hits ~= #path then
+							ok = false
+							expect.truthy(false, string.format("%s %s from %.1f: hit %d %s", id, table.concat(path, ","), d10 / 10, hits + 1, tostring(result)))
+						end
+					end
+					d10 += 3
+				end
+				expect.truthy(reached > 0, id .. " " .. path[1] .. " reaches")
+				if ok then natural += 1 end
+			end
+		end
+		print(string.format("[STRINGS] %d of %d strings are natural combos on hit", natural, total))
+	end)
 end

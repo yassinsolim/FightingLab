@@ -238,6 +238,17 @@ function Sim.reach(a: Fighter, t: Fighter, name: string): (boolean, number, numb
 	return along > 0 and along <= effectiveRange and side <= v.width, along, side
 end
 
+-- Strings are natural combos on hit: a string follow-up reaches an opponent that the previous hit of the same string
+-- put in hitstun (or juggles), up to Config.StringReach further than its own range, so the earlier hits' pushback
+-- never makes it whiff. On block or whiff the follow-up keeps its normal reach.
+function Sim.stringReach(a: Fighter, t: Fighter, def: Roster.MoveDef, along: number, side: number): boolean
+	if def.chainFrom == nil or along <= 0 then return false end
+	local hit = t.lastHit
+	if hit == nil or hit.move ~= def.chainFrom or (hit.kind ~= "Hit" and hit.kind ~= "Counter") then return false end
+	if not (t.state == "Hitstun" or (t.state == "Airborne" and not t.airLocked)) then return false end
+	return along <= def.range + Config.StringReach and side <= def.width + 0.4
+end
+
 -- Input --------------------------------------------------------------------------------------------------------------
 
 local function lastToken(input: string): string
@@ -1213,6 +1224,7 @@ local function hits(m: Match, events: { Event })
 		if air and (def.height=="Low" or t.pos.Y>Config.AirHitCeiling) then eligible=false end
 		if not eligible then continue end
 		local inReach, along, side = Sim.reach(a,t,entry.name)
+		if not inReach and Sim.stringReach(a, t, def, along, side) then inReach = true end
 		if not inReach then
 			if t.state == "Sidestep" and along > 0 and along <= def.range + 0.6 and side > def.width then a.evaded = true end
 			continue

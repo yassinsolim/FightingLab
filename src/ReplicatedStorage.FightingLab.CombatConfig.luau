@@ -20,6 +20,9 @@ local Config = {
 	AttackBuffer = 8,
 	RecoveryBuffer = 30,
 	StepBuffer = 6,
+	-- Strings are natural combos on hit: a follow-up reaches this much further than its range when the previous hit of
+	-- its string put the opponent in hitstun (CombatSim.stringReach), so pushback never breaks a string that hit.
+	StringReach = 1.3,
 	-- Two buttons pressed within ChordFrames form a chord (1+3 / 2+4 throws); a move already started by the first
 	-- button is upgraded in place while it is still in its startup.
 	ChordFrames = 3,
