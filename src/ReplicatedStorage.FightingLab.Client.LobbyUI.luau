@@ -7,7 +7,8 @@
 -- It only reads server state (Player attributes, Stations, FightSession) and only talks to the server through the
 -- Lobby remote / FightSession. mount(env) takes an injectable environment so LobbyUI_Test can drive every state on
 -- the server without a client. The prompt style and the world prompt set live in Client.LobbyPrompts (re-exported
--- here); this file sits close to Roblox's 200,000-character Source limit, so new UI goes into its own module.
+-- here), the PLAY flow in Client.PlayFlow; this file sits close to Roblox's 200,000-character Source limit, so new
+-- UI goes into its own module.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -28,6 +29,7 @@ local StationBoards = require(Client.StationBoards)
 local Leaderboard = require(Client.Leaderboard)
 local LobbySprint = require(Client.LobbySprint)
 local LobbyPrompts = require(Client.LobbyPrompts)
+local PlayFlow = require(Client.PlayFlow)
 local Roster = require(Lab.Roster)
 
 local T = UIHelpers.Theme
@@ -47,8 +49,6 @@ LobbyUI.PROMPT_ATTRIBUTE = LobbyPrompts.PROMPT_ATTRIBUTE
 -- any fight input.
 LobbyUI.PANEL_IDLE_SECONDS = 4
 LobbyUI.PANEL_START_SECONDS = 6
--- PLAY panel requests (QuickPlay / Travel) are debounced this long while the server answers.
-LobbyUI.PLAY_PENDING_SECONDS = 1.2
 -- Quick-travel fade: black in this fast, back out this slowly once the character has moved (or after the cap); a CPU
 -- match or practice stays black this long after it starts so the fight camera has settled when the picture returns.
 LobbyUI.FADE_IN = 0.15
@@ -122,14 +122,13 @@ export type Controller = {
 	settings: () -> { [string]: any },
 	setSetting: (name: string, value: any) -> (),
 	setSuppressed: (on: boolean) -> (), -- hide the HUD regardless of state (cutscenes, captures)
-	-- Round 5: bottom action bar, PLAY panel, Quick Duel queue, quick travel, sprint.
-	openPlay: () -> boolean,
+	-- Round 5: bottom action bar, Quick Duel queue, quick travel, sprint. Round 7: the PLAY flow (Client.PlayFlow).
+	openPlay: (screen: string?) -> boolean, -- Who | Map | Ready | Practice | Search (default: Who, or Search while searching / waiting)
 	closePlay: () -> (),
 	isPlayOpen: () -> boolean,
-	playRows: () -> { UIState.PlayRow },
-	playFocus: () -> UIState.PlayFocus,
-	playAction: (action: string) -> (), -- Up | Down | Left | Right | Confirm | Back | Set:<row>:<col>
-	playSelect: (id: string) -> boolean, -- an item id ("quick", "cpu:Hard", "practice:Lesson", "travel:<ArenaId>"...)
+	playFlow: () -> any, -- the PlayFlow controller
+	playAction: (action: string) -> (), -- Up | Down | Left | Right | Confirm | Back | Focus:<i> | Pick:<i> | Level:<level>
+	playSelect: (id: string) -> boolean, -- a card on the current screen ("cpu", "any", "<ArenaId>", "fight", "trials", "cancel"...)
 	barVisible: () -> boolean,
 	firstHintVisible: () -> boolean,
 	sprint: () -> any, -- the LobbySprint controller
@@ -151,7 +150,8 @@ local REJECT_TEXT: { [string]: string } = {
 	NotWaiting = "Stand on a duel circle first.", NotAlone = "A challenger is already here!",
 	TooSoon = "Keep waiting a few seconds for a challenger.", NotOnPad = "Stand on a practice circle first.",
 	Invalid = "That request was not recognised.",
-	ArenasBusy = "Every arena is in use. Quick Duel queues you, or try Practice.",
+	ArenasBusy = "Every arena is in use. VS PLAYER queues you, or try Practice.",
+	ArenaBusy = "That map is busy right now. Pick another one.",
 	OnCircle = "You are already waiting on a circle: challengers are sent to you.",
 	NoArena = "That arena is not open.", NoDojo = "The dojo is not open.",
 }
@@ -257,9 +257,10 @@ function LobbyUI.mount(env: Env): Controller
 		identityId = nil :: string?, portraitToken = 0, portraitRelease = nil :: (() -> ())?, device = "keyboard",
 		notifiedArena = "?" :: string?, stationSnapshot = nil :: { [string]: any }?,
 		lastDuel = player:GetAttribute("DuelState"), lastArena = player:GetAttribute("ArenaId"),
-		-- Round 5: PLAY panel, first-time hint, travel fade.
-		playOpen = false, playOpened = false, playFocus = { row = 1, col = 1 } :: UIState.PlayFocus, playRows = {} :: { UIState.PlayRow },
-		playSignature = "", playPendingUntil = 0, fading = false, fadeToken = 0, teleportConn = nil :: RBXScriptConnection?,
+		-- Round 5: first-time hint, travel fade. Round 7: the PLAY flow's VS PLAYER map (CPU offered after the Quick Duel
+		-- delay there), combo trials asked for from the flow, the flow to bring back after the fighter select.
+		playOpened = false, fading = false, fadeToken = 0, teleportConn = nil :: RBXScriptConnection?,
+		flowWait = nil :: string?, pendingTrials = false, flowResume = false,
 	}
 	local view: UIState.LobbyView = UIState.lobbyView({})
 	local settings = { cameraShake = true, music = 1, sfx = 1, guide = "Auto", duelFeed = true }
@@ -369,13 +370,13 @@ function LobbyUI.mount(env: Env): Controller
 		H.streakValue = chip(statsRow, "STREAK", "STREAK", T.ember, 2)
 	end
 
-	-- Bottom action bar (round 5): FIGHTERS · PLAY · MENU, each with its Controls.lobby key glyph (none on touch, where
-	-- the buttons are tapped). Shown in the lobby only, never in fights, countdowns or practice, and hidden behind
-	-- overlays. The PLAY button turns into the Quick Duel queue clock while searching.
-	local BAR_HEIGHT = 68
+	-- Bottom action bar: one big PLAY with the smaller FIGHTERS and MENU at its sides, each with its Controls.lobby key
+	-- glyph (none on touch, where the buttons are tapped). Shown in the lobby only, never in fights, countdowns or
+	-- practice, and hidden behind overlays. The PLAY button turns into the queue clock while searching or waiting.
+	local BAR_HEIGHT = 78
 	local barBottom = if touchOnly then 12 else 16
 	local bar: Frame = make("Frame", { Name = "ActionBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -barBottom), Size = UDim2.fromOffset(640, BAR_HEIGHT), Parent = stage })
-	UIHelpers.list(bar, true, 12, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Bottom)
+	UIHelpers.list(bar, true, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 	local Bar: { [string]: any } = {}
 	local function barGlyphs(action: string): { string }
 		if S.device == "touch" then return {} end
@@ -387,12 +388,13 @@ function LobbyUI.mount(env: Env): Controller
 		for _, c in bar:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
 		local touch = S.device == "touch"
 		local gd = glyphDevice()
-		Bar.fighters = UIHelpers.button(bar, "Fighters", { text = "FIGHTERS", size = UDim2.fromOffset(if touch then 140 else 186, 54), order = 1, glyphs = barGlyphs("fighters"), device = gd, textSize = 17, glyphHeight = 24, accent = T.gold })
-		Bar.play = UIHelpers.button(bar, "Play", { text = "PLAY", size = UDim2.fromOffset(if touch then 180 else 236, BAR_HEIGHT), order = 2, primary = true, glyphs = barGlyphs("play"), device = gd, textSize = 30, font = T.display, glyphHeight = 28 })
-		Bar.menu = UIHelpers.button(bar, "Menu", { text = "MENU", size = UDim2.fromOffset(if touch then 120 else 160, 54), order = 3, glyphs = barGlyphs("menu"), device = gd, textSize = 17, glyphHeight = 24 })
+		Bar.fighters = UIHelpers.button(bar, "Fighters", { text = "FIGHTERS", size = UDim2.fromOffset(if touch then 118 else 148, 44), order = 1, glyphs = barGlyphs("fighters"), device = gd, textSize = 14, glyphHeight = 20, accent = T.gold })
+		Bar.play = UIHelpers.button(bar, "Play", { text = "PLAY", size = UDim2.fromOffset(if touch then 210 else 286, BAR_HEIGHT), order = 2, primary = true, glyphs = barGlyphs("play"), device = gd, textSize = 36, font = T.display, glyphHeight = 30 })
+		Bar.menu = UIHelpers.button(bar, "Menu", { text = "MENU", size = UDim2.fromOffset(if touch then 100 else 124, 44), order = 3, glyphs = barGlyphs("menu"), device = gd, textSize = 14, glyphHeight = 20 })
+		for _, b in Bar do b.button.Selectable = false end
 		table.insert(conns, Bar.fighters.button.Activated:Connect(function() controller.openFighterSelect(nil) end))
 		table.insert(conns, Bar.play.button.Activated:Connect(function()
-			if S.playOpen then controller.closePlay() else controller.openPlay() end
+			if controller.isPlayOpen() then controller.closePlay() else controller.openPlay(nil) end
 		end))
 		table.insert(conns, Bar.menu.button.Activated:Connect(function()
 			if S.menuOpen then controller.closeMenu() else controller.openMenu(nil) end
@@ -455,14 +457,14 @@ function LobbyUI.mount(env: Env): Controller
 		local progressBack: Frame = make("Frame", { Name = "Progress", BackgroundColor3 = T.slot, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 74, 1, -6), Size = UDim2.new(1, -94, 0, 3), Visible = false, Parent = pill })
 		H.progressBack = progressBack
 		H.progressFill = make("Frame", { Name = "Fill", BackgroundColor3 = T.gold, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), Parent = progressBack })
-		-- Quick Duel queue: CANCEL (and FIGHT CPU once offered) right on the hint, one click away.
+		-- Searching / waiting on a circle: CANCEL (and FIGHT CPU once offered) right on the hint, one click away.
 		local actions: Frame = make("Frame", { Name = "Actions", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0), Size = UDim2.fromOffset(250, 40), Visible = false, Parent = pill })
 		UIHelpers.list(actions, true, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
 		H.pillActions = actions
 		H.pillCpu = UIHelpers.button(actions, "FightCpu", { text = "FIGHT CPU", size = UDim2.fromOffset(126, 38), order = 1, primary = true, textSize = 15, accent = T.warm })
 		H.pillCancel = UIHelpers.button(actions, "Cancel", { text = "CANCEL", size = UDim2.fromOffset(100, 38), order = 2, textSize = 14 })
-		table.insert(conns, H.pillCpu.button.Activated:Connect(function() controller.playSelect("cpuInstead") end))
-		table.insert(conns, H.pillCancel.button.Activated:Connect(function() controller.playSelect("cancel") end))
+		table.insert(conns, H.pillCpu.button.Activated:Connect(function() controller.playSelect("pill:cpu") end))
+		table.insert(conns, H.pillCancel.button.Activated:Connect(function() controller.playSelect("pill:cancel") end))
 	end
 	local function paintOfferGlyph()
 		for _, c in H.offerGlyph:GetChildren() do c:Destroy() end
@@ -1033,110 +1035,33 @@ function LobbyUI.mount(env: Env): Controller
 	end
 	S.pickerRefresh = renderPicker
 
-	-- PLAY panel (round 5): own ScreenGui above the HUD, built on first open ------------------------------------------
-	-- Rows and items come from UIState.playRows (pure); every item is one click (or Enter / A) after PLAY.
-	local Pl: any = nil
-	local PLAY_ACCENTS: { [string]: Color3 } = {
-		ember = T.ember, warm = T.warm, cool = T.cool, gold = T.gold, muted = T.muted,
-		Easy = UIHelpers.DifficultyInfo.Easy.color, Normal = UIHelpers.DifficultyInfo.Normal.color, Hard = UIHelpers.DifficultyInfo.Hard.color,
-	}
-	local PLAY_ROW_HEIGHT: { [string]: number } = { duel = 64, cpu = 58, practice = 58 }
-	local function playFooter()
-		local m = Pl
-		if not m then return end
-		for _, c in m.footer:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
-		local d = S.device
-		if d ~= "touch" then
-			local gp = d == "gamepad"
-			local gd = if gp then "gamepad" else "keyboard"
-			UIHelpers.hint(m.footer, { "↑", "↓", "←", "→" }, "Move", { height = 22, device = gd, order = 1, color = T.muted, textSize = 13 })
-			UIHelpers.hint(m.footer, { if gp then "A" else "ENTER" }, "Go", { height = 22, device = gd, order = 2, color = T.muted, textSize = 13 })
-			UIHelpers.hint(m.footer, { if gp then "B" else "BACKSPACE" }, "Close", { height = 22, device = gd, order = 3, color = T.muted, textSize = 13 })
+	-- PLAY flow (round 7, Client.PlayFlow): one decision per screen, big cards, a live map preview. It hands its requests
+	-- here; the lobby sends them (FightSession or the remote) and keeps the lesson / combo trials to start with practice.
+	local function sendPlay(req: any): boolean
+		if req.kind == "Fighters" then return controller.openFighterSelect(nil) end
+		local s = session()
+		local payload = req.payload or {}
+		if req.kind == "QuickPlay" then
+			S.pendingLesson = req.lesson == true
+			S.pendingTrials = req.trials == true
+			S.flowWait = if payload.mode == "Duel" then payload.arena else nil
+			if typeof(payload.difficulty) == "string" then S.practiceDifficulty = payload.difficulty end
 		end
-	end
-	local function buildPlay(): any
-		if Pl then return Pl end
-		local pgui: ScreenGui = make("ScreenGui", { Name = "FightingLabPlay", ResetOnSpawn = false, DisplayOrder = 35, Enabled = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets, Parent = env.parent })
-		local dim: TextButton = make("TextButton", { Name = "Dim", Text = "", AutoButtonColor = false, BackgroundColor3 = T.bg, BackgroundTransparency = 0.45, BorderSizePixel = 0, Position = UDim2.fromOffset(-200, -200), Size = UDim2.new(1, 400, 1, 400), Parent = pgui })
-		local pstage: Frame = make("Frame", { Name = "Stage", BackgroundTransparency = 1, Parent = pgui })
-		local punfit = UIHelpers.fitToScreen(pgui, pstage, touchOnly)
-		local card: Frame, content: Frame, edge: Frame = UIHelpers.edgeCard(pstage, "Card", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(820, 0), BackgroundTransparency = 0.03 }, T.ember, 4, 22, 16)
-		UIHelpers.list(content, false, 10)
-		local head = make("Frame", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 0, Parent = content })
-		text(head, "Title", "PLAY", T.display, 40, T.text, { Size = UDim2.fromOffset(130, 46) })
-		local sub = text(head, "Sub", "Pick a fight: you are taken straight there.", T.medium, 15, T.muted, { Position = UDim2.fromOffset(124, 20), Size = UDim2.new(1, -250, 0, 20), TextTruncate = Enum.TextTruncate.AtEnd })
-		local close = UIHelpers.button(head, "Close", { text = "CLOSE", size = UDim2.fromOffset(110, 34), textSize = 13 })
-		close.button.AnchorPoint = Vector2.new(1, 0)
-		close.button.Position = UDim2.new(1, 0, 0, 6)
-		local rowsFrame = make("Frame", { Name = "Rows", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = content })
-		UIHelpers.list(rowsFrame, false, 10)
-		local footer = make("Frame", { Name = "Footer", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 2, Parent = content })
-		UIHelpers.list(footer, true, 16, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		local scale: UIScale = make("UIScale", { Parent = card })
-		table.insert(conns, dim.Activated:Connect(function() controller.closePlay() end))
-		table.insert(conns, close.button.Activated:Connect(function() controller.closePlay() end))
-		Pl = { gui = pgui, card = card, edge = edge, rows = rowsFrame, footer = footer, scale = scale, unfit = punfit, items = {}, sub = sub }
-		playFooter()
-		return Pl
-	end
-	onDevice(function() playFooter() end)
-	local function buildPlayRows()
-		local m = Pl
-		if not m then return end
-		for _, c in m.rows:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
-		table.clear(m.items)
-		for ri, row in S.playRows do
-			local small = string.sub(row.id, 1, 6) == "travel"
-			local h = if small then 48 else (PLAY_ROW_HEIGHT[row.id] or 56)
-			local r = make("Frame", { Name = "Row_" .. row.id, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h), LayoutOrder = ri, Parent = m.rows })
-			local caption = text(r, "Title", row.title, T.heavy, 12, T.muted, { Size = UDim2.fromOffset(112, h), TextWrapped = true })
-			make("Frame", { Name = "Rule", BackgroundColor3 = T.ember, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 14), Size = UDim2.fromOffset(22, 2), Visible = row.title ~= "", Parent = caption })
-			local itemsFrame = make("Frame", { Name = "Items", BackgroundTransparency = 1, Position = UDim2.fromOffset(118, 0), Size = UDim2.new(1, -118, 1, 0), Parent = r })
-			UIHelpers.list(itemsFrame, true, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-			-- Travel lines keep one column width even when the last line is short.
-			local n = math.max(1, #row.items, if small then UIState.PLAY_TRAVEL_PER_ROW else 1)
-			for ci, item in row.items do
-				local accent = PLAY_ACCENTS[item.accent] or T.ember
-				local primary = item.id == "quick"
-				-- A fixed slot holds each button so its focus scale-up never pushes the rest of the row.
-				local slot = make("Frame", { Name = "Slot_" .. item.id, BackgroundTransparency = 1, Size = UDim2.new(1 / n, -8 + 8 / n, 1, 0), LayoutOrder = ci, Parent = itemsFrame })
-				local b = UIHelpers.button(slot, "Item_" .. item.id, { text = "", size = UDim2.fromScale(1, 1), accent = accent, primary = primary })
-				b.button.AnchorPoint = Vector2.new(0.5, 0.5)
-				b.button.Position = UDim2.fromScale(0.5, 0.5)
-				b.label.Visible = false
-				local dot = make("Frame", { Name = "Dot", BackgroundColor3 = accent, BorderSizePixel = 0, Position = UDim2.fromOffset(12, if small then 11 else 14), Size = UDim2.fromOffset(8, 8), Visible = not primary, Parent = b.button })
-				UIHelpers.corner(dot)
-				local x = if primary then 14 else 26
-				local title = text(b.button, "Title", item.label, T.title, if small then 15 else 19, if primary then T.ink else T.text, { Position = UDim2.fromOffset(x, if small then 4 else 7), Size = UDim2.new(1, -(x + 8), 0, 24), TextTruncate = Enum.TextTruncate.AtEnd })
-				local subLabel = text(b.button, "Sub", item.sub, T.medium, 12, if primary then T.ink else T.muted, { Position = UDim2.fromOffset(x, if small then 27 else 34), Size = UDim2.new(1, -(x + 8), 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
-				m.items[item.id] = { button = b, title = title, sub = subLabel, row = ri, col = ci, primary = primary }
-				table.insert(conns, b.button.Activated:Connect(function()
-					if not S.playOpen then return end
-					controller.playAction("Set:" .. ri .. ":" .. ci)
-					controller.playSelect(item.id)
-				end))
-			end
+		local fn = s and (if req.kind == "QuickPlay" then s.quickPlay elseif req.kind == "CancelQueue" then s.cancelQueue elseif req.kind == "LeaveCircle" then s.leave else nil)
+		if typeof(fn) == "function" then
+			local ok, err = pcall(fn, if req.kind == "QuickPlay" then payload else nil)
+			if not ok then warn("FightingLab lobby: " .. req.kind .. " failed: " .. tostring(err)) end
+			return ok
 		end
+		return fire(if req.kind == "LeaveCircle" then "LeaveFight" else req.kind, payload)
 	end
-	local function renderPlay()
-		local m = Pl
-		if not m then return end
-		m.gui.Enabled = S.playOpen and not S.suppressed
-		if not S.playOpen then return end
-		for ri, row in S.playRows do
-			for ci, item in row.items do
-				local refs = m.items[item.id]
-				if refs then
-					refs.button.setEnabled(item.enabled)
-					refs.button.setFocused(S.device ~= "touch" and S.playFocus.row == ri and S.playFocus.col == ci)
-					refs.title.Text = item.label
-					refs.sub.Text = item.sub
-					refs.title.TextColor3 = if not item.enabled then T.dim elseif refs.primary then T.ink else T.text
-					refs.sub.TextColor3 = if not item.enabled then T.dim elseif refs.primary then T.ink else T.muted
-				end
-			end
-		end
-	end
+	local flow = PlayFlow.mount({
+		parent = env.parent, player = player, live = live, touchOnly = touchOnly, device = function() return S.device end,
+		stations = stationsFolder, world = worldFolder, serverNow = serverNow, clock = clock, send = sendPlay, sound = sound,
+		camera = if env.camera then env.camera elseif live then function(): Camera? return workspace.CurrentCamera end else nil,
+		onChanged = function() if controller then controller.refresh() end end,
+		difficulty = function() return S.practiceDifficulty end, setDifficulty = function(level: string) S.practiceDifficulty = level end,
+	})
 
 	-- Lobby menu ([Tab]) — built on first open ----------------------------------------------------------------------
 	local NAV: { [string]: { string } } = {
@@ -1328,7 +1253,7 @@ function LobbyUI.mount(env: Env): Controller
 			line(defend, keysFor("fight", { "lp", "rp" }, dev), "<b>Throw escape</b>: press the moment you are grabbed.", dev, 4)
 			local lobby = card(left, "Lobby", "LOBBY", 3)
 			local ldev = if dev == "gamepad" then "gamepad" else "keyboard"
-			line(lobby, keysFor("lobby", { "play" }, ldev), "<b>PLAY</b>: Quick Duel, Fight CPU, Practice, go to any arena", ldev, 1)
+			line(lobby, keysFor("lobby", { "play" }, ldev), "<b>PLAY</b>: VS Player, VS CPU or Practice, then pick a map", ldev, 1)
 			line(lobby, keysFor("lobby", { "fighters" }, ldev), "<b>FIGHTERS</b>: change fighter anywhere in the lobby", ldev, 2)
 			line(lobby, if dev == "gamepad" then { "LS" } else { "W", "A", "S", "D" }, "Walk", ldev, 3, "")
 			line(lobby, keysFor("lobby", { "sprint" }, ldev), if dev == "gamepad" then "Sprint: <b>press</b> the left stick, stops when you stop" else "Sprint: <b>hold</b> while walking", ldev, 4)
@@ -1790,7 +1715,17 @@ function LobbyUI.mount(env: Env): Controller
 		end,
 		currentFighter = function(): string? return fighterId() end,
 		onConfirm = function(id: string) fire("SelectFighter", { id = id }) end,
-		onClose = function() task.defer(function() if not destroyed then controller.refresh() end end) end,
+		onClose = function()
+			task.defer(function()
+				if destroyed then return end
+				-- Opened from the PLAY flow: back to the screen it came from, with the new fighter.
+				if S.flowResume then
+					S.flowResume = false
+					if UIState.LOBBY_MODES[view.mode] then flow.resume() end
+				end
+				controller.refresh()
+			end)
+		end,
 		sound = sound,
 		blur = live,
 	})
@@ -1826,7 +1761,7 @@ function LobbyUI.mount(env: Env): Controller
 		local c = getControls()
 		if c then pcall(function() if enabled then c:Enable() else c:Disable() end end) end
 	end
-	local function overlayOpen(): boolean return S.menuOpen or picker.isOpen() or S.picker ~= nil or S.playOpen end
+	local function overlayOpen(): boolean return S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen() end
 	local function updateFreeze()
 		local overlay = overlayOpen()
 		local lobbyMode = UIState.LOBBY_MODES[view.mode] == true
@@ -1893,6 +1828,7 @@ function LobbyUI.mount(env: Env): Controller
 	local fadeGui: ScreenGui? = if live then make("ScreenGui", { Name = "FightingLabTravelFade", ResetOnSpawn = false, IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None, DisplayOrder = 58, Enabled = false, Parent = env.parent }) else nil
 	local fadeBlack: Frame? = if fadeGui then make("Frame", { Name = "Black", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = fadeGui }) else nil
 	local function onTeleport(payload: any)
+		flow.onTeleport(payload)
 		S.fadeToken += 1
 		local token = S.fadeToken
 		local p = if typeof(payload) == "table" then payload else {}
@@ -2077,53 +2013,6 @@ function LobbyUI.mount(env: Env): Controller
 		local s = attr("QuickStatus")
 		return if typeof(s) == "string" and s ~= "" then s else nil
 	end
-	-- Arenas for quick travel, from the Stations folder (ArenaId / DisplayName / Kind / State / Order attributes).
-	local function stationArenas(): { UIState.PlayArena }
-		local out: { UIState.PlayArena } = {}
-		local folder = stationsFolder()
-		if not folder then return out end
-		for _, st in folder:GetChildren() do
-			local id = st:GetAttribute("ArenaId")
-			local name = st:GetAttribute("DisplayName")
-			local kind = st:GetAttribute("Kind")
-			local state = st:GetAttribute("State")
-			local order = st:GetAttribute("Order")
-			table.insert(out, {
-				id = if typeof(id) == "string" and id ~= "" then id else st.Name,
-				name = if typeof(name) == "string" and name ~= "" then name else st.Name,
-				kind = if kind == "Practice" then "Practice" else "Duel",
-				state = if typeof(state) == "string" then state else "Open",
-				order = if typeof(order) == "number" then order else 99,
-			})
-		end
-		return out
-	end
-	local function playInput(): UIState.PlayInput
-		local folder = stationsFolder()
-		local free = folder and folder:GetAttribute("FreeArenas")
-		return {
-			searching = searching(), searchSeconds = searchSeconds(), quickStatus = quickStatus(),
-			pending = clock() < S.playPendingUntil,
-			onCircle = attr("DuelState") == "Queued",
-			freeArenas = if typeof(free) == "number" then free else nil,
-			arenas = stationArenas(),
-		}
-	end
-	-- Rebuilds the PLAY rows when their items change (searching flips the duel row), repaints otherwise.
-	local function refreshPlay()
-		S.playRows = UIState.playRows(playInput())
-		local ids = {}
-		for _, row in S.playRows do
-			for _, item in row.items do table.insert(ids, item.id) end
-		end
-		local signature = table.concat(ids, "|")
-		if signature ~= S.playSignature then
-			S.playSignature = signature
-			buildPlayRows()
-			S.playFocus = UIState.playNav(S.playRows, S.playFocus, "Set:" .. S.playFocus.row .. ":" .. S.playFocus.col)
-		end
-		renderPlay()
-	end
 	local function computeView(): UIState.LobbyView
 		local duel = attr("DuelState")
 		if duel == "Queued" then S.queuedSince = S.queuedSince or os.clock() else S.queuedSince = nil end
@@ -2142,6 +2031,8 @@ function LobbyUI.mount(env: Env): Controller
 			now = serverNow(),
 			keyboard = S.device ~= "touch",
 			interactKey = UIHelpers.keyLabel("lobby", "interact", glyphDevice()),
+			-- A player the PLAY flow put on this map's circle chose VS PLAYER: the CPU is offered after the Quick Duel delay.
+			offerDelay = if S.flowWait ~= nil and S.flowWait == attr("ArenaId") then UIState.QUICK_CPU_OFFER else nil,
 		})
 	end
 	local function opponentLine(): string
@@ -2218,20 +2109,24 @@ function LobbyUI.mount(env: Env): Controller
 		local v = view
 		local mode = v.mode
 		local lobbyish = UIState.LOBBY_MODES[mode] == true
-		-- The fighter select is a full-screen scene: the HUD would only show through it.
-		gui.Enabled = not S.suppressed and not picker.isOpen() and not S.menuOpen and mode ~= "Hidden" and mode ~= "Results"
+		-- Leaving the lobby modes closes the PLAY flow: a fight keeps its preview shot for the fight camera to glide from.
+		if flow.isOpen() and not lobbyish then flow.onTeleport({ reason = if mode == "Hidden" or mode == "Practice" then "Cpu" else "Wait" }) end
+		-- The fighter select and the PLAY flow are full-screen: the HUD would only show through them.
+		gui.Enabled = not S.suppressed and not picker.isOpen() and not S.menuOpen and not flow.isOpen() and mode ~= "Hidden" and mode ~= "Results"
 		H.identity.Visible = v.showIdentity
 		toastStack.Visible = lobbyish
-		-- Action bar: lobby only, hidden behind overlays (menu, PLAY panel, pickers, fighter select).
+		-- Action bar: lobby only, hidden behind overlays (menu, PLAY flow, pickers, fighter select).
 		bar.Visible = lobbyish and not overlayOpen() and not S.suppressed
 		-- The first-time hint stands in for the objective pill (same place, same message) until PLAY is opened once.
 		firstHint.Visible = bar.Visible and mode == "Lobby" and not S.playOpened
-		prompt.Visible = lobbyish and S.picker == nil and not S.playOpen and not firstHint.Visible
+		prompt.Visible = lobbyish and S.picker == nil and not flow.isOpen() and not firstHint.Visible
 		sprintButton.Visible = bar.Visible and S.device == "touch"
-		local actionsShown = mode == "Searching" and quickStatus() ~= "Matched"
+		-- Searching or waiting on a circle: CANCEL on the hint, FIGHT CPU once offered.
+		local actionsShown = (mode == "Searching" and quickStatus() ~= "Matched") or mode == "Waiting" or mode == "CpuOffer"
+		local cpuShown = actionsShown and (v.cpuInstead == true or mode == "CpuOffer")
 		H.pillActions.Visible = actionsShown
-		H.pillCpu.button.Visible = actionsShown and v.cpuInstead == true
-		local textWidth = if actionsShown then (if v.cpuInstead then -330 else -200) else -90
+		H.pillCpu.button.Visible = cpuShown
+		local textWidth = if actionsShown then (if cpuShown then -330 else -200) else -90
 		H.promptTitle.Size = UDim2.new(1, textWidth, 0, 28)
 		H.promptSub.Size = UDim2.new(1, textWidth, 0, 18)
 		if lobbyish then
@@ -2250,7 +2145,7 @@ function LobbyUI.mount(env: Env): Controller
 			H.pillEdge.BackgroundColor3 = ringColor
 			H.promptTitle.Text = titleText()
 		end
-		if S.playOpen then refreshPlay() end
+		flow.refresh()
 		H.progressBack.Visible = mode == "Waiting" or (mode == "Searching" and not v.cpuInstead and quickStatus() ~= "Matched")
 		countdown.Visible = mode == "Countdown"
 		if mode == "Countdown" then
@@ -2535,6 +2430,8 @@ function LobbyUI.mount(env: Env): Controller
 	end
 
 	local function onRejected(payload: any)
+		-- The PLAY flow shows its own refusals (a busy map: the next free one is offered right there).
+		if flow.onRejected(payload) then controller.refresh(); return end
 		local p = if typeof(payload) == "table" then payload else {}
 		local request = str(p.request, "")
 		local reason = str(p.reason, "")
@@ -2580,6 +2477,7 @@ function LobbyUI.mount(env: Env): Controller
 		local duel = attr("DuelState")
 		local arena = attr("ArenaId")
 		if typeof(arena) == "string" and arena ~= "" then S.lastArena = arena end
+		if S.lastDuel == "Queued" and duel ~= "Queued" then S.flowWait = nil end
 		if duel == "Results" then
 			local station = stationFor(S.lastArena)
 			S.stationSnapshot = if station then station:GetAttributes() else nil
@@ -2687,7 +2585,8 @@ function LobbyUI.mount(env: Env): Controller
 			local mode = view.mode
 			if mode == "Waiting" or mode == "CpuOffer" then
 				if dotsAcc >= 0.42 then dotsAcc = 0; S.dots = (S.dots % 3) + 1; H.promptTitle.Text = titleText() end
-				H.progressFill.Size = UDim2.fromScale(math.clamp(waitedSeconds() / math.max(0.01, UIState.CPU_OFFER_DELAY), 0, 1), 1)
+				local offerAfter = if S.flowWait ~= nil and S.flowWait == attr("ArenaId") then UIState.QUICK_CPU_OFFER else UIState.CPU_OFFER_DELAY
+				H.progressFill.Size = UDim2.fromScale(math.clamp(waitedSeconds() / math.max(0.01, offerAfter), 0, 1), 1)
 				H.ringScale.Scale = 1 + math.sin(os.clock() * 4.2) * 0.08
 			elseif mode == "Searching" then
 				H.progressFill.Size = UDim2.fromScale(math.clamp(searchSeconds() / math.max(0.01, UIState.QUICK_CPU_OFFER), 0, 1), 1)
@@ -2695,12 +2594,13 @@ function LobbyUI.mount(env: Env): Controller
 			else
 				H.ringScale.Scale = 1
 			end
-			-- The PLAY button doubles as the queue clock while searching.
-			local playLabel = if searching() then "SEARCHING " .. UIState.clock(searchSeconds()) else "PLAY"
+			-- The PLAY button doubles as the queue clock while searching or waiting on a circle.
+			local playLabel = if searching() then "SEARCHING " .. UIState.clock(searchSeconds()) elseif mode == "Waiting" or mode == "CpuOffer" then "WAITING " .. UIState.clock(waitedSeconds()) else "PLAY"
 			if Bar.play and Bar.play.label.Text ~= playLabel then
 				Bar.play.label.Text = playLabel
-				Bar.play.label.TextSize = if playLabel == "PLAY" then 30 else 20
+				Bar.play.label.TextSize = if playLabel == "PLAY" then 36 else 21
 			end
+			flow.tick(dt)
 			if firstHint.Visible then H.firstHintScale.Scale = 1 + math.sin(os.clock() * 3) * 0.035 end
 			sprint.step(dt)
 			if mode == "Countdown" then H.cdRingGradient.Rotation = (H.cdRingGradient.Rotation + dt * 160) % 360 end
@@ -2726,7 +2626,7 @@ function LobbyUI.mount(env: Env): Controller
 			local nav = NAV_KEYS[key]
 			local playKey = UIHelpers.keyMatches(key, "lobby", "play")
 			local fightersKey = UIHelpers.keyMatches(key, "lobby", "fighters")
-			if S.playOpen then
+			if flow.isOpen() then
 				if playKey then controller.closePlay(); return true end
 				if fightersKey then return controller.openFighterSelect(nil) end
 				if key == Enum.KeyCode.Tab or UIHelpers.keyMatches(key, "lobby", "menu") or key == Enum.KeyCode.ButtonSelect then
@@ -2778,7 +2678,7 @@ function LobbyUI.mount(env: Env): Controller
 			if not NAV[id] then id = "Fighters" end
 			if picker.isOpen() then picker.close() end
 			if S.picker then closePicker(false) end
-			if S.playOpen then S.playOpen = false; renderPlay() end
+			if flow.isOpen() then flow.close() end
 			sprint.cancel()
 			local m = buildMenu()
 			local wasOpen = S.menuOpen
@@ -2812,7 +2712,8 @@ function LobbyUI.mount(env: Env): Controller
 			if destroyed or not UIState.LOBBY_MODES[view.mode] or not view.canChooseFighter then return false end
 			if S.menuOpen then controller.closeMenu() end
 			if S.picker then closePicker(false) end
-			if S.playOpen then S.playOpen = false; renderPlay() end
+			-- From the PLAY flow (CHANGE FIGHTER, or the fighters key): the flow steps aside and comes back after.
+			if flow.isOpen() then S.flowResume = true; flow.suspend() end
 			-- The select saves the camera (FOV included) as it opens: no sprint boost may be captured.
 			sprint.cancel()
 			picker.open(if id and UIHelpers.fighterDef(Roster, id) then id else fighterId())
@@ -2921,7 +2822,7 @@ function LobbyUI.mount(env: Env): Controller
 			local ok = (kind == "cpu" and mode == "CpuOffer") or (kind == "training" and mode == "PracticeChoice" and view.padMode == "Training") or (kind == "versus" and mode == "PracticeChoice" and view.padMode == "Cpu")
 			if not ok then return false end
 			if S.menuOpen then controller.closeMenu() end
-			if S.playOpen then S.playOpen = false; renderPlay() end
+			if flow.isOpen() then flow.close() end
 			local mine = table.find(Roster.order, fighterId()) or 1
 			S.picker = UIState.pickerNew(kind, { fighters = Roster.order, opponent = Roster.order[(mine % #Roster.order) + 1], difficulty = S.practiceDifficulty })
 			buildPickerRows()
@@ -3046,88 +2947,47 @@ function LobbyUI.mount(env: Env): Controller
 			S.suppressed = on
 			if on then controller.closeMenu() end
 			renderPicker()
-			renderPlay()
+			flow.setSuppressed(on)
 			apply()
 		end,
-		openPlay = function(): boolean
+		openPlay = function(screen: string?): boolean
 			if destroyed or not UIState.LOBBY_MODES[view.mode] then return false end
 			if S.menuOpen then controller.closeMenu() end
 			if picker.isOpen() then picker.close() end
 			if S.picker then closePicker(false) end
-			buildPlay()
-			local first = not S.playOpen
-			S.playOpen = true
+			sprint.cancel()
 			S.playOpened = true
-			S.playSignature = ""
-			S.playRows = UIState.playRows(playInput())
-			S.playFocus = UIState.playDefaultFocus(S.playRows)
-			refreshPlay()
-			if first then
-				if live and Pl then
-					Pl.scale.Scale = 0.94
-					UIHelpers.tween(Pl.scale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
-				end
-				sound("MenuSelect")
-			end
+			S.flowResume = false
+			flow.open(screen)
 			apply()
 			return true
 		end,
 		closePlay = function()
-			if not S.playOpen then return end
-			S.playOpen = false
-			renderPlay()
-			sound("MenuBack")
+			if not flow.isOpen() then return end
+			flow.close()
 			apply()
 		end,
-		isPlayOpen = function() return S.playOpen end,
-		playRows = function() return S.playRows end,
-		playFocus = function() return S.playFocus end,
+		isPlayOpen = function() return flow.isOpen() end,
+		playFlow = function() return flow end,
 		playAction = function(action: string)
-			if not S.playOpen then return end
-			if action == "Back" then controller.closePlay(); return end
-			-- Enabled flags follow the facts at the moment of the press (the debounce may just have ended).
-			refreshPlay()
-			local focus, activated = UIState.playNav(S.playRows, S.playFocus, action)
-			local moved = focus.row ~= S.playFocus.row or focus.col ~= S.playFocus.col
-			S.playFocus = focus
-			if moved then sound("MenuMove") end
-			renderPlay()
-			if activated then controller.playSelect(activated) end
+			if not flow.isOpen() then return end
+			flow.action(action)
+			apply()
 		end,
 		playSelect = function(id: string): boolean
 			if destroyed then return false end
-			local req = UIState.playRequest(id, S.practiceDifficulty)
-			if not req then return false end
-			if req.kind ~= "CancelQueue" then
-				if clock() < S.playPendingUntil then return false end
-				-- Disabled items (arenas busy, already on a circle, CPU not offered yet) do nothing.
-				for _, row in UIState.playRows(playInput()) do
-					for _, item in row.items do
-						if item.id == id and not item.enabled then return false end
-					end
-				end
-				S.playPendingUntil = clock() + LobbyUI.PLAY_PENDING_SECONDS
+			-- The objective pill's buttons while searching / waiting on a circle.
+			if id == "pill:cancel" then
+				return sendPlay({ kind = if attr("DuelState") == "Queued" then "LeaveCircle" else "CancelQueue" })
+			elseif id == "pill:cpu" then
+				local arena = attr("ArenaId")
+				local here = attr("DuelState") == "Queued" and typeof(arena) == "string" and arena ~= ""
+				return sendPlay({ kind = "QuickPlay", payload = { mode = "Cpu", difficulty = S.practiceDifficulty, arena = if here then arena else nil } })
 			end
-			if req.lesson then S.pendingLesson = true end
-			local s = session()
-			local sent = false
-			if s then
-				local fn = if req.kind == "QuickPlay" then s.quickPlay elseif req.kind == "CancelQueue" then s.cancelQueue else s.travel
-				if typeof(fn) == "function" then
-					local arg = if req.kind == "Travel" then req.payload.to else req.payload
-					local ok, err = pcall(fn, arg)
-					if not ok then warn("FightingLab lobby: " .. req.kind .. " failed: " .. tostring(err)) end
-					sent = ok
-				end
-			end
-			if not sent then fire(req.kind, req.payload) end
-			sound(if req.kind == "CancelQueue" then "MenuBack" else "MenuSelect")
-			if S.playOpen then
-				S.playOpen = false
-				renderPlay()
-			end
+			if not flow.isOpen() then return false end
+			local ok = flow.pick(id)
 			apply()
-			return true
+			return ok
 		end,
 		barVisible = function() return bar.Visible end,
 		firstHintVisible = function() return firstHint.Visible end,
@@ -3164,7 +3024,7 @@ function LobbyUI.mount(env: Env): Controller
 				if Mn.blur then Mn.blur:Destroy() end
 				Mn.unfit(); Mn.gui:Destroy()
 			end
-			if Pl then Pl.unfit(); Pl.gui:Destroy() end
+			flow.destroy()
 			if fadeGui then fadeGui:Destroy() end
 			pickerGui:Destroy()
 			gui:Destroy()
@@ -3184,7 +3044,7 @@ function LobbyUI.mount(env: Env): Controller
 	local function acceptProcessed(key: Enum.KeyCode): boolean
 		if UserInputService:GetFocusedTextBox() or GuiService.MenuIsOpen then return false end
 		if key == Enum.KeyCode.Tab then return true end
-		local overlay = S.menuOpen or picker.isOpen() or S.picker ~= nil or S.playOpen
+		local overlay = S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen()
 		if overlay then return OVERLAY_KEYS[key] == true or NAV_KEYS[key] ~= nil end
 		if view.mode == "Practice" then return practiceKey(key) ~= nil or isFightKey(key) end
 		return false
@@ -3193,7 +3053,7 @@ function LobbyUI.mount(env: Env): Controller
 	local stickDir: string? = nil
 	local STICK_KEYS: { [string]: Enum.KeyCode } = { Left = Enum.KeyCode.DPadLeft, Right = Enum.KeyCode.DPadRight, Up = Enum.KeyCode.DPadUp, Down = Enum.KeyCode.DPadDown }
 	local function onStick(position: Vector3)
-		if not (S.menuOpen or picker.isOpen() or S.picker ~= nil or S.playOpen) then
+		if not (S.menuOpen or picker.isOpen() or S.picker ~= nil or flow.isOpen()) then
 			stickDir = nil
 			return
 		end

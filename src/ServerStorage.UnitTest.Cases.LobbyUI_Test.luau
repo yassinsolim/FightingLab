@@ -809,7 +809,7 @@ return function(t: Runner.T)
 
 	t.test("lobby modules require without side effects", function()
 		local before = #workspace:GetChildren()
-		for _, name in { "LobbyUI", "LobbyPrompts", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController", "LobbySprint", "FlashDetector" } do
+		for _, name in { "LobbyUI", "LobbyPrompts", "PlayFlow", "FighterSelect", "SelectScene", "StationBoards", "Leaderboard", "FrontEnd", "UIState", "UIHelpers", "HudController", "LobbySprint", "FlashDetector" } do
 			local module = Client:FindFirstChild(name)
 			t.expect.truthy(module ~= nil and module:IsA("ModuleScript"), name .. " exists")
 			require(module :: ModuleScript)
@@ -819,32 +819,37 @@ return function(t: Runner.T)
 		for _, fn in { "init", "start", "onSnapshot", "update" } do t.expect.equal(typeof(frontEnd[fn]), "function", "FrontEnd." .. fn) end
 	end)
 
-	-- Round 5 ------------------------------------------------------------------------------------------------------------
+	-- Round 5 / 7 ---------------------------------------------------------------------------------------------------------
 	local function station(m: Mounted, id: string, kind: string, order: number, state: string?): Configuration
 		local c = Instance.new("Configuration")
 		c.Name = id
 		c:SetAttribute("ArenaId", id)
-		c:SetAttribute("DisplayName", string.gsub(id, "_", " "))
+		c:SetAttribute("DisplayName", (string.gsub(id, "_", " ")))
 		c:SetAttribute("Kind", kind)
 		c:SetAttribute("Order", order)
 		c:SetAttribute("State", state or "Open")
+		c:SetAttribute("P1UserId", 0)
+		c:SetAttribute("P2UserId", 0)
 		c.Parent = m.stations
 		return c
-	end
-	local function rowIds(m: Mounted): { [string]: { string } }
-		local out = {}
-		for _, row in m.ctl.playRows() do
-			local ids = {}
-			for _, item in row.items do table.insert(ids, item.id) end
-			out[row.id] = ids
-		end
-		return out
 	end
 	local function lastCall(m: Mounted): any
 		return m.remote.calls[#m.remote.calls]
 	end
+	local function cardIds(m: Mounted): string
+		local out = {}
+		for _, c in m.ctl.playFlow().cards() do table.insert(out, c.id) end
+		return table.concat(out, ",")
+	end
+	-- The flow's own parts: Header (Title, Sub, Crumb), Level, Showcase, Fighter, Cards, Notice, Footer.
+	local function flowPart(m: Mounted, name: string): any
+		return (m.holder:FindFirstChild("FightingLabPlay") :: any).Safe.Stage.Content:FindFirstChild(name)
+	end
+	local function press(m: Mounted, ...: Enum.KeyCode)
+		for _, k in { ... } do t.expect.truthy(m.ctl.handleKey(k), k.Name .. " is taken by the PLAY flow") end
+	end
 
-	t.test("action bar: PLAY, FIGHTERS and MENU in the lobby with their Controls keys; hidden in fights, countdowns and practice", function()
+	t.test("action bar: one big PLAY with smaller FIGHTERS and MENU, their Controls keys; hidden in fights, countdowns and practice", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
 			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
 			local barFrame = stage.ActionBar
@@ -854,15 +859,19 @@ return function(t: Runner.T)
 				t.expect.truthy(b ~= nil, name .. " button")
 				t.expect.truthy(b:FindFirstChild("Key_" .. UIHelpers.keyLabel("lobby", action), true) ~= nil, name .. " shows its Controls key")
 			end
+			local play, fighters, menu = barFrame.Play :: TextButton, barFrame.Fighters :: TextButton, barFrame.Menu :: TextButton
+			t.expect.truthy(play.Size.X.Offset >= 1.8 * fighters.Size.X.Offset and play.Size.X.Offset >= 1.8 * menu.Size.X.Offset, "PLAY is the big one")
+			t.expect.truthy(play.Size.Y.Offset > fighters.Size.Y.Offset + 20, "and taller")
 			t.expect.equal(stage:FindFirstChild("MenuButtonHolder"), nil, "the old top-left MENU button is gone (the bar has it)")
 			t.expect.truthy(m.ctl.firstHintVisible(), "first-time hint points at PLAY")
 			t.expect.truthy(string.find(stage.FirstHint.Text.Text, "PLAY", 1, true) ~= nil)
 			t.expect.falsy(stage.Prompt.Visible, "the first-time hint stands in for the objective pill (no overlap)")
-			-- The objective pill sits above the bar.
 			t.expect.truthy(stage.Prompt.Position.Y.Offset < -stage.ActionBar.Size.Y.Offset, "hint above the bar")
-			m.ctl.openPlay()
-			t.expect.falsy(m.ctl.barVisible(), "bar hidden behind the PLAY panel")
+			m.ctl.openPlay(nil)
+			t.expect.falsy(m.ctl.barVisible(), "bar hidden behind the PLAY flow")
+			t.expect.falsy(m.ctl.gui.Enabled, "the lobby HUD steps aside: much less on screen")
 			m.ctl.closePlay()
+			t.expect.truthy(m.ctl.gui.Enabled)
 			t.expect.falsy(m.ctl.firstHintVisible(), "the first-time hint is gone once PLAY was opened")
 			t.expect.truthy(stage.Prompt.Visible, "then the objective pill is back")
 			t.expect.truthy(m.ctl.barVisible())
@@ -877,155 +886,233 @@ return function(t: Runner.T)
 			setDuel(m, "Lobby")
 			m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
 			t.expect.falsy(m.ctl.barVisible(), "hidden in practice")
-			t.expect.falsy(m.ctl.openPlay(), "no PLAY panel in practice")
+			t.expect.falsy(m.ctl.openPlay(nil), "no PLAY in practice")
 			m.ctl.sessionChanged("Lobby", nil)
 			t.expect.truthy(m.ctl.barVisible(), "back in the lobby")
-			-- The bar's buttons work (mouse / touch).
-			local fightersButton = barFrame.Fighters :: TextButton
 			t.expect.truthy(m.ctl.openFighterSelect(nil) and m.ctl.fighterSelect().isOpen(), "FIGHTERS opens the showcase select anywhere")
 			t.expect.falsy(m.ctl.barVisible(), "hidden behind the select")
 			m.ctl.fighterSelect().close()
-			t.expect.truthy(fightersButton ~= nil)
 		end)
 	end)
 
-	t.test("PLAY panel: Quick Duel, Fight CPU, Practice and every arena are one pick after PLAY", function()
-		local now = 0
+	t.test("PLAY flow: a CPU fight is PLAY, VS CPU, a map, FIGHT!, with the first press never dropped", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
 			station(m, "Arena_A", "Duel", 1)
 			station(m, "Arena_B", "Duel", 2, "Fighting")
+			station(m, "Arena_C", "Duel", 3)
 			station(m, "Arena_Dojo", "Practice", 5)
-			m.stations:SetAttribute("FreeArenas", 1)
-			t.expect.truthy(m.ctl.openPlay())
-			local ids = rowIds(m)
-			t.expect.equal(table.concat(ids.duel, ","), "quick")
-			t.expect.equal(table.concat(ids.cpu, ","), "cpu:Easy,cpu:Normal,cpu:Hard")
-			t.expect.equal(table.concat(ids.practice, ","), "practice:Training,practice:Lesson,practice:Cpu")
-			t.expect.equal(table.concat(ids.travel, ","), "travel:Arena_A,travel:Arena_B,travel:Arena_Dojo")
-			t.expect.equal(table.concat(ids.travel2, ","), "travel:Plaza", "three destinations per line so every name fits")
-			local panel = m.holder:FindFirstChild("FightingLabPlay") :: ScreenGui
-			t.expect.truthy(panel and panel.Enabled, "panel shown")
-			t.expect.truthy(panel:FindFirstChild("Item_cpu:Hard", true) ~= nil, "items are buttons")
-			-- Every item maps to a server request: two steps to anything.
-			for _, row in m.ctl.playRows() do
-				for _, item in row.items do t.expect.truthy(UIState.playRequest(item.id, "Normal") ~= nil, item.id .. " sends a request") end
-			end
-			-- Keyboard: Enter on the default focus (Quick Duel).
-			t.expect.equal(m.ctl.playFocus().row, 1)
-			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Return))
-			t.expect.equal(lastCall(m).kind, "QuickPlay")
-			t.expect.equal(lastCall(m).payload.mode, "Duel")
-			t.expect.falsy(m.ctl.isPlayOpen(), "the panel closes after a pick")
-			-- A second request right away is debounced.
-			m.ctl.openPlay()
-			t.expect.falsy(m.ctl.playSelect("cpu:Hard"), "debounced while the server answers")
-			now += LobbyUI.PLAY_PENDING_SECONDS + 0.1
-			-- Arrow keys (and WASD) move the focus; Enter fights a Hard CPU.
-			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Down))
-			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.D))
-			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Right))
-			t.expect.equal(m.ctl.playFocus().row, 2)
-			t.expect.equal(m.ctl.playFocus().col, 3)
-			m.ctl.handleKey(Enum.KeyCode.Return)
-			t.expect.equal(lastCall(m).kind, "QuickPlay")
-			t.expect.equal(lastCall(m).payload.mode, "Cpu")
-			t.expect.equal(lastCall(m).payload.difficulty, "Hard")
-			now += 2
-			-- Mouse: one click on Guided Lesson starts practice and then the lesson.
-			m.ctl.openPlay()
-			local lesson = panel:FindFirstChild("Item_practice:Lesson", true) :: TextButton
-			t.expect.truthy(lesson ~= nil)
-			m.ctl.playAction("Set:3:2")
-			m.ctl.playAction("Confirm")
-			t.expect.equal(lastCall(m).payload.mode, "Practice")
-			t.expect.equal(lastCall(m).payload.practice, "Training")
-			m.ctl.sessionChanged("Practice", { mode = "Training", authority = "Local", slot = 1 })
-			task.wait()
-			t.expect.truthy(m.ctl.lesson() ~= nil, "the guided lesson starts with the practice")
-			m.ctl.sessionChanged("Lobby", nil)
-			now += 2
-			-- Quick travel to an arena and back to the plaza.
-			t.expect.truthy(m.ctl.playSelect("travel:Arena_B"))
-			t.expect.equal(lastCall(m).kind, "Travel")
-			t.expect.equal(lastCall(m).payload.to, "Arena_B")
-			now += 2
-			t.expect.truthy(m.ctl.playSelect("travel:Plaza"))
-			t.expect.equal(lastCall(m).payload.to, "Plaza")
-			now += 2
-			-- Every arena busy: Fight CPU is greyed out (Quick Duel still queues).
-			m.stations:SetAttribute("FreeArenas", 0)
-			m.ctl.openPlay()
-			local calls = #m.remote.calls
-			t.expect.falsy(m.ctl.playSelect("cpu:Normal"), "no CPU while every arena is busy")
-			t.expect.equal(#m.remote.calls, calls)
-			t.expect.truthy(string.find(m.ctl.playRows()[2].items[1].sub, "busy", 1, true) ~= nil)
-			t.expect.truthy(m.ctl.playRows()[1].items[1].enabled, "Quick Duel still queues")
-			m.ctl.closePlay()
-			-- Already waiting on a circle: Quick Duel is the circle itself, Fight CPU joins right there.
-			setDuel(m, "Queued", "Arena_A", 1)
-			m.ctl.openPlay()
-			t.expect.falsy(m.ctl.playRows()[1].items[1].enabled)
-			t.expect.truthy(m.ctl.playRows()[2].items[2].enabled)
-			t.expect.truthy(m.ctl.handleKey(Enum.KeyCode.Backspace), "Backspace closes the panel")
+			press(m, key("lobby", "play"))
+			local flow = m.ctl.playFlow()
+			t.expect.truthy(m.ctl.isPlayOpen())
+			local gui = m.holder:FindFirstChild("FightingLabPlay") :: ScreenGui
+			t.expect.truthy(gui and gui.Enabled, "the flow is on screen")
+			t.expect.equal(flow.screen(), "Who")
+			t.expect.equal(cardIds(m), "duel,cpu,practice", "three big cards: who do you want to fight?")
+			t.expect.truthy(gui:FindFirstChild("Card_cpu", true) ~= nil)
+			t.expect.equal(gui:FindFirstChild("Card_travel:Plaza", true), nil, "no GO TO grid")
+			press(m, Enum.KeyCode.Right)
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Map", "the very first Enter is taken")
+			t.expect.equal(cardIds(m), "Arena_A,Arena_B,Arena_C", "one card per duel map (no dojo)")
+			t.expect.equal(flow.state().focus, 1, "the first free map")
+			t.expect.equal(flow.previewArena(), "Arena_A", "its preview is behind the panel")
+			press(m, Enum.KeyCode.D)
+			t.expect.equal(flow.previewArena(), "Arena_B", "the preview follows the focus")
+			press(m, Enum.KeyCode.Left)
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Ready")
+			t.expect.truthy(gui:FindFirstChild("Card_fight", true) ~= nil and gui:FindFirstChild("Card_fighter", true) ~= nil, "FIGHT! and CHANGE FIGHTER")
+			t.expect.truthy(flowPart(m, "Fighter").Visible, "your fighter is shown")
+			local before = #m.remote.calls
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(#m.remote.calls, before + 1, "FIGHT! sends one request")
+			local call = lastCall(m)
+			t.expect.equal(call.kind, "QuickPlay")
+			t.expect.equal(call.payload.mode, "Cpu")
+			t.expect.equal(call.payload.arena, "Arena_A")
+			t.expect.equal(call.payload.difficulty, "Normal")
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(#m.remote.calls, before + 1, "no double send while the server answers")
+			t.expect.truthy(string.find(flowPart(m, "Notice").Text, "HEADING TO", 1, true) ~= nil)
+			-- The server moves the player: the flow closes (the fight camera takes the preview shot from here).
+			m.ctl.onTeleport({ reason = "Cpu", arenaId = "Arena_A", delay = 0.2 })
 			t.expect.falsy(m.ctl.isPlayOpen())
-		end, true, { clock = function() return now end })
+			t.expect.falsy(gui.Enabled)
+			-- The CPU level rides along: Up on the map screen, Left / Right, Down.
+			m.ctl.openPlay(nil)
+			press(m, Enum.KeyCode.Right, Enum.KeyCode.Return, Enum.KeyCode.Up, Enum.KeyCode.Right, Enum.KeyCode.Down, Enum.KeyCode.Right, Enum.KeyCode.Right)
+			t.expect.equal(flow.state().difficulty, "Hard")
+			t.expect.equal(flow.cards()[flow.state().focus].id, "Arena_C", "B is busy: the focus may still rest on it, C is free")
+			press(m, Enum.KeyCode.Return, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.difficulty, "Hard")
+			t.expect.equal(lastCall(m).payload.arena, "Arena_C")
+			m.ctl.closePlay()
+			-- Mouse / touch: every card is a button (one click each).
+			m.ctl.openPlay(nil)
+			t.expect.truthy(m.ctl.playSelect("cpu"))
+			t.expect.truthy(m.ctl.playSelect("Arena_C"))
+			t.expect.equal(flow.screen(), "Ready")
+			m.ctl.closePlay()
+		end)
 	end)
 
-	t.test("Quick Duel queue: clock on the hint and the PLAY button, CANCEL, FIGHT CPU INSTEAD after 12 s", function()
+	t.test("PLAY flow: Back steps back, PLAY closes from any screen, Tab opens the menu, CHANGE FIGHTER comes back", function()
 		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
-			m.stations:SetAttribute("FreeArenas", 2)
+			station(m, "Arena_A", "Duel", 1)
+			local flow = m.ctl.playFlow()
+			press(m, key("lobby", "play"), Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Map")
+			t.expect.equal(flow.state().mode, "Duel")
+			press(m, Enum.KeyCode.Backspace)
+			t.expect.equal(flow.screen(), "Who", "Backspace: one screen back")
+			press(m, Enum.KeyCode.ButtonB)
+			t.expect.falsy(m.ctl.isPlayOpen(), "B on the first screen closes")
+			press(m, key("lobby", "play"), Enum.KeyCode.Return)
+			press(m, key("lobby", "play"))
+			t.expect.falsy(m.ctl.isPlayOpen(), "the PLAY key closes it from any screen")
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return, Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Ready")
+			-- CHANGE FIGHTER: the select takes over, then the flow comes back on READY.
+			t.expect.truthy(m.ctl.playSelect("fighter"))
+			t.expect.truthy(m.ctl.fighterSelect().isOpen())
+			t.expect.falsy(m.ctl.isPlayOpen())
+			m.ctl.fighterSelect().close()
+			task.wait()
+			t.expect.truthy(m.ctl.isPlayOpen(), "back in the flow")
+			t.expect.equal(flow.screen(), "Ready", "on the same screen")
+			-- The fighters key does the same.
+			press(m, key("lobby", "fighters"))
+			t.expect.truthy(m.ctl.fighterSelect().isOpen())
+			m.ctl.fighterSelect().close()
+			task.wait()
+			t.expect.equal(flow.screen(), "Ready")
+			press(m, Enum.KeyCode.Tab)
+			t.expect.truthy(m.ctl.isMenuOpen(), "Tab: the menu")
+			t.expect.falsy(m.ctl.isPlayOpen())
+			m.ctl.closeMenu()
+			t.expect.equal(#m.remote.calls, 0, "browsing sends nothing")
+		end)
+	end)
+
+	t.test("PLAY flow: VS PLAYER: Any map queues, a map sends you there; searching / waiting show CANCEL and FIGHT CPU after 12 s", function()
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1)
+			station(m, "Arena_B", "Duel", 2, "Waiting"):SetAttribute("P1UserId", 5)
+			local flow = m.ctl.playFlow()
+			press(m, key("lobby", "play"), Enum.KeyCode.Return)
+			t.expect.equal(cardIds(m), "any,Arena_A,Arena_B", "Any map first")
+			t.expect.equal(flow.cards()[1].chip, "RECOMMENDED")
+			t.expect.equal(flow.previewArena(), nil, "Any map: the lobby view")
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).kind, "QuickPlay")
+			t.expect.equal(lastCall(m).payload.mode, "Duel")
+			t.expect.equal(lastCall(m).payload.arena, nil)
+			t.expect.falsy(m.ctl.isPlayOpen(), "the flow closes: walk around while you wait")
+			-- Searching: the hint has CANCEL; PLAY opens the searching screen with CANCEL focused.
 			m.player:SetAttribute("QuickQueue", 1000 - 3)
 			m.player:SetAttribute("QuickStatus", "Searching")
 			m.ctl.refresh()
 			local v = m.ctl.view()
 			t.expect.equal(v.mode, "Searching")
-			t.expect.truthy(string.find(v.title, "SEARCHING", 1, true) == 1)
 			t.expect.truthy(string.find(v.title, "0:03", 1, true) ~= nil, "queue clock")
-			t.expect.falsy(v.cpuInstead)
-			t.expect.truthy(v.canChooseFighter, "fighter changes stay allowed while searching")
-			t.expect.truthy(m.ctl.promptSpecs().kiosk.enabled, "the kiosk works while searching")
 			local stage = m.ctl.gui:FindFirstChild("Stage") :: any
 			t.expect.truthy(stage.Prompt.Pill.Actions.Visible, "CANCEL on the hint")
 			t.expect.falsy(stage.Prompt.Pill.Actions.FightCpu.Visible)
 			m.ctl.tick(0.11)
 			t.expect.equal(stage.ActionBar.Play.Row.Label.Text, "SEARCHING 0:03", "the PLAY button shows the queue clock")
-			-- PLAY while searching: CANCEL is focused (FIGHT CPU INSTEAD not offered yet).
-			m.ctl.openPlay()
-			t.expect.equal(table.concat(rowIds(m).duel, ","), "cpuInstead,cancel")
-			t.expect.falsy(m.ctl.playRows()[1].items[1].enabled)
-			t.expect.equal(m.ctl.playFocus().col, 2)
-			m.ctl.handleKey(Enum.KeyCode.Return)
+			press(m, key("lobby", "play"))
+			t.expect.equal(flow.screen(), "Search")
+			t.expect.equal(cardIds(m), "cpuInstead,cancel")
+			t.expect.equal(flow.state().focus, 2, "CANCEL focused until the CPU is offered")
+			press(m, Enum.KeyCode.Return)
 			t.expect.equal(lastCall(m).kind, "CancelQueue")
-			-- 12 s alone: Fight CPU instead.
 			m.player:SetAttribute("QuickQueue", 1000 - UIState.QUICK_CPU_OFFER - 1)
 			m.ctl.refresh()
-			v = m.ctl.view()
-			t.expect.truthy(v.cpuInstead)
+			t.expect.truthy(m.ctl.view().cpuInstead)
 			t.expect.truthy(stage.Prompt.Pill.Actions.FightCpu.Visible, "FIGHT CPU on the hint")
-			m.ctl.openPlay()
-			t.expect.truthy(m.ctl.playRows()[1].items[1].enabled)
-			t.expect.equal(m.ctl.playFocus().col, 1, "FIGHT CPU INSTEAD focused")
-			m.ctl.handleKey(Enum.KeyCode.Return)
+			press(m, key("lobby", "play"))
+			t.expect.equal(flow.state().focus, 1)
+			press(m, Enum.KeyCode.Return)
 			t.expect.equal(lastCall(m).payload.mode, "Cpu")
-			t.expect.equal(lastCall(m).payload.difficulty, "Normal")
-			-- All arenas busy while queued.
+			t.expect.equal(lastCall(m).payload.arena, nil, "any free map")
 			m.player:SetAttribute("QuickStatus", "Busy")
-			m.ctl.refresh()
-			t.expect.truthy(string.find(m.ctl.view().subtitle, "busy", 1, true) ~= nil or m.ctl.view().cpuInstead == true)
 			m.player:SetAttribute("QuickQueue", 1000 - 2)
 			m.ctl.refresh()
-			t.expect.truthy(string.find(m.ctl.view().subtitle, "All arenas are busy", 1, true) ~= nil)
-			-- Rejections from the PLAY requests read as toasts.
-			m.rejected:Fire({ request = "QuickPlay", reason = "ArenasBusy" })
-			t.expect.equal(m.ctl.toastCount(), 1)
-			-- Matched: heading to the arena.
+			t.expect.truthy(string.find(m.ctl.view().subtitle, "All maps are busy", 1, true) ~= nil)
 			m.player:SetAttribute("QuickStatus", "Matched")
 			m.ctl.refresh()
 			t.expect.equal(m.ctl.view().title, "OPPONENT FOUND")
 			m.player:SetAttribute("QuickQueue", 0)
 			m.player:SetAttribute("QuickStatus", "")
 			m.ctl.refresh()
-			t.expect.equal(m.ctl.view().mode, "Lobby")
+			-- A chosen map: sent there to wait; the CPU is offered after the Quick Duel delay, not the walk-in one.
+			press(m, key("lobby", "play"), Enum.KeyCode.Return, Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.arena, "Arena_A")
+			t.expect.falsy(m.ctl.isPlayOpen())
+			m.player:SetAttribute("QueuedAt", 1000 - 5)
+			setDuel(m, "Queued", "Arena_A", 1)
+			t.expect.equal(m.ctl.view().mode, "Waiting", "5 s: still waiting for a player")
+			t.expect.truthy(stage.Prompt.Pill.Actions.Visible, "CANCEL on the hint")
+			m.ctl.tick(0.11)
+			t.expect.equal(stage.ActionBar.Play.Row.Label.Text, "WAITING 0:05")
+			m.player:SetAttribute("QueuedAt", 1000 - UIState.QUICK_CPU_OFFER - 1)
+			m.ctl.refresh()
+			t.expect.equal(m.ctl.view().mode, "CpuOffer")
+			t.expect.truthy(stage.Prompt.Pill.Actions.FightCpu.Visible)
+			press(m, key("lobby", "play"))
+			t.expect.equal(flow.screen(), "Search")
+			t.expect.truthy(string.find(flowPart(m, "Header").Title.Text, "WAITING AT", 1, true) ~= nil)
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.mode, "Cpu")
+			t.expect.equal(lastCall(m).payload.arena, "Arena_A", "the CPU joins right on the circle")
+			t.expect.truthy(m.ctl.playSelect("pill:cancel"))
+			t.expect.equal(m.session.calls[#m.session.calls][1], "leave", "CANCEL leaves the circle")
+			setDuel(m, "Lobby")
+			-- Somebody walking onto a circle (not through the flow) keeps the short walk-in offer.
+			UIState.CPU_OFFER_DELAY = 0
+			setDuel(m, "Queued", "Arena_B", 2)
+			t.expect.equal(m.ctl.view().mode, "CpuOffer")
+		end)
+	end)
+
+	t.test("PLAY flow: a busy map is refused with the next free one offered, in place (READY) or by reopening the flow", function()
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1, "Fighting")
+			station(m, "Arena_C", "Duel", 3)
+			station(m, "Arena_D", "Duel", 4)
+			local flow = m.ctl.playFlow()
+			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(flow.cards()[flow.state().focus].id, "Arena_C", "the first free map is focused")
+			press(m, Enum.KeyCode.Left, Enum.KeyCode.Return)
+			local notice = flowPart(m, "Notice") :: TextLabel
+			t.expect.truthy(notice.Visible and string.find(notice.Text, "IS BUSY", 1, true) ~= nil, "says so")
+			t.expect.equal(flow.cards()[flow.state().focus].id, "Arena_C", "and offers the next free one")
+			press(m, Enum.KeyCode.Return, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.arena, "Arena_C")
+			local toasts = m.ctl.toastCount()
+			m.rejected:Fire({ request = "QuickPlay", reason = "ArenaBusy", arena = "Arena_C", next = "Arena_D" })
+			task.wait()
+			t.expect.equal(flow.screen(), "Ready")
+			t.expect.equal(flow.state().arena, "Arena_D", "READY now offers D")
+			t.expect.truthy(string.find(notice.Text, "FIGHT AT", 1, true) ~= nil)
+			t.expect.equal(m.ctl.toastCount(), toasts, "the flow shows it, no toast")
+			press(m, Enum.KeyCode.Return)
+			t.expect.equal(lastCall(m).payload.arena, "Arena_D", "one press fights there")
+			m.ctl.onTeleport({ reason = "Cpu", arenaId = "Arena_D" })
+			-- VS PLAYER on a map that turned busy: the flow comes back on the map screen with the offer.
+			press(m, key("lobby", "play"), Enum.KeyCode.Return)
+			t.expect.truthy(m.ctl.playSelect("Arena_C"))
+			t.expect.falsy(m.ctl.isPlayOpen())
+			m.rejected:Fire({ request = "QuickPlay", reason = "ArenaBusy", arena = "Arena_C", next = "Arena_D" })
+			task.wait()
+			t.expect.truthy(m.ctl.isPlayOpen(), "reopened")
+			t.expect.equal(flow.screen(), "Map")
+			t.expect.equal(flow.cards()[flow.state().focus].id, "Arena_D")
+			m.ctl.closePlay()
+			-- Other refusals stay toasts.
+			m.rejected:Fire({ request = "QuickPlay", reason = "TooFast" })
+			task.wait()
+			t.expect.equal(m.ctl.toastCount(), toasts + 1)
 		end)
 	end)
 

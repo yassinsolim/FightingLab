@@ -37,6 +37,8 @@ return function(t)
 		LobbyCamera = { "new", "frameBehind", "markerAt", "worldMarkers" },
 		SpectatorPresenter = { "init", "onSnapshot", "update", "clear" },
 		LobbyUI = { "mount", "start", "stop", "active", "boards", "leaderboard", "update", "onSnapshot", "disableBackpack", "worldPrompts", "richKeys" },
+		-- Round 7: the PLAY flow (who -> map -> fight, practice, searching) behind the bar's PLAY button.
+		PlayFlow = { "new", "cards", "act", "rejected", "arenaModel", "arenaLook", "collectArenas", "previewFrame", "mount" },
 		-- Round 5: the custom prompt style + world prompt set, split out of LobbyUI (re-exported there).
 		LobbyPrompts = { "worldPrompts" },
 		UIHelpers = { "holdPlayerList", "attributes", "isAttack" },
