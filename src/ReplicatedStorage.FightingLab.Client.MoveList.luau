@@ -157,6 +157,15 @@ end
 local KIND_WORDS = { launch = "LAUNCH", stance = "STANCE", counter = "COUNTER HIT", low = "LOW START", max = "MAX DAMAGE", ultimate = "ULTIMATE" } :: { [string]: string }
 M.COMBO_KIND_WORDS = KIND_WORDS
 
+-- Round 7: combo difficulty in words. The Roster labels are measured (combat-balance.md, Round 7): 1 = lands even with
+-- sloppy timing; each point more = a longer route, a stance entry, a counter-hit start or a tighter step.
+local DIFFICULTY_WORDS = { "EASY", "MEDIUM", "TRICKY", "HARD", "EXPERT" }
+M.DIFFICULTY_WORDS = DIFFICULTY_WORDS
+function M.difficultyText(n: number?): string
+	local d = math.clamp(math.floor(tonumber(n) or 1), 1, #DIFFICULTY_WORDS)
+	return DIFFICULTY_WORDS[d] .. "  " .. d .. "/5"
+end
+
 local function clear(scroll: ScrollingFrame)
 	for _, child in scroll:GetChildren() do
 		if child:IsA("GuiObject") then child:Destroy() end
@@ -224,7 +233,7 @@ local function moveRow(scroll: ScrollingFrame, def: any, key: string, order: num
 	end
 end
 
-local function comboRow(scroll: ScrollingFrame, combo: any, order: number, stripe: number)
+local function comboRow(scroll: ScrollingFrame, combo: any, order: number, stripe: number, first: boolean?)
 	local T = UIHelpers.Theme
 	local make, text = UIHelpers.make, UIHelpers.text
 	local row = make("ImageLabel", {
@@ -241,15 +250,18 @@ local function comboRow(scroll: ScrollingFrame, combo: any, order: number, strip
 	chip(titleBox, "Kind", KIND_WORDS[combo.kind] or string.upper(combo.kind), if isUlt then T.gold else T.ember, isUlt, 2)
 	if combo.counter then chip(titleBox, "Counter", "COUNTER HIT START", T.cool, false, 3) end
 	if combo.surge then chip(titleBox, "Surge", "IN SURGE", T.gold, false, 4) end
+	-- The first listed route is each fighter's easy one (Roster combos, round 7).
+	local difficulty = math.clamp(math.floor(tonumber(combo.difficulty) or 1), 1, 5)
+	if first and difficulty <= 2 then chip(titleBox, "Start", "START HERE", T.cool, true, 5) end
 	local notation = make("Frame", { Name = "Inputs", BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 34), Size = UDim2.new(0.78, -20, 0, 26), Parent = row })
 	UIHelpers.list(notation, true, 0, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	-- The counter-hit opener has its own chip; "CH " would otherwise merge with the first direction ("CHF").
 	UIHelpers.notationRow(notation, (string.gsub(combo.notation, "^CH%s+", "")), { height = 24, name = "Notation" })
 	text(row, "Damage", tostring(combo.damage) .. " DMG", T.number, 22, if isUlt then T.gold else T.text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 8), Size = UDim2.fromOffset(150, 26), TextXAlignment = Enum.TextXAlignment.Right })
-	text(row, "Difficulty", "DIFFICULTY " .. tostring(combo.difficulty) .. "/5", T.heavy, 12, T.muted, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 38), Size = UDim2.fromOffset(150, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	text(row, "Difficulty", M.difficultyText(difficulty), T.heavy, 12, if difficulty <= 2 then T.cool elseif difficulty >= 4 then T.ember else T.muted, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 38), Size = UDim2.fromOffset(150, 18), TextXAlignment = Enum.TextXAlignment.Right })
 end
 
-local COMBO_NOTE = "Every route is verified against all six fighters. Damage on a 100 HP bar; Ultimate routes are played in Surge. Counter-hit routes start on a counter hit."
+local COMBO_NOTE = "Start with the first route: short and forgiving. Difficulty is measured with sloppy timing (1 easy, 5 expert); every route works on all six fighters. Ultimate routes are played in Surge; counter-hit routes start on a counter hit."
 
 -- Fills `scroll` with the fighter's listed combos only (a COMBOS page). Returns the number of combo rows.
 function M.fillCombos(scroll: ScrollingFrame, def: any, opts: { [string]: any }?): number
@@ -259,7 +271,7 @@ function M.fillCombos(scroll: ScrollingFrame, def: any, opts: { [string]: any }?
 	local count = 0
 	for i, combo in def.combos or {} do
 		count += 1
-		comboRow(scroll, combo, 1 + i, i)
+		comboRow(scroll, combo, 1 + i, i, i == 1)
 	end
 	return count
 end
@@ -301,7 +313,7 @@ function M.fillList(scroll: ScrollingFrame, def: any, _fonts: any?, opts: { [str
 		header(scroll, "Group_Combos", "COMBOS", COMBO_NOTE, order)
 		for i, combo in combos do
 			order += 1
-			comboRow(scroll, combo, order, i)
+			comboRow(scroll, combo, order, i, i == 1)
 		end
 	end
 	return count

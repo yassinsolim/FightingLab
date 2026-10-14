@@ -80,14 +80,30 @@ return function(t)
 			local combos = MoveList.fillCombos(scroll, def)
 			expect.equal(combos, #def.combos, id .. " combo page")
 			expect.equal(count(scroll, "Move_"), 0, id .. " the combo page has no move rows")
-			for _, combo in def.combos do
+			for i, combo in def.combos do
 				local row = scroll:FindFirstChild("Combo_" .. string.gsub(combo.name, "%W", "")) :: Frame
 				expect.truthy(row ~= nil, id .. " " .. combo.name)
 				expect.equal((row:FindFirstChild("Damage") :: TextLabel).Text, tostring(combo.damage) .. " DMG")
+				-- Round 7: the measured difficulty in words, and the easy first route marked as the place to start.
+				expect.equal((row:FindFirstChild("Difficulty") :: TextLabel).Text, MoveList.difficultyText(combo.difficulty), id .. " " .. combo.name .. " difficulty")
+				local start = (row:FindFirstChild("Title") :: Frame):FindFirstChild("Start")
+				if i == 1 then
+					expect.truthy(start ~= nil, id .. " the first route is marked START HERE")
+				else
+					expect.truthy(start == nil, id .. " " .. combo.name .. " is not marked as the start")
+				end
 			end
 		end
 		MoveList.fillList(scroll, Roster.get("Kael"), nil, { combos = false })
 		expect.equal(count(scroll, "Combo_"), 0, "combos can be left out")
 		scroll:Destroy()
+	end)
+
+	test("combo difficulty reads as a word and a 1-5 score", function()
+		expect.equal(MoveList.difficultyText(1), "EASY  1/5")
+		expect.equal(MoveList.difficultyText(2), "MEDIUM  2/5")
+		expect.equal(MoveList.difficultyText(5), "EXPERT  5/5")
+		expect.equal(MoveList.difficultyText(9), "EXPERT  5/5", "clamped")
+		expect.equal(MoveList.difficultyText(nil), "EASY  1/5", "missing labels read as easy")
 	end)
 end
