@@ -1,8 +1,9 @@
-# movesets.md — round 6: six distinct movesets, signature mechanics, combos, Surge and the Ultimate
+# movesets.md — six distinct movesets, signature mechanics, combos, Surge and the Ultimate (round 7: combos you can land)
 
-Owner: combat (`r6-combat`). Source of truth: `ReplicatedStorage.FightingLab.Roster` (every key, input, frame data,
-animation hint, stance, Ultimate timeline and combo route below is generated from it by
-`OV6\work\r6-combat\harness\gen_movesets.luau`). Rules: `RF.CombatSim`. Frames are 60 Hz sim frames.
+Owner: combat (`r6-combat`, round 7 `r7-combat`). Source of truth: `ReplicatedStorage.FightingLab.Roster` (every key,
+input, frame data, animation hint, stance, Ultimate timeline and combo route below is generated from it by
+`OV6\work\r7-combat\harness\gen_movesets.luau`; the "lands" column comes from the round-7 execution audit). Rules:
+`RF.CombatSim`. Frames are 60 Hz sim frames.
 
 **Stability (Contract B).** From M1 on, move keys, stance keys/tags and the Ultimate impact frames stay stable. Any
 later change is listed in a commit-message line `KEYS: ...` and in the change log at the end of this file.
@@ -10,7 +11,24 @@ Presentation keys on the move KEY (never on the input or name). Existing keys ke
 yet and animate through the procedural fallback (`anim.archetype`, always one of the existing Strikes / Kicks /
 Throws archetypes, so nothing errors); the `intent` text is what the clip should show.
 
-## 1. What changed (the user's request: "each character have different movesets and combos, and at low hp an ult")
+## 0. Round 7 (the user: "its difficult to combo the moves", "make sure its fair")
+
+- **Every fighter's first route is the easy one** (difficulty 1, 3-4 presses, no tight links, 26-34 damage; marked
+  "START HERE" on the move list's COMBOS page): Kael *Uppercut Rush* df+2, 2,1,2; Sierra *Elbow Roundhouse* df+3, 2,
+  4,4; Goran *Hammer Down* d+2, 2,2; Lumi *Flip Kick Combo* df+4, 2, 1,4; Rhys *Knee Rush* df+3, 1,2,4; Nia *Palm
+  Flurry* db+2, 1,1,4. Harder routes follow, then the Ultimate ender. Goran's *Lift And Hammer* became *Forearm Finish*
+  (d+2, f+3, 1,2,1). Every route was re-timed for a human rhythm and its difficulty is measured (section 2.7).
+- **Input leniency** (CombatSim): the next hit pressed early during your own move (its active frames, recovery or
+  hitstop) is kept for 30 frames instead of dropped after 8; string follow-ups typed early queue behind the pending
+  press; J+K (the signature) registers up to 4 frames apart (a keyboard "together"), a typed 3,4 with a 5+ frame gap
+  stays a string; juggle follow-ups turn to the airborne body.
+- **Strings are natural combos on hit** (2.8): a follow-up on hit steps in during its startup instead of reaching
+  further than its animation.
+- **Fairness**: frame data, damage and health changes (change log, section 6) and a per-fighter CPU skill offset per
+  difficulty (`CombatAI.FighterSkill`); numbers in combat-balance.md, Round 7.
+- Keys, stance keys/tags, inputs and Ultimate impact frames are unchanged (no `KEYS:` change).
+
+## 1. What changed in round 6 (the user's request: "each character have different movesets and combos, and at low hp an ult")
 
 - 16-17 template moves per fighter → **23-26 moves**: three 3-hit strings with different enders per fighter, two
   launchers each (a standard one plus a unique one: from the stance or on counter hit), a **tumble** juggle extender,
@@ -117,6 +135,26 @@ drives every combo against all six fighters and checks that every press connects
 (±1); the CPU plays the same routes (Hard almost always after a launch, Normal sometimes, Easy never) and the
 move list shows them on its COMBOS section. Damage targets: 30-45 % of a 100 HP bar (31-40 listed), Ultimate enders ≤ 55 %
 of the smallest bar (35-44 listed).
+
+Round 7: the first route of every fighter is an easy one (difficulty 1-2, at most 4-5 presses, no tight links; 26-34
+damage), and difficulty is measured, not guessed: 1, +1 for 5+ presses, +1 for a stance entry or cancel, +1 for a
+counter-hit opener, +1 if the route lands under 95 % of the time with ±5-frame timing noise, +1 more under 90 %.
+"Lands" in the tables below = share of 180 performances (keys through the real InputController, against all six
+opponents) in which every step connected, with every key event shifted by up to ±3 / ±5 frames. Single-button steps
+that could merge into a chord are kept apart (3/4, 1/3, 2/4 at least 12 frames, 1/2 at least 8) and the stance
+entries of stance routes are the 3+4 chord. `ComboTrial` (practice combo trials, Contract C) reads the same list.
+
+### 2.8 Strings on hit (round 7)
+
+A string follow-up whose previous hit (same string) put the opponent in hitstun or a juggle is "on hit". During its
+startup (up to and including its first active frame) it **steps in**: the attacker travels toward the opponent until
+it is 0.1 studs inside the move's range (counting the root `advance` still to come), at most 0.2 studs per frame and
+1.6 per move, never through the opponent (`CombatSim.stringStep`, `CombatConfig.StringStepIn / StringStepFrame /
+StringStepMargin`). It may connect at most 0.3 studs past its range (`StringReach`). On block or whiff nothing
+changes. Measured: every string is a natural combo from every range its first hit reaches, and no strike connects past
+its range; step-ins average 0.3 studs (max about 1.05, Goran's 1,2,1 from the far end). Presentation: the step-in is
+root travel like `advance` (the fighter's position moves during the follow-up's startup), so a clip that already
+lunges forward reads naturally; nothing else to change.
 ## 3. Snapshot and event fields (codec v3, additive)
 
 | field | where | meaning |
@@ -201,12 +239,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Kael").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Uppercut Bread | launch | `df+2, 1, b+1, 2,1` | df+2 · +32 1 · +23 b+1 · +33 2 · +8 1 | 32 | 2/5 |
-| Pocket Launch | stance | `3+4, PKT+2, 1, b+1, 2,1` | 3+4 · +1 PKT+2 · +38 1 · +23 b+1 · +33 2 · +8 1 | 31 | 3/5 |
-| Counter Uppercut | max (CH opener) | `CH df+2, 1, b+1, 2,1` | df+2 · +32 1 · +23 b+1 · +33 2 · +8 1 | 36 | 3/5 |
-| Final Bell Finish | ultimate | `df+2, 1+2` | df+2 · +32 1+2 | 37 (in Surge) | 2/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Uppercut Rush (start here) | launch | `df+2, 2,1,2` | df+2 · +33 2 · +10 1 · +10 2 | 33 | 1/5 | 100 % / 100 % |
+| Pocket Launch | stance | `3+4, PKT+2, 2,1,2` | 3+4 · +9 PKT+2 · +31 2 · +10 1 · +10 2 | 32 | 3/5 | 100 % / 100 % |
+| Rib Roller Finish | max | `df+2, b+1, 2,1,2` | df+2 · +33 b+1 · +33 2 · +10 1 · +10 2 | 37 | 2/5 | 100 % / 100 % |
+| Counter Uppercut | counter (CH opener) | `CH df+2, 1, b+1, 2,1` | df+2 · +33 1 · +23 b+1 · +33 2 · +10 1 | 36 | 3/5 | 100 % / 100 % |
+| Final Bell Finish | ultimate | `df+2, 1+2` | df+2 · +33 1+2 | 37 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (7): OneTwoShin, HookOverhand, RibRoller, Pocket, PocketShovel, PocketUppercut, Ultimate.
 
@@ -224,13 +263,13 @@ Stance `Southpaw` (tag `SPW`, snapshot `stance = "Southpaw"`): entry 5 f, follow
 
 | key | name | notation | height | i / act / rec | block / hit | dmg | reach + adv | properties | archetype | animation intent |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Jab | Range Jab | 1 | High | 10 / 2 / 12 | +1 / +8 | 5 | 3.95 + 0.25 |  | straight | Long lead jab from a bladed kickboxing stance: lead foot slides forward, arm fully extends at head height, rear glove at the cheek, quick return. |
+| Jab | Range Jab | 1 | High | 10 / 2 / 12 | +1 / +8 | 6 | 3.95 + 0.25 |  | straight | Long lead jab from a bladed kickboxing stance: lead foot slides forward, arm fully extends at head height, rear glove at the cheek, quick return. |
 | JabKick | Jab Into Teep | 1,3 | Mid | 14 / 3 / 18 | -7 / +3 | 11 | 3.75 + 1.35 | string after Jab, cancel into Southpaw (3+4) | teep | As the jab retracts, the lead knee lifts and the ball of the foot pushes straight into the stomach (teep); hips thrust forward, upper body leans back, arms stay high. |
 | JabTeepHigh **new** | Jab Teep Head Kick | 1,3,4 | High | 16 / 3 / 21 | -9 / +5 | 13 | 4.6 + 0.4 | string after JabKick, tracking | roundhouse | High ender of 1,3: the teep foot lands forward and the rear leg whips a full roundhouse to the side of the head, hips turning over, rear arm swinging down for balance; she lands back in the bladed stance. |
 | JabTeepLow **new** | Jab Teep Calf Kick | 1,3,3 | Low | 15 / 2 / 20 | -12 / +2 | 9 | 4.0 | string after JabKick | low_kick | Low ender of 1,3: the teep leg never touches down; it re-chambers and chops an inside low kick into the opponent's lead calf, shin turned over, hands high (same base as the head kick: high or low). |
 | SlashElbow **new** | Slashing Elbow | 2 | High | 12 / 2 / 15 | -3 / +5 | 11 | 3.2 + 0.6 |  | elbow | Muay Thai slashing elbow: a short step in, the rear elbow lifts to shoulder height and slices diagonally down and across the opponent's brow, forearm horizontal, lead glove covering the chin; the body turns behind it and she resets the guard. |
 | Cross *input* | Counter Cross | b+2 | High | 11 / 2 / 14 | -3 / +5 | 9 | 3.8 + 0.8 |  | straight | Counter cross (the weight rocks back first, then the punch): rear heel turns out, hips rotate, arm extends straight to the head, lead hand drops to cover the chin, snaps back to the bladed guard. |
-| Teep | Long Teep | 3 | Mid | 13 / 3 / 17 | -5 / +3 | 11 | 3.8 + 1.4 | cancel into Southpaw (3+4) | teep | Lead-leg push kick at full length: knee chambers high, hips drive the sole of the foot into the belly, supporting foot rises onto the ball, arms hold a high guard. |
+| Teep | Long Teep | 3 | Mid | 13 / 3 / 17 | -5 / +3 | 12 | 3.8 + 1.4 | cancel into Southpaw (3+4) | teep | Lead-leg push kick at full length: knee chambers high, hips drive the sole of the foot into the belly, supporting foot rises onto the ball, arms hold a high guard. |
 | TeepKick | Teep Into High Kick | 3,4 | High | 16 / 3 / 20 | -9 / +4 | 12 | 5.2 + 0.3 | string after Teep, tracking | roundhouse | The teep foot lands forward and the rear leg immediately whips a roundhouse to the head; full hip rotation, rear arm swings down, kick turns over at head height. |
 | TeepSpinKick **new** | Teep Kick Spin | 3,4,4 | Mid | 18 / 3 / 24 | -13 / KND | 15 | 4.2 + 0.8 | string after TeepKick | spinning_back_kick | Mid ender of 3,4: the head kick's momentum carries her around; she lets the rear leg land, keeps turning her back to the opponent (head looking over the shoulder) and drives a spinning back kick heel-first into the stomach (knockdown). |
 | HighRoundhouse | Head Roundhouse | 4 | High | 14 / 3 / 20 | -8 / +5 (CH KND) | 13 | 4.5 + 0.9 | tracking | roundhouse | Rear-leg roundhouse to the head (Muay Thai style): lead foot pivots on the ball, hips turn over completely, shin swings in a flat arc at head height, rear arm swings back. |
@@ -240,7 +279,7 @@ Stance `Southpaw` (tag `SPW`, snapshot `stance = "Southpaw"`): entry 5 f, follow
 | SwitchKick | Switch Lift Kick | df+3 | Mid | 15 / 3 / 22 | -13 / LAUNCH | 13 | 2.8 + 1.4 |  | rising_kick | Quick stance switch (feet swap with a small hop), then the lead leg kicks straight up under the chin like a vertical front kick, toes pointing up, body leans back. |
 | LegKick | Calf Kick | d+4 | Low | 13 / 2 / 21 | -13 / +1 | 8 | 4.0 |  | low_kick | Fast rear-leg calf kick: small hip turn, shin chops down onto the opponent's lead calf just below the knee, foot returns quickly, guard stays high. |
 | LowSweep | Ground Sweep | db+4 | Low | 20 / 4 / 26 | -18 / KND | 15 | 4.0 + 0.6 | crouching | sweep | Drop low onto the lead knee and hands, rear leg sweeps in a wide arc along the floor at ankle height, body spins with it and rises back to stance. |
-| DuckJab | Crouch Jab | d+1 | Mid* | 11 / 2 / 14 | -4 / +4 | 5 | 3.8 | special mid, crouching | straight | Short lead jab from a crouch, aimed at the stomach: knees stay bent, lead arm extends level, rear glove covers the face, stays crouched after. |
+| DuckJab | Crouch Jab | d+1 | Mid* | 11 / 2 / 14 | -4 / +4 | 6 | 3.8 | special mid, crouching | straight | Short lead jab from a crouch, aimed at the stomach: knees stay bent, lead arm extends level, rear glove covers the face, stays crouched after. |
 | HopCross | Hop Cross | f+2 | High | 17 / 3 / 18 | -6 / +6 | 15 | 3.7 + 2.1 | low crush f6-15 | superman_punch | Fake a rear knee, push off it and hop forward, throwing the rear cross in mid-air while the leg kicks back for balance; lands on the lead foot (feet leave the floor = low crush). |
 | AngleKick | Angle Kick | ss+3 | Mid | 15 / 3 / 18 | -8 / +4 | 12 | 3.25 + 1.75 | homing | roundhouse | From a sidestep, a lead-leg roundhouse to the ribs that turns with the opponent; pivot on the rear foot, kick arcs horizontally at waist height. |
 | Southpaw **new** | Southpaw | 3+4 | Mid | 5 / 1 / 1 | +0 / +0 | 0 | 2.6 | enters Southpaw, no hitbox | parry | SIGNATURE stance entry (no strike): a small hop-switch of the feet (the right leg becomes the lead leg, the left the rear), the guard mirrors (right glove forward), she lands light on the balls of the feet in a mirrored, bladed kickboxing stance (see the stance). |
@@ -273,12 +312,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Sierra").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Switch Teep | launch | `df+3, 3, 3+4, SPW+3, 1,3` | df+3 · +32 3 · +15 3+4 · +8 SPW+3 · +32 1 · +8 3 | 34 | 4/5 |
-| Counter Knee | counter (CH opener) | `CH f+3, 1,3,4` | f+3 · +26 1 · +8 3 · +11 4 | 32 | 2/5 |
-| Knee To Southpaw | max (CH opener) | `CH f+3, 1,3, 3+4, SPW+3, 2` | f+3 · +26 1 · +8 3 · +19 3+4 · +8 SPW+3 · +32 2 | 36 | 4/5 |
-| Eight Limbs Finish | ultimate | `df+3, 1+2` | df+3 · +32 1+2 | 37 (in Surge) | 2/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Elbow Roundhouse (start here) | launch | `df+3, 2, 4,4` | df+3 · +33 2 · +28 4 · +10 4 | 34 | 1/5 | 100 % / 100 % |
+| Switch Teep | stance | `df+3, 3, 3+4, SPW+3, 2` | df+3 · +33 3 · +22 3+4 · +7 SPW+3 · +26 2 | 33 | 3/5 | 100 % / 98 % |
+| Counter Knee | counter (CH opener) | `CH f+3, 2, 4,4` | f+3 · +27 2 · +28 4 · +10 4 | 37 | 2/5 | 100 % / 100 % |
+| Knee To Southpaw | max (CH opener) | `CH f+3, 1,3, 3+4, SPW+3, 2` | f+3 · +27 1 · +12 3 · +22 3+4 · +7 SPW+3 · +26 2 | 36 | 5/5 | 100 % / 93 % |
+| Eight Limbs Finish | ultimate | `df+3, 1+2` | df+3 · +33 1+2 | 37 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (9): JabTeepHigh, JabTeepLow, SlashElbow, TeepSpinKick, Southpaw, SouthpawHeadKick, SouthpawBodyKick, SouthpawLowKick, Ultimate.
 
@@ -291,7 +331,7 @@ New keys (9): JabTeepHigh, JabTeepLow, SlashElbow, TeepSpinKick, Southpaw, South
 | key | name | notation | height | i / act / rec | block / hit | dmg | reach + adv | properties | archetype | animation intent |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Jab | Heavy Jab | 1 | High | 10 / 2 / 13 | +1 / +7 | 7 | 4.4 |  | straight | Heavy, short lead jab from a wide grappling stance with open-ish fist: shoulder pushes the punch, little footwork, the big torso leans in. |
-| JabHammer | Jab Into Hammer | 1,2 | Mid | 15 / 3 / 19 | -9 / +3 | 12 | 4.0 + 0.2 | string after Jab | hammer_fist | After the jab, the rear fist rises above the head and clubs straight down onto the collarbone (hammer fist); knees bend as the blow lands. |
+| JabHammer | Jab Into Hammer | 1,2 | Mid | 15 / 3 / 19 | -9 / +3 | 11 | 4.0 + 0.2 | string after Jab | hammer_fist | After the jab, the rear fist rises above the head and clubs straight down onto the collarbone (hammer fist); knees bend as the blow lands. |
 | JabHammerForearm **new** | Jab Hammer Forearm | 1,2,1 | High | 16 / 3 / 22 | -10 / KND | 13 | 3.6 + 0.5 | string after JabHammer, tracking | elbow | High ender of 1,2: from the hammer fist he steps through with the lead foot and swings the lead forearm horizontally into the side of the head (clubbing forearm smash, elbow bent ninety degrees, the whole torso turning behind it); the opponent is knocked down. |
 | JabHammerStomp **new** | Jab Hammer Stomp | 1,2,3 | Low | 16 / 3 / 22 | -13 / +1 | 11 | 3.8 + 0.4 | string after JabHammer | stomp | Low ender of 1,2: after the hammer fist he lifts the lead knee high and stamps the boot heel down onto the opponent's lead foot and shin, arms still forward, whole body weight dropping onto it (same base as the forearm: high or low). |
 | Hammer | Hammer Fist | 2 | Mid | 14 / 3 / 18 | -5 / +4 | 13 | 4.0 + 0.2 |  | hammer_fist | Rear arm swings up and over like an axe and the bottom of the fist smashes down onto the shoulder/chest; whole body drops with the strike. |
@@ -305,12 +345,12 @@ New keys (9): JabTeepHigh, JabTeepLow, SlashElbow, TeepSpinKick, Southpaw, South
 | ClubKick | Club Kick | 4 | Mid | 16 / 3 / 20 | -8 / +3 | 14 | 4.8 + 0.2 | tracking | roundhouse | Heavy rear-leg body kick thrown like a club: less snap, more weight, hips turn over slowly and the shin lands on the ribs. |
 | Stomp | Knee Stomp | d+3 | Low | 14 / 3 / 20 | -12 / +1 | 9 | 3.8 + 0.3 |  | stomp | Lifts the lead knee and stamps the boot down and forward onto the opponent's lead knee/shin; arms stay forward. |
 | CrouchJab *input* | Low Poke | db+1 | Mid* | 12 / 2 / 15 | -5 / +3 | 6 | 3.6 | special mid, crouching | straight | From a squat, a short stiff lead punch to the stomach; stays crouched, other hand forward. |
-| LegHook | Leg Hook Sweep | d+4 | Low | 21 / 4 / 24 | -17 / KND | 16 | 3.8 + 0.5 | crouching | sweep | Drops onto the lead knee and hooks the rear leg around the opponent's ankles, reaping them off their feet; heavy body rotation. |
+| LegHook | Leg Hook Sweep | d+4 | Low | 23 / 4 / 24 | -17 / KND | 15 | 3.8 + 0.5 | crouching | sweep | Drops onto the lead knee and hooks the rear leg around the opponent's ankles, reaping them off their feet; heavy body rotation. |
 | Haymaker | Wide Haymaker | b+2 | High | 18 / 3 / 19 | -9 / +5 (CH LAUNCH) | 17 | 3.95 + 0.55 | homing | hook | Huge looping rear hook to the head, wound up from behind the hip; the arc sweeps wide and follows a sidestepping opponent (homing). On a counter hit it lifts the opponent off its feet (counter-hit launcher). |
 | Bulldozer | Bulldozer | f,f+2 | Mid | 20 / 4 / 22 | -12 / KND | 22 | 2.8 + 3.0 | armor f4-19 | shoulder_tackle | Out of a dash, a running double-handed shove/shoulder ram: three heavy running steps, arms forward, absorbs a hit (armor), and bowls the opponent over. |
 | BearTrap **new** | Bear Trap | 3+4 | Mid | 4 / 21 / 26 | +0 / +0 | 0 | 2.6 | catch f4-24 High/Mid into ThrowB, no hitbox | parry | SIGNATURE catch (no strike): he sinks his hips and opens both arms wide at chest height, palms forward, chin down, inviting the hit (frames 4-24). A high or mid strike that touches him is caught: his arms clamp around the striking arm or leg and the body, and he goes straight into the Belly Suplex (ThrowB, unbreakable). Lows and throws beat it; a whiffed trap leaves him open for a long time. |
 | Throw | Bear Hug Toss | 1+3 | Throw | 12 / 2 / 34 | break 1 ≤f20, impact f36 of 50 | 18 | 3.2 |  | bear_hug_toss | Wraps both arms around the opponent's waist, lifts them off the floor with a hip thrust, turns and tosses them face-up in front of him. |
-| ThrowB | Belly Suplex | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f38 of 52 | 20 | 3.2 |  | slam | Front body lock, steps in deep, lifts belly to belly, slams forward onto the back. |
+| ThrowB | Belly Suplex | 2+4 | Throw | 12 / 2 / 34 | break 2 ≤f20, impact f38 of 52 | 18 | 3.2 |  | slam | Front body lock, steps in deep, lifts belly to belly, slams forward onto the back. |
 | RamSlam | Ram Slam | f+1+3 | Throw | 15 / 2 / 36 | break 1 ≤f14, impact f42 of 58 | 26 | 3.2 |  | slam | Command grab: lunges forward, scoops the opponent onto his shoulder and drops forward, slamming them flat into the floor (shorter break window). |
 | Ultimate **new** | Landslide | 1+2 | Mid | 22 / 4 / 28 | -15 / KND | 36 | 3.0 + 1.4 | armor (all hits) f1-21 | shoulder_tackle | ULTIMATE (Surge only, once per round) 'Landslide': an armored charging shoulder opens it; on hit the cinematic plays the beats in movesets.md (body-lock crush, suplex, knee slam, carry and forward drop). |
 
@@ -335,12 +375,12 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Goran").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Lift And Hammer | launch | `d+2, f+3, 1,2` | d+2 · +35 f+3 · +34 1 · +8 2 | 34 | 2/5 |
-| Counter Haymaker | counter (CH opener) | `CH b+2, f+3, 1,2` | b+2 · +32 f+3 · +34 1 · +8 2 | 40 | 3/5 |
-| Forearm Finish | max | `d+2, f+3, 1,2,1` | d+2 · +35 f+3 · +34 1 · +8 2 · +11 1 | 39 | 3/5 |
-| Landslide Finish | ultimate | `d+2, 1+2` | d+2 · +35 1+2 | 42 (in Surge) | 2/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Hammer Down (start here) | launch | `d+2, 2,2` | d+2 · +36 2 · +10 2 | 32 | 1/5 | 100 % / 100 % |
+| Forearm Finish | max | `d+2, f+3, 1,2,1` | d+2 · +36 f+3 · +34 1 · +10 2 · +10 1 | 38 | 2/5 | 100 % / 100 % |
+| Counter Haymaker | counter (CH opener) | `CH b+2, f+3, 1,2` | b+2 · +33 f+3 · +34 1 · +10 2 | 39 | 2/5 | 100 % / 100 % |
+| Landslide Finish | ultimate | `d+2, 1+2` | d+2 · +36 1+2 | 42 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (6): JabHammerForearm, JabHammerStomp, BootForearm, BootForearmHammer, BearTrap, Ultimate.
 
@@ -358,7 +398,7 @@ Stance `Aerial` (tag `AER`, snapshot `stance = "Aerial"`): entry 4 f, follow-ups
 
 | key | name | notation | height | i / act / rec | block / hit | dmg | reach + adv | properties | archetype | animation intent |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Palm | Quick Palm | 1 | High | 10 / 2 / 12 | +1 / +8 | 5 | 3.95 + 0.25 |  | palm | Loose lead palm strike to the face from a bouncy low stance: wrist bent back, heel of the palm snaps forward and back, knees springy. |
+| Palm | Quick Palm | 1 | High | 10 / 2 / 12 | +1 / +8 | 6 | 3.95 + 0.25 |  | palm | Loose lead palm strike to the face from a bouncy low stance: wrist bent back, heel of the palm snaps forward and back, knees springy. |
 | PalmHeel | Palm To Spin Heel | 1,4 | Mid | 15 / 3 / 22 | -10 / +3 | 12 | 3.5 + 1.4 | string after Palm, TUMBLE, tracking | spin_kick | After the palm, she spins a full turn on the lead foot and the rear heel swings around into the ribs (spinning heel kick), arms flung out for momentum. TUMBLE: on an airborne opponent the spinning heel flips the body over in the air (one more juggle hit connects). |
 | PalmHeelHook **new** | Palm Heel Hook Kick | 1,4,4 | High | 16 / 3 / 22 | -12 / KND | 13 | 3.8 + 0.6 | string after PalmHeel, tracking | spin_kick | High ender of 1,4: the spinning heel lands and she keeps the spin going, hopping on the lead foot into a second full turn; the rear heel hooks around at head height (spinning hook kick) and knocks the opponent down. |
 | PalmHeelSweep **new** | Palm Heel Sweep | 1,4,3 | Low | 16 / 3 / 22 | -13 / +1 | 10 | 3.9 + 0.4 | string after PalmHeel, crouching | sweep | Low ender of 1,4: out of the spinning heel she drops onto one hand and the lead leg sweeps a fast half circle along the floor at ankle height, then she springs back up (same base as the hook kick: high or low). |
@@ -406,13 +446,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Lumi").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Flip And Spin | launch | `df+4, 2, 1,4, 4` | df+4 · +37 2 · +30 1 · +8 4 · +11 4 | 34 | 3/5 |
-| Aerial Launch | stance | `3+4, AER+4, 2, 1,4, 4` | 3+4 · +1 AER+4 · +41 2 · +30 1 · +8 4 · +11 4 | 33 | 4/5 |
-| Cartwheel Counter | counter (CH opener) | `CH b+3, 2, 1,4, 4` | b+3 · +34 2 · +30 1 · +8 4 · +11 4 | 40 | 3/5 |
-| Crescent Flight | max | `df+4, 2, 3,4,4` | df+4 · +37 2 · +30 3 · +8 4 · +14 4 | 35 | 3/5 |
-| Skyline Finish | ultimate | `df+4, 1+2` | df+4 · +37 1+2 | 35 (in Surge) | 2/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Flip Kick Combo (start here) | launch | `df+4, 2, 1,4` | df+4 · +38 2 · +30 1 · +10 4 | 29 | 1/5 | 100 % / 100 % |
+| Aerial Launch | stance | `3+4, AER+4, 2, 1,4,4` | 3+4 · +13 AER+4 · +30 2 · +30 1 · +10 4 · +10 4 | 33 | 3/5 | 100 % / 100 % |
+| Cartwheel Counter | counter (CH opener) | `CH b+3, 2, 1,4,4` | b+3 · +35 2 · +30 1 · +10 4 · +10 4 | 40 | 3/5 | 100 % / 100 % |
+| Flip And Spin | max | `df+4, 2, 1,4,4` | df+4 · +38 2 · +30 1 · +10 4 · +10 4 | 34 | 2/5 | 100 % / 100 % |
+| Skyline Finish | ultimate | `df+4, 1+2` | df+4 · +38 1+2 | 35 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (8): PalmHeelHook, PalmHeelSweep, CrescentFlyingKick, Aerial, AerialSplit, AerialHeel, AerialSweep, Ultimate.
 
@@ -476,12 +516,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Rhys").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Knee And Backfist | launch | `df+3, 2, b+2, 1` | df+3 · +32 2 · +30 b+2 · +35 1 | 31 | 2/5 |
-| Still Water Answer | stance | `3+4, STW+2, 2, b+2, 1` | 3+4 · +1 STW+2 · +40 2 · +30 b+2 · +35 1 | 32 | 3/5 |
-| Counter Knee | max (CH opener) | `CH df+3, 2, b+2, 1` | df+3 · +32 2 · +30 b+2 · +35 1 | 34 | 3/5 |
-| Last Kata Finish | ultimate | `df+3, 1+2` | df+3 · +32 1+2 | 38 (in Surge) | 2/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Knee Rush (start here) | launch | `df+3, 1,2,4` | df+3 · +33 1 · +10 2 · +12 4 | 29 | 1/5 | 100 % / 100 % |
+| Still Water Answer | stance | `3+4, STW+2, 2, b+2, 1` | 3+4 · +11 STW+2 · +31 2 · +30 b+2 · +35 1 | 32 | 3/5 | 100 % / 100 % |
+| Knee And Backfist | max | `df+3, 2, b+2, 1` | df+3 · +33 2 · +30 b+2 · +35 1 | 31 | 1/5 | 100 % / 100 % |
+| Counter Knee | counter (CH opener) | `CH df+3, 2, b+2, 1` | df+3 · +33 2 · +30 b+2 · +35 1 | 34 | 2/5 | 100 % / 100 % |
+| Last Kata Finish | ultimate | `df+3, 1+2` | df+3 · +33 1+2 | 38 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (8): ReverseHighKick, ReverseLowKick, PunchKickAxe, LowParry, StillWater, StillStrike, StillReverse, Ultimate.
 
@@ -503,13 +544,13 @@ Stance `Coil` (tag `COIL`, snapshot `stance = "Coil"`): entry 6 f, follow-ups fr
 | DoubleChop | Twin Knife Hand | 1,1 | High | 10 / 2 / 13 | +0 / +7 | 6 | 3.75 + 0.55 | string after Chop | chop | The rear hand follows with a second knife-hand from the other side as the lead hand circles back, flowing figure-eight arm motion. |
 | FlurryKick | Flurry Finisher | 1,1,4 | Mid | 15 / 3 / 22 | -12 / KND | 12 | 4.2 + 0.9 | string after DoubleChop, tracking | roundhouse | The hand flurry flows into a turning rear roundhouse to the body; she pivots on the lead foot, arms circle outward as the kick lands. |
 | DoubleChopLow **new** | Flurry Low Kick | 1,1,3 | Low | 15 / 2 / 20 | -12 / +2 | 9 | 4.0 + 0.3 | string after DoubleChop | low_kick | Low ender of 1,1: after the two chops she sinks into a low stance and the lead foot snaps a short kick into the shin along the floor, both palms circling in front of her (same base as the flurry finisher: mid or low). |
-| PalmThrust | Palm Thrust | 2 | Mid | 12 / 3 / 16 | -4 / +5 | 11 | 3.4 + 1.0 |  | palm | Rear palm thrust to the chest from a low horse-like stance: the hips sink and turn, the heel of the palm pushes forward, the lead hand withdraws to the waist. |
+| PalmThrust | Palm Thrust | 2 | Mid | 12 / 3 / 16 | -4 / +5 | 10 | 3.4 + 1.0 |  | palm | Rear palm thrust to the chest from a low horse-like stance: the hips sink and turn, the heel of the palm pushes forward, the lead hand withdraws to the waist. |
 | PalmKick | Palm Into Rising Snap Kick | 2,3 | Mid | 14 / 3 / 19 | -8 / +3 | 11 | 3.8 + 1.0 | string after PalmThrust, cancel into Coil (3+4) | front_kick | The palm withdraws, weight shifts onto the rear leg and the lead foot snaps a front kick into the stomach, then the hands return to a guard as the foot lands back in the low stance. |
 | PalmKickHigh **new** | Palm Kick Crescent | 2,3,4 | High | 16 / 3 / 22 | -9 / +5 | 13 | 4.4 + 0.6 | string after PalmKick, delayable +20 f, tracking | crescent_kick | High ender of 2,3 (delayable: she can hold it for a beat): the snap-kick foot lands and the rear leg swings a straight-legged outside crescent across the face in a wide arc, arms circling the other way. |
 | RisingFrontKick | Rising Front Kick | 3 | Mid | 12 / 3 / 15 | -3 / +4 | 9 | 3.6 + 1.2 | TUMBLE | front_kick | Lead front kick rising from the low stance: knee up, toes pointed, snaps to the stomach and back, rear palm forward. TUMBLE: on an airborne opponent the rising kick flips the body over in the air. |
 | HighKick | Whip Kick | 4 | High | 13 / 3 / 18 | -7 / +5 | 12 | 4.55 + 0.65 | cancel into Coil (3+4), tracking | roundhouse | Whipping rear roundhouse to the head, light and fast: the knee leads, the lower leg whips at the end, arms circle for balance. |
-| LowSpin | Low Spin Kick | d+3 | Low | 13 / 2 / 18 | -11 / +4 | 8 | 4.0 | crouching | sweep | Sinks into a low crouch and the lead leg sweeps a short quick arc into the shin, hands near the floor, stays crouched. |
-| RisingTornado | Rising Whirlwind | d+3,4 | Mid | 20 / 3 / 24 | -15 / LAUNCH | 12 | 3.1 + 1.5 | string after LowSpin | rising_kick | From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body spirals up onto the toes. Combos from the low spin on hit (a low-starter launcher); on block there is a gap to interrupt it. |
+| LowSpin | Low Spin Kick | d+3 | Low | 13 / 2 / 18 | -11 / +4 | 7 | 4.0 | crouching | sweep | Sinks into a low crouch and the lead leg sweeps a short quick arc into the shin, hands near the floor, stays crouched. |
+| RisingTornado | Rising Whirlwind | d+3,4 | Mid | 20 / 3 / 24 | -15 / LAUNCH | 10 | 3.1 + 1.5 | string after LowSpin | rising_kick | From the low spin she rises while turning, the rear leg kicks upward in a spiral under the chin, body spirals up onto the toes. Combos from the low spin on hit (a low-starter launcher); on block there is a gap to interrupt it. |
 | RisingPalm *input* | Rising Palm Uppercut | db+2 | Mid | 15 / 3 / 22 | -14 / LAUNCH | 13 | 3.2 + 0.9 | high crush f1-7 | uppercut | From a crouch, the rear palm drives straight up under the chin while the legs extend, lead hand pulls down, she rises onto the toes. |
 | ButterflyKick | Butterfly Kick | f+4 | Mid | 18 / 4 / 22 | -10 / KND | 16 | 3.85 + 1.15 | low crush f6-16 | butterfly_kick | Torso drops horizontal and she spins in the air with both legs scissoring outward (butterfly kick), the rear leg striking the chest; feet leave the floor (low crush). |
 | Backfist | Snapping Backfist | b+2 | High | 12 / 3 / 15 | -3 / +6 | 9 | 3.0 + 1.6 | cancel into Coil (3+4), tracking | backfist | Short snapping backfist with the rear hand across the body to the temple, elbow leads, wrist flicks, quick recoil. |
@@ -547,12 +588,13 @@ Beats (what attacker and defender do; impact poses land on the impact frames):
 
 Combos (`Roster.get("Nia").combos`, verified against all six opponents by `CombatCombo_Test`):
 
-| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty |
-|---|---|---|---|---|---|
-| Palm Lift Flurry | launch | `db+2, 1, 3, 2,3` | db+2 · +32 1 · +23 3 · +29 2 · +8 3 | 31 | 3/5 |
-| Coil Whirl | stance | `db+2, 4, 3+4, COIL+4,4` | db+2 · +32 4 · +15 3+4 · +8 COIL+4 · +6 4 | 32 | 4/5 |
-| Whirlwind Rise | low | `d+3,4, 4, 3+4, COIL+4,4` | d+3 · +3 4 · +50 4 · +15 3+4 · +8 COIL+4 · +6 4 | 39 | 4/5 |
-| Monsoon Finish | ultimate | `d+3,4, 1+2` | d+3 · +3 4 · +50 1+2 | 44 (in Surge) | 3/5 |
+| combo | kind | notation | presses (frames after the previous press, hitstop not counted) | damage | difficulty | lands with ±3 / ±5 f timing noise |
+|---|---|---|---|---|---|---|
+| Palm Flurry (start here) | launch | `db+2, 1,1,4` | db+2 · +33 1 · +10 1 · +10 4 | 26 | 1/5 | 100 % / 100 % |
+| Palm Lift Flurry | max | `db+2, 1, 3, 2,3` | db+2 · +33 1 · +23 3 · +29 2 · +10 3 | 31 | 2/5 | 100 % / 100 % |
+| Coil Whirl | stance | `db+2, 4, 3+4, COIL+4,4` | db+2 · +33 4 · +22 3+4 · +8 COIL+4 · +10 4 | 32 | 3/5 | 100 % / 99 % |
+| Whirlwind Rise | low | `d+3,4, 4, 3+4, COIL+4,4` | d+3 · +12 4 · +42 4 · +22 3+4 · +8 COIL+4 · +10 4 | 36 | 3/5 | 100 % / 98 % |
+| Monsoon Finish | ultimate | `d+3,4, 1+2` | d+3 · +12 4 · +42 1+2 | 41 (in Surge) | 1/5 | 100 % / 100 % |
 
 New keys (7): DoubleChopLow, PalmKickHigh, Coil, CoilWhirl, CoilWhirl2, CoilWhirl3, Ultimate.
 
@@ -563,3 +605,4 @@ New keys (7): DoubleChopLow, PalmKickHigh, Coil, CoilWhirl, CoilWhirl2, CoilWhir
 | M1 (712426d) | keys, stances, Ultimates and timelines published |
 | after M1 | `Ultimate.cinematic.endDistance` raised to 4.4-4.6 studs (motion request: the lying defender's feet reach about 3.1-3.3 studs in front of its root; at 2.8-3.8 they landed under the attacker's legs): Kael 4.4, Sierra 4.6, Goran 4.6, Lumi 4.4, Rhys 4.6, Nia 4.6. Keys, impact frames and durations unchanged. |
 | phase 2 (sim, combos) | Frame data tuned so the listed combos are true combos (keys, stance keys/tags, Ultimate impact frames and durations unchanged): Sierra `Southpaw` entry 8 → 5 frames (`cancelFrom` 5, back exit from frame 8 instead of 10); `SouthpawBodyKick` (SPW+3) i15 → i13. Nia `LowSpin` (d+3) +2 → +4 on hit and `RisingTornado` (d+3,4) i22 → i20, so d+3,4 is a natural low-to-launch combo on hit. Lumi's tumble extender moved from `AerialSplit` (AER+3) to `PalmHeel` (1,4) (the committed Aerial travel cannot reach a juggled body). Lumi `CartwheelKick` (b+3) launches on counter hit (her counter route). Juggle physics: launch 16 → 19 studs/s, re-lift 7.5 → 9, tumble lift 9 → 12, air time 86 → 110 frames. `combos` lists added to every fighter (section 2.7). |
+| round 7 (`r7-combat`) | No key, input, stance or Ultimate timing change. Data (fairness, combat-balance.md Round 7): Goran HP 120 → 104, `JabHammer` 12 → 11 damage, `LegHook` i21 → i23 and 16 → 15, `ThrowB` 20 → 18; Sierra HP 95 → 102, `Jab` and `DuckJab` 5 → 6, `Teep` 11 → 12; Lumi HP 90 → 98, `Palm` 5 → 6; Nia `LowSpin` 8 → 7, `PalmThrust` 11 → 10, `RisingTornado` 12 → 10. Combos: new easy first routes, re-timed routes, measured difficulty, Goran *Lift And Hammer* → *Forearm Finish*. Sim: string follow-ups on hit step in during startup (2.8); input leniency (section 0). |

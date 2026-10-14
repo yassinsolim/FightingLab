@@ -1,5 +1,5 @@
 --!strict
--- Round 7 (combat-balance.md R7): input leniency without sloppiness. The next hit of a combo pressed early (during the
+-- Round 7 (combat-balance.md, Round 7): input leniency without sloppiness. The next hit of a combo pressed early (during the
 -- previous hit's hitstop or recovery) is kept until the fighter can act; presses made in stun or during a move's
 -- startup still expire after Config.AttackBuffer frames. J+K up to 4 frames apart is the 3+4 signature (the first
 -- kick is upgraded in place before its active frames) while a typed 3,4 string (5+ frames) stays a string. A press that

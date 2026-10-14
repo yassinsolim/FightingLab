@@ -11,13 +11,110 @@ Ultimate timeline and combo route, generated from the Roster), `combat-states.md
 | `ReplicatedStorage.FightingLab.CombatSim.luau` | rewritten: guard system, discrete sidestep, committed dash/backdash, chords + throw breaks, tracking/homing, root advance, getup rolls, KO fall, throw-break window, practice dummy |
 | `ReplicatedStorage.FightingLab.CombatAI.luau` | **NEW ModuleScript** (the CPU; `Sim.trainerInput` requires it lazily) |
 | `ReplicatedStorage.FightingLab.Controls.luau` | **NEW ModuleScript** (single source of truth for keys + labels) |
+| `ReplicatedStorage.FightingLab.ComboTrial.luau` | **NEW ModuleScript** (round 7, Contract C: combo trials and demo inputs for practice; pure) |
 | `ReplicatedStorage.FightingLab.CombatConfig.luau`, `Roster.luau`, `MatchRunner.luau`, `NetProtocol.luau`, `RenderBuffer.luau` | updated (additive snapshot fields, `Dummy` command, codec v2) |
 | `ReplicatedStorage.FightingLab.Client.InputController.luau` | rewritten for the contract §2 scheme |
 | tests `CombatSim_Test`, `CombatRoster_Test`, `Difficulty_Test`, `MatchRunner_Test`, `DuelProtocol_Test`, `RenderBuffer_Test` (updated), `Controls_Test`, `CombatAI_Test`, `Balance_Test` (NEW; round 2 updated `CombatAI_Test` and `Balance_Test`; the step-in round updated `CombatRoster_Test` and `CombatAI_Test`; round 4 updated `CombatAI_Test` and `Difficulty_Test`) | |
 
 `SnapshotTiming` is unchanged (not exported).
 
-## Round 6 (`r6-combat`): six distinct movesets, signatures, combos, Surge and the Ultimate — latest
+## Round 7 (`r7-combat`): combos that land, fair fighters and CPUs — latest
+
+The user: "its difficult to combo the moves but maybe its a skill issue lets look more into this" and "lets make sure
+its fair, some characters seem stronger than other atleast from playing the bots". Everything was measured first with
+a headless harness (`OV6\work\r7-combat\harness\`: the real `InputController` driven by key events, `MatchRunner`,
+`CombatSim`, `CombatAI`), then fixed; tables in combat-balance.md, Round 7.
+
+**Why combos were hard (measured on `main`).** Every listed combo, performed with keys against all six opponents with
+human-like timing noise, landed 5-43 % of the time with ±2 to ±6 frames of noise (Ultimate enders 29-62 %) and 0 % when every press came 1-7 frames early (180 performances per combo and noise level). The causes: (1) `AttackBuffer` 8: the next hit pressed more than 8 frames
+before the fighter could act was dropped, and during a launcher's recovery, hitstop or a juggle most presses are that
+early, so every step's window started exactly at its earliest frame; (2) the J+K signature needed both keys within 2
+frames (33 ms): 83-86 % of keyboard presses up to 50 ms apart registered; (3) 13 of 22 strings were natural
+combos from every range at which their first hit connects (pushback carried the opponent out of the follow-up's
+reach); (4) routes with tight links (juggle hits that had to be pressed inside 2-4 frames).
+
+**Input (`CombatSim`, `CombatConfig`).**
+- Recovery buffer: a press made during the fighter's own move after its startup (active frames, recovery, hitstop) is
+  kept up to `RecoveryBuffer` 30 frames; presses in neutral still expire after `AttackBuffer` 8, so nothing stale comes
+  out of neutral (`CombatInput_Test`).
+- Follow-up queue: a string follow-up, stance cancel or stance follow-up typed while the previous press is still
+  waiting queues behind it (`input.queue`, up to 3) instead of replacing it; orphans are cleared once the fighter is
+  free. A chord's first key that already queued is undone when the chord forms.
+- J+K window 2 → 4 frames (`ChordWindow.Kicks`): a first kick that already started its move is upgraded in place to
+  the signature before its active frames; a 3,4 string typed with a gap of 5+ frames stays a string, and after a
+  chord forms the next key cannot form another one. J+K pressed up to 50 ms apart now registers 100 % of the time (was 83-86 %), even up to 67 ms.
+- Juggle follow-ups turn to the airborne body before they start (no whiffs behind a body that drifted sideways).
+- String step-in: a string follow-up whose previous hit (same string) put the opponent in hitstun or a juggle steps in
+  during its startup (`Sim.stringStep`: real travel the animation shows, up to `StringStepFrame` 0.2 studs per frame
+  and `StringStepIn` 1.6 per move, aiming `StringStepMargin` 0.1 inside its range, never through the opponent) and may
+  connect at most `StringReach` 0.3 studs past its own range (`Sim.stringReach`); on block or whiff nothing changes.
+  22 of 22 strings are now natural combos from every range at which hit 1 connects, and no strike connects
+  past its range (an intermediate version reached 1.3 studs further without travel; motion's request).
+- Nia's d+3,4 routes press the 4 ten-plus frames after the 3 (was 3 frames): with the 4-frame J+K window a 3-frame gap
+  would now be her signature.
+
+**Combo routes (Roster `combos`).** Each fighter's first route is an easy one (difficulty 1, 3-4 presses, no tight
+links, 26-34 damage); 2-3 harder routes follow, then the Ultimate ender. Every route was re-timed for human rhythm
+(string follow-ups 10 frames apart, juggle steps cued by the launch), single-button steps that could form a chord are
+kept apart (3/4, 1/3 and 2/4 at least 12 frames, 1/2 at least 8) so they never come out as a throw or the signature, and each
+difficulty is now measured: 1, +1 for 5+ presses, +1 for a stance entry or cancel, +1 for a counter-hit opener, +1 if it
+lands under 95 % with ±5-frame noise, +1 more under 90 %. Goran's list is Hammer Down (new, easy), Forearm Finish,
+Counter Haymaker and Landslide Finish (Lift And Hammer, Forearm Finish one hit shorter, is gone). Result: every listed combo lands 100 % of the time with ±2 and ±3 frames of noise and with early presses; at ±5 the lowest is Sierra's difficulty-5 Knee To Southpaw (93 %) and every difficulty 1-2 route is 100 % (before 5-43 % and 0 % early); the median window per step grew from 18 to 41 frames, and none of the steps is without early tolerance any more (80 of 83 before)
+(tables per combo and per step in combat-balance.md and movesets.md).
+
+**ComboTrial (Contract C, NEW `ReplicatedStorage.FightingLab.ComboTrial`, pure).** `ComboTrial.list(id)` →
+`{ index, name, notation, difficulty, damage, kind, counter, surge, steps = { { label, notation, move } } }` from
+`Roster.get(id).combos`; `ComboTrial.new(id, index)` → trial; `trial:feed(entry)` takes each practice `MatchRunner`
+entry (raw or `RenderBuffer.parse`d: `fighters`, `events`, `frame`) and returns `{ state = "Ready" | "Running" |
+"Success" | "Failed", step, total, reason = nil | "Early" | "Late" | "Wrong" | "Blocked" | "Whiffed" | "Dropped",
+damage }`; `trial:reset()` (call it on a practice reset), `trial:status()`. Player = slot 1, dummy = slot 2. A trial
+starts on step 1's hit (counter routes: a counter hit; stance routes: the stance entry) and fails as soon as the combo
+breaks; a new opener restarts it after Success/Failed. `ComboTrial.demo(id, index)` → `{ { frame, press?, hold?,
+step?, notation? } }`: from the practice start (walk in, settle) the route with its timing; apply `hold` (Move +
+Crouch) first, then `press` (the sim button name); counter routes need the dummy to attack ("Fight"). Committed first
+as `C1:` (42c6862); the API is unchanged since.
+
+**Fairness (Roster data, `CombatAI`).** Measured before tuning: CPU vs CPU matrices at every level (60 matches per
+ordered pairing after, 40 before), a human-like reference player (harness `refbot.luau`, no CombatAI: sees 20 frames
+late, blocks 70 % of what it sees, punishes 45 %, plays its fighter's first route with ±3-frame noise) against every
+fighter's CPU, the reference player against itself (pure character strength), and AI-independent power metrics.
+Findings and fixes:
+- Hard's hit-confirm pressed string follow-ups after the last frame that still combos: only 5 % of Hard's follow-up
+  hits on `main` were combos (Nia's d+3,4 launcher got blocked and launch-punished, Nia's Hard CPU won 21 %). A confirm
+  that cannot be in time is now decided before that frame without seeing the result (`blindString`, Hard 0.5: a safe
+  follow-up half the time, an unsafe one 21 %): 98 % of Hard's follow-up hits combo (`CombatAIRound7_Test`). Hard is
+  harder for the reference player than in round 6 (the reference player wins 5.4 % of its matches against Hard, 9.0 % before).
+- Character data: Goran was the strongest kit (CPU vs CPU 63 % at Normal, the hardest CPU for a person, 69 % in
+  reference vs reference); Sierra, Lumi and Kael the weakest. Changes: Goran HP 120 → 104, Jab-Hammer 12 → 11, Leg Hook
+  i21 → i23 and 16 → 15, the 2+4 throw 20 → 18 (his juggles keep Forearm Finish, 38: juggles decide CPU-vs-CPU fights far more than fights against a person); Sierra HP 95 → 102, Jab and
+  Duck Jab 5 → 6, Teep 11 → 12; Lumi HP 90 → 98, Palm 5 → 6; Nia Low Spin 8 → 7, Palm Thrust 11 → 10 (the best mid
+  poke in the cast), Rising Whirlwind (d+3,4) 12 → 10 (her low-into-launcher gave her CPU 1.9 launches per match
+  against CPUs, 3-6 × anyone else's).
+- Per-fighter CPU skill (`CombatAI.FighterSkill`, `AI.SkillLimit` 0.4): a level plays some kits better than others, so
+  each fighter's CPU gets an offset k per level that blends its parameters toward the level below (k < 0) or above
+  (k > 0); chances are clamped, reaction never below 13 frames, Easy-only mashing stays Easy-only, and |k| ≤ 0.4 keeps
+  every fighter's Hard sharper than every fighter's Normal, sharper than every fighter's Easy (`CombatAI_Test`). Tuned
+  by `optimize.ps1` (damped steps on CPU vs CPU win rate and the reference player's win rate per CPU, level means held
+  at round 6's Easy and Normal; Easy also weighs CPU vs CPU). Values: Easy Kael +0.15, Sierra −0.10, Lumi −0.05;
+  Normal Kael +0.14, Sierra +0.03, Lumi +0.05, Rhys +0.06, Nia −0.02; Hard Kael −0.12, Sierra −0.18, Goran +0.20,
+  Lumi +0.04, Rhys −0.09, Nia +0.12 (the rest 0).
+- Result: CPU vs CPU, every fighter 46-54 % at Normal and 46-53 % at Hard (before 40-63 % and 21-71 %), 45-56 % at Easy (41-61 %); no matchup outside 38-62 % at Normal and Hard (35-65 % at Easy); every fighter's CPU within ±7 points of the mean for the reference player at each level (spread Easy 13.3 → 9.6, Normal 23.8 → 12.1, Hard 12.5 → 7.1 points; Goran's Normal CPU 9 → 17 %); Hard > Normal > Easy (the reference player wins 5.4 / 23.8 / 80.5 %; `Difficulty_Test` green).
+
+**Move list (`Client.MoveList`).** The COMBOS page shows each route's measured difficulty as a word and a score
+(`MoveList.difficultyText`: EASY / MEDIUM / TRICKY / HARD / EXPERT n/5, coloured), marks the first route "START HERE",
+and the note says how difficulty is measured.
+
+**Tests.** New: `ComboTrial_Test` (every combo's demo completes its trial for all six fighters; late, dropped, wrong and
+blocked attempts fail with the right reason), `CombatInput_Test` (early presses kept, stale neutral presses dropped,
+J+K 4-frame chord, typed 3,4 stays a string, queued follow-ups, no chord chains), `CombatAIRound7_Test` (Hard's
+follow-ups combo). Updated: `CombatCombo_Test` (first route easy, chord-safe spacing, natural strings from every range),
+`CombatSignature_Test` (finds Kael's tumble route by its b+1 step), `CombatMoveList_Test` (difficulty text, START HERE).
+Retuned with justification (in the files): `CombatAI_Test` "per-fighter skill offsets and Easy matchup adjustments
+keep the levels ordered" (was: Normal and Hard identical for every fighter), `Difficulty_Test` perception delay (the
+CPU's own delay, which can now differ by a frame or two per fighter), `CombatAIRound6_Test` signature use (up to three
+seeds per level instead of one).
+
+## Round 6 (`r6-combat`): six distinct movesets, signatures, combos, Surge and the Ultimate
 
 The user asked for "each character have different movesets and combos, also at low hp there should be an ult".
 Everything below is original (names, moves, the Surge / Ultimate system); genre conventions only.
