@@ -652,16 +652,30 @@ function FighterSelect.mount(env: SelectEnv): Controller
 		shownId = id
 		local base = SelectScene.fighterFrame()
 		if not rig.footDelta then
-			-- First placement: stand the rig on the platform by measuring its posed feet once.
-			local humanoid = rig.model:FindFirstChildOfClass("Humanoid")
-			local root = rig.model:FindFirstChild("HumanoidRootPart")
-			local guess = if humanoid and root and root:IsA("BasePart") then humanoid.HipHeight + root.Size.Y * 0.5 else 3
-			rig.model:PivotTo(base + Vector3.new(0, guess, 0))
-			poseShown(os.clock())
-			local bottom = footBottom(rig.model)
-			rig.footDelta = guess + (if bottom then SelectScene.platformY() - bottom else 0)
-			local top = headTop(rig.model)
-			if top then rig.height = top + (rig.footDelta - guess) - SelectScene.platformY() end
+			-- First placement. Previews are posed like the fight (CharacterPresenter.posePreview): planted feet stand on the
+			-- floor RootHeight under the root, so the root stands that high over the platform (round 7; the round-6 select
+			-- measured the posed feet once, at whatever height the bob had them then). Rigs without RootHeight are measured.
+			local rootHeight = rig.model:GetAttribute("RootHeight")
+			if typeof(rootHeight) == "number" and rootHeight > 0 then
+				rig.footDelta = rootHeight
+				rig.model:PivotTo(base + Vector3.new(0, rootHeight, 0))
+				poseShown(os.clock())
+				-- The camera fits the standing height (head top without the stance's bob, which moves the body now).
+				local top = headTop(rig.model)
+				local p = presenter()
+				local bob = if p and typeof(p.previewBodyOffset) == "function" then p.previewBodyOffset(rig.model) else nil
+				if top then rig.height = top - (if typeof(bob) == "Vector3" then bob.Y else 0) - SelectScene.platformY() end
+			else
+				local humanoid = rig.model:FindFirstChildOfClass("Humanoid")
+				local root = rig.model:FindFirstChild("HumanoidRootPart")
+				local guess = if humanoid and root and root:IsA("BasePart") then humanoid.HipHeight + root.Size.Y * 0.5 else 3
+				rig.model:PivotTo(base + Vector3.new(0, guess, 0))
+				poseShown(os.clock())
+				local bottom = footBottom(rig.model)
+				rig.footDelta = guess + (if bottom then SelectScene.platformY() - bottom else 0)
+				local top = headTop(rig.model)
+				if top then rig.height = top + (rig.footDelta - guess) - SelectScene.platformY() end
+			end
 		end
 		rig.model:PivotTo(base + Vector3.new(0, rig.footDelta :: number, 0))
 		poseShown(os.clock())
