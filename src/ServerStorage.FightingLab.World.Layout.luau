@@ -26,8 +26,8 @@ export type ArenaDef = {
 	accent: Color3,
 	tagline: string, -- one line for the map picker (Contract D: at most 40 characters)
 	theme: Color3, -- the arena's colour in menus (Contract D: model attribute ThemeColor)
-	-- PreviewCam (Contract D): the map picker's beauty shot, arena-local (x towards `right`, y above the fight floor,
-	-- z towards the plaza): the camera position and the point it looks at
+	-- PreviewCam (Contract D): the map picker's beauty shot, as (world bearing in degrees, flat distance from
+	-- FightOrigin, height above the fight floor) for the camera and for the point it looks at
 	previewCam: Vector3,
 	previewLook: Vector3,
 	inward: Vector3, -- unit (XZ) from FightOrigin towards the plaza centre
@@ -141,15 +141,17 @@ local function bearingOf(k: number): number
 	return (Layout.PLAZA_HEAD_BEARING + half + k * Layout.ARENA_SPACING) % 360
 end
 
--- Map picker look (Contract D): tagline, theme colour and the PreviewCam beauty shot (arena-local, see ArenaDef). Each
--- shot stands a little to one side of the stair, high enough that the whole ring reads as a circle, with the arena's
--- landmark behind the ring (tuned on real renders; World_Test checks the ring is framed and in clear view).
+-- Map picker look (Contract D): tagline, theme colour and the PreviewCam beauty shot. Every shot stands inside the
+-- fight set's ring (closer than FightSets.MIN_RADIUS), south of the ring and a little to one side, high enough that
+-- the whole ring reads as a circle, and looks north across it at the set's landmark (the gate and pagoda, the sun
+-- temple, the observatory, the Pier 9 warehouse, the NIGHT SHIFT billboard), which the default fight camera also
+-- faces. Values: (bearing, flat distance from FightOrigin, height above the floor).
 Layout.LOOKS = {
-	MidnightRooftop = { tagline = "Neon rain on a rooftop above the city", theme = Color3.fromRGB(255, 64, 190), previewCam = Vector3.new(-15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
-	HarborDusk = { tagline = "Sunset pier among the cranes and gulls", theme = Color3.fromRGB(255, 146, 48), previewCam = Vector3.new(15, 14, 45), previewLook = Vector3.new(0, 3, -8) },
-	JungleRuins = { tagline = "A sun temple lost under the canopy", theme = Color3.fromRGB(84, 214, 112), previewCam = Vector3.new(-15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
-	SnowSummit = { tagline = "Aurora skies over a snowbound dome", theme = Color3.fromRGB(116, 198, 255), previewCam = Vector3.new(15, 15, 45), previewLook = Vector3.new(0, 3, -8) },
-	TrainingBay = { tagline = "Open-air dojo under cherry blossoms", theme = Color3.fromRGB(232, 66, 54), previewCam = Vector3.new(15, 14, 45), previewLook = Vector3.new(0, 3, -8) },
+	MidnightRooftop = { tagline = "Neon rain on a rooftop above the city", theme = Color3.fromRGB(255, 64, 190), previewCam = Vector3.new(198, 33, 15), previewLook = Vector3.new(0, 4, 1) },
+	HarborDusk = { tagline = "Sunset pier among the cranes and gulls", theme = Color3.fromRGB(255, 146, 48), previewCam = Vector3.new(208, 33, 15), previewLook = Vector3.new(0, 4, 1) },
+	JungleRuins = { tagline = "A sun temple lost under the canopy", theme = Color3.fromRGB(84, 214, 112), previewCam = Vector3.new(166, 33, 15), previewLook = Vector3.new(0, 4, 1) },
+	SnowSummit = { tagline = "Aurora skies over a snowbound dome", theme = Color3.fromRGB(116, 198, 255), previewCam = Vector3.new(244, 33, 15), previewLook = Vector3.new(20, 5, 1) },
+	TrainingBay = { tagline = "Open-air dojo under cherry blossoms", theme = Color3.fromRGB(232, 66, 54), previewCam = Vector3.new(182, 33, 15), previewLook = Vector3.new(0, 4, 1) },
 } :: { [string]: ArenaLook }
 
 Layout.ARENAS = {

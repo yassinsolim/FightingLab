@@ -59,11 +59,13 @@ end
 
 ArenaKit.PREVIEW_FOV = 70 -- the field of view the PreviewCam shots are framed for (attribute FieldOfView)
 
--- The map picker's beauty shot (Contract D): world CFrame of an arena's PreviewCam.
+-- The map picker's beauty shot (Contract D): world CFrame of an arena's PreviewCam (Layout.LOOKS).
 function ArenaKit.previewFrame(def: ArenaDef): CFrame
-	local cam = Layout.at(def, def.previewCam.X, def.previewCam.Y, def.previewCam.Z)
-	local look = Layout.at(def, def.previewLook.X, def.previewLook.Y, def.previewLook.Z)
-	return CFrame.lookAt(cam, look)
+	local function point(v: Vector3): Vector3
+		local d = Layout.bearingDir(v.X)
+		return Vector3.new(def.origin.X + d.X * v.Y, def.floorY + v.Z, def.origin.Z + d.Z * v.Y)
+	end
+	return CFrame.lookAt(point(def.previewCam), point(def.previewLook))
 end
 
 -- PreviewCam: an invisible marker the menus put the camera on to show the arena (anchored, no collision, queries,

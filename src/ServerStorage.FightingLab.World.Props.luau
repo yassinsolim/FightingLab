@@ -188,8 +188,8 @@ end
 function Props.banner(parent: Instance, top: Vector3, facing: Vector3, width: number, height: number, color: Color3, text: string?, textColor: Color3?): Part
 	local cf = Kit.facing(top - Vector3.new(0, height / 2, 0), facing)
 	local cloth = Kit.deco(parent, cf, Vector3.new(width, height, 0.12), M.Fabric, color, { Name = "Banner", CastShadow = true })
-	Kit.deco(parent, cf * CFrame.new(0, height / 2 + 0.1, 0), Vector3.new(width + 0.4, 0.2, 0.2), M.Metal, P.brass)
-	Kit.deco(parent, cf * CFrame.new(0, -height / 2 - 0.06, 0), Vector3.new(width, 0.14, 0.16), M.Fabric, Kit.shade(color, 0.6))
+	Kit.deco(parent, cf * CFrame.new(0, height / 2 + 0.1, 0), Vector3.new(width + 0.4, 0.2, 0.2), M.Metal, P.brass, { Name = "BannerRod" })
+	Kit.deco(parent, cf * CFrame.new(0, -height / 2 - 0.06, 0), Vector3.new(width, 0.14, 0.16), M.Fabric, Kit.shade(color, 0.6), { Name = "BannerHem" })
 	if text then
 		-- tall banners stack one letter per line so long words never wrap mid-word
 		local shown = if height > width * 1.6 then table.concat(string.split(text, ""), "\n") else text
