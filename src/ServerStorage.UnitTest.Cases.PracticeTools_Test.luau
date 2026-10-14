@@ -196,7 +196,9 @@ return function(t)
 			t.expect.equal(banner.Title.Text, "COMBO CLEAR!")
 			t.expect.truthy(string.find(banner.Sub.Text, "31", 1, true) ~= nil, "with the damage")
 			tools.openTrials()
-			t.expect.truthy((trials:FindFirstChild("Combo2", true) :: any).Cleared.Visible, "cleared this session")
+			local clearedRow = trials:FindFirstChild("Combo2", true) :: any
+			t.expect.truthy(clearedRow.MetaRow.Cleared.Visible, "cleared this session")
+			t.expect.falsy((trials:FindFirstChild("Combo1", true) :: any).MetaRow.Cleared.Visible, "only the cleared one")
 			t.expect.truthy(tools.handleNav("Back"))
 			t.expect.falsy(tools.modalOpen())
 			-- Pausing during a trial opens the list (keyboard / gamepad way in).

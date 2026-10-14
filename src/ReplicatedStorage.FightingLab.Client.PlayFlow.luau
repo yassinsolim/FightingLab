@@ -1,7 +1,8 @@
 --!strict
 -- PLAY flow (round 7). "It should be easy to play a game": one decision per screen, big clear cards, large type.
 --   PLAY -> WHO DO YOU WANT TO FIGHT?  VS PLAYER / VS CPU / PRACTICE
---   VS CPU    -> PICK A MAP (CPU level toggle on top; the camera glides to each map's PreviewCam behind the panel)
+--   VS CPU    -> PICK A MAP (CPU level toggle on top; behind the panel each map is shown on its own stage from its
+--                PreviewCam, through StageController.previewArena)
 --             -> READY? (FIGHT! or CHANGE FIGHTER) -> taken there, the fight starts
 --   VS PLAYER -> PICK A MAP (ANY MAP first, recommended) -> taken there to wait (Any map = the matchmaking queue)
 --   PRACTICE  -> FREE TRAINING / COMBO TRIALS / GUIDED LESSON / PRACTICE VS CPU (the dojo)
@@ -25,8 +26,9 @@ local WHITE = Color3.new(1, 1, 1)
 
 local PlayFlow = {}
 PlayFlow.CPU_OFFER_SECONDS = (NetProtocol :: any).QuickCpuOfferSeconds or 12
-PlayFlow.GLIDE_SECONDS = 0.75 -- camera glide between map previews
-PlayFlow.RETURN_SECONDS = 0.45 -- glide back to the lobby view
+PlayFlow.DIP_IN = 0.09 -- the scene dips to dark this fast before the view changes to another map (or back)
+PlayFlow.DIP_OUT = 0.2 -- and comes back this fast
+PlayFlow.HANDOVER_SECONDS = 6 -- a fight from the flow takes the map's stage within this; else the lobby comes back
 PlayFlow.PENDING_SECONDS = 3 -- FIGHT! waits this long for the server's Teleport / Rejected
 PlayFlow.MODE_NAMES = { Duel = "VS PLAYER", Cpu = "VS CPU", Practice = "PRACTICE" } :: { [string]: string }
 PlayFlow.LEVELS = { "Easy", "Normal", "Hard" }
@@ -397,6 +399,9 @@ export type Env = {
 	send: (req: Request) -> boolean,
 	sound: ((name: string) -> ())?,
 	camera: (() -> Camera?)?, -- the preview camera (live: workspace.CurrentCamera; nil = no preview)
+	-- StageController (world, Contract D): previewArena(model?) shows a map as its fighters see it (its fight set and
+	-- mood, the district hidden); previewing() tells which. nil / missing: the PreviewCam shot of the plain world.
+	stage: (() -> any)?,
 	onChanged: (() -> ())?, -- opened / closed: the lobby re-applies its HUD
 	difficulty: (() -> string)?,
 	setDifficulty: ((level: string) -> ())?,
@@ -577,14 +582,26 @@ function PlayFlow.mount(env: Env): Controller
 	end
 
 	-- Preview camera ---------------------------------------------------------------------------------------------------
-	-- The camera glides to the focused map's shot while the map / ready screens are open and back to the lobby view
-	-- after. A CPU fight or practice starting from the flow keeps the shot: the fight camera glides from it.
-	local cam: { saved: any?, tween: Tween?, target: string? } = { saved = nil, tween = nil, target = nil }
+	-- The map and ready screens show the focused map the way its fighters see it: StageController.previewArena puts up
+	-- the arena's fight set and mood and hides the district (world, Contract D), and the camera sits on the arena's
+	-- PreviewCam at its FieldOfView. Every map is its own stage, so the view cuts between maps under a short dip to dark
+	-- (live) instead of gliding through the hidden city; leaving the map screens dips back to the lobby view. A CPU fight
+	-- starting from the flow keeps the shot and the stage: the fight's StageController.setArena replaces the preview and
+	-- the fight camera glides from the shot.
+	local cam: { saved: any?, shown: string?, model: Instance?, dip: number, handover: number } = { saved = nil, shown = nil, model = nil, dip = 0, handover = 0 }
 	local function camera(): Camera?
 		return if env.camera then env.camera() else nil
 	end
-	local function stopTween()
-		if cam.tween then cam.tween:Cancel(); cam.tween = nil end
+	local function stageModule(): any
+		if not env.stage then return nil end
+		local ok, m = pcall(env.stage)
+		return if ok and typeof(m) == "table" and typeof(m.previewArena) == "function" then m else nil
+	end
+	local function stagePreview(model: Instance?): boolean
+		local m = stageModule()
+		if not m then return false end
+		local ok, up = pcall(m.previewArena, model)
+		return ok and up == true
 	end
 	-- The flow only opens in the lobby, where the camera follows the character: a Scriptable camera seen when the
 	-- preview starts is someone's transient shot (e.g. the few frames a practice exit still holds the fight camera), so
@@ -600,50 +617,92 @@ function PlayFlow.mount(env: Env): Controller
 		end
 		c.CameraSubject = subject
 	end
-	local function previewTo(arenaId: string?)
-		if S.previewId == arenaId then return end
-		S.previewId = arenaId
+	-- Puts the view where the flow wants it now (S.previewId: a map, or nil for the lobby view).
+	local function applyPreview()
+		local want = S.previewId
+		if want == cam.shown then return end
+		cam.handover += 1
 		local c = camera()
-		if not c then return end
-		if arenaId == nil then
-			-- Back to the lobby view (Any map / leaving the map screens).
-			local saved = cam.saved
-			if not saved then return end
-			stopTween()
-			local tw = UIHelpers.tween(c, PlayFlow.RETURN_SECONDS, { CFrame = saved.cframe, FieldOfView = saved.fov }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			cam.tween = tw
-			tw.Completed:Connect(function(status)
-				if status == Enum.PlaybackState.Completed and cam.tween == tw and S.previewId == nil and cam.saved == saved then
-					handBack(c, saved)
-					cam.saved = nil
-					cam.tween = nil
+		if want and c then
+			local model = PlayFlow.arenaModel(env.world(), want)
+			local shot = PlayFlow.previewFrame(model)
+			if shot then
+				if not cam.saved then
+					cam.saved = { type = c.CameraType, subject = c.CameraSubject, cframe = c.CFrame, fov = c.FieldOfView }
 				end
-			end)
-			return
+				cam.model = if stagePreview(model) then model else nil
+				c.CameraType = Enum.CameraType.Scriptable
+				c.CFrame = shot
+				c.FieldOfView = PlayFlow.previewFov(model) or cam.saved.fov
+				cam.shown = want
+				return
+			end
 		end
-		local model = PlayFlow.arenaModel(env.world(), arenaId)
-		local shot = PlayFlow.previewFrame(model)
-		if not shot then return end
-		if not cam.saved then
-			cam.saved = { type = c.CameraType, subject = c.CameraSubject, cframe = c.CFrame, fov = c.FieldOfView }
-		end
-		stopTween()
-		c.CameraType = Enum.CameraType.Scriptable
-		local goal: { [string]: any } = { CFrame = shot, FieldOfView = PlayFlow.previewFov(model) or cam.saved.fov }
-		cam.tween = UIHelpers.tween(c, PlayFlow.GLIDE_SECONDS, goal, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut)
-	end
-	-- Ends the preview at once: restore (back to the lobby camera) or hand over (the fight camera takes it from here).
-	local function endPreview(restore: boolean)
-		S.previewId = nil
-		stopTween()
+		-- The lobby view: the district back, the camera where it was, following the character.
+		if cam.model then stagePreview(nil); cam.model = nil end
 		local saved = cam.saved
 		cam.saved = nil
-		local c = camera()
-		if restore and saved and c then
+		cam.shown = nil
+		if c and saved then
 			c.CFrame = saved.cframe
 			handBack(c, saved)
 			c.FieldOfView = saved.fov
 		end
+	end
+	-- The scene dips to dark under the panel (the flow's cards stay up), changes, and comes back.
+	local dipGui: ScreenGui? = if live then make("ScreenGui", { Name = "FightingLabPlayDip", ResetOnSpawn = false, DisplayOrder = 34, Enabled = false, IgnoreGuiInset = true, ScreenInsets = Enum.ScreenInsets.None, Parent = env.parent }) else nil
+	local dipBlack: Frame? = if dipGui then make("Frame", { Name = "Black", BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = dipGui }) else nil
+	local function dipToPreview()
+		local g, black = dipGui, dipBlack
+		if not (g and black) then applyPreview(); return end
+		cam.dip += 1
+		local token = cam.dip
+		g.Enabled = true
+		local darken = PlayFlow.DIP_IN * black.BackgroundTransparency
+		UIHelpers.tween(black, darken, { BackgroundTransparency = 0 }, Enum.EasingStyle.Linear)
+		task.delay(darken, function()
+			if token ~= cam.dip or destroyed then return end
+			applyPreview()
+			UIHelpers.tween(black, PlayFlow.DIP_OUT, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			task.delay(PlayFlow.DIP_OUT + 0.03, function()
+				if token == cam.dip and not destroyed then g.Enabled = false end
+			end)
+		end)
+	end
+	local function cancelDip()
+		cam.dip += 1
+		if dipBlack then dipBlack.BackgroundTransparency = 1 end
+		if dipGui then dipGui.Enabled = false end
+	end
+	local function previewTo(arenaId: string?)
+		if S.previewId == arenaId then return end
+		S.previewId = arenaId
+		if camera() then dipToPreview() end
+	end
+	-- Ends the preview now, without a dip: restore (the lobby view, e.g. under the travel fade or before the fighter
+	-- select takes the camera) or hand over (a fight takes the stage and the camera from here).
+	local function endPreview(restore: boolean)
+		S.previewId = nil
+		cancelDip()
+		if restore then applyPreview(); return end
+		local model, saved = cam.model, cam.saved
+		cam.model, cam.saved, cam.shown = nil, nil, nil
+		if not (live and model) then return end
+		cam.handover += 1
+		local token = cam.handover
+		task.delay(PlayFlow.HANDOVER_SECONDS, function()
+			if token ~= cam.handover or destroyed or S.open then return end
+			local m = stageModule()
+			local still = m and typeof(m.previewing) == "function" and m.previewing() == model
+			if not still then return end
+			-- No fight took the stage (refused after the move): the district and the lobby camera come back.
+			stagePreview(nil)
+			local c = camera()
+			if c and saved and c.CameraType == Enum.CameraType.Scriptable then
+				handBack(c, saved)
+				c.FieldOfView = saved.fov
+			end
+		end)
 	end
 	local function previewWanted(cards: { Card }): string?
 		local s = S.state
@@ -900,12 +959,8 @@ function PlayFlow.mount(env: Env): Controller
 			if not S.open then return end
 			S.open = false
 			S.state.pending = false
-			if cam.saved then
-				-- Glide back to the lobby view, then hand the camera back.
-				previewTo(nil)
-			else
-				S.previewId = nil
-			end
+			-- Back to the lobby view (under a dip) and the camera handed back.
+			previewTo(nil)
 			if live then UIHelpers.holdPlayerList(false) end
 			render()
 			sound("MenuBack")
@@ -959,9 +1014,11 @@ function PlayFlow.mount(env: Env): Controller
 		end,
 		onTeleport = function(payload: any)
 			local p = if typeof(payload) == "table" then payload else {}
-			-- A CPU fight or practice from the flow: the fight camera glides from the preview shot. Anything else (wait
-			-- on a circle, a match found, travel): the fade is black now, so the lobby camera comes back at once.
+			-- A CPU fight or practice from the flow: the fight takes the map's stage and glides its camera from the
+			-- preview shot (hand over before the flow closes, so closing does not bring the lobby view back). Anything
+			-- else (wait on a circle, a match found, travel): the fade is black now, so the lobby view comes back.
 			local fight = p.reason == "Cpu" or p.reason == "Practice"
+			if fight and (cam.saved or cam.model) then endPreview(false) end
 			if S.open then
 				S.open = false
 				S.state.pending = false
@@ -969,12 +1026,8 @@ function PlayFlow.mount(env: Env): Controller
 				render()
 				if env.onChanged then env.onChanged() end
 			end
-			if cam.saved then
-				if fight then
-					S.previewId = nil
-					stopTween()
-					cam.saved = nil
-				elseif live then
+			if not fight and cam.saved then
+				if live then
 					-- Restore once the travel fade is black (it takes ~0.15 s), so the cut never shows.
 					local saved = cam.saved
 					task.delay(0.16, function() if cam.saved == saved and not S.open then endPreview(true) end end)
@@ -1043,6 +1096,7 @@ function PlayFlow.mount(env: Env): Controller
 			table.clear(conns)
 			unfit()
 			gui:Destroy()
+			if dipGui then dipGui:Destroy() end
 		end,
 	}
 	return controller

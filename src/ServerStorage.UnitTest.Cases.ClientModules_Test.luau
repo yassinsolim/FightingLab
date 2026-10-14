@@ -22,7 +22,7 @@ return function(t)
 		["Motion.ClipPlayer"] = { "sample", "moveTime", "progressTime" },
 		EffectsController = { "init", "onEvent", "onPhase", "update" },
 		AudioController = { "init", "play", "playMusic", "onEvent", "onPhase" },
-		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena", "occluderRelevant", "rigFrames" },
+		StageController = { "init", "listStages", "load", "current", "update", "setArena", "clearArena", "occluderRelevant", "rigFrames", "previewArena", "previewing", "animOffset", "hidesInOwnFight" },
 		SelectScene = { "init", "showCharacter", "showStage", "showVS", "hide", "update", "isActive", "debugInstanceCount" },
 		CreditsScreen = { "render", "scroll", "hasData" },
 		FrontEnd = { "init", "start", "onSnapshot", "update" },

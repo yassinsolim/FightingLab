@@ -1100,19 +1100,102 @@ return function(t: Runner.T)
 			-- A circle wait / travel: the fade is black, the lobby camera comes back at once (not live: no delay).
 			m.ctl.onTeleport({ reason = "Wait", arenaId = "Arena_A", delay = 0.2 })
 			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "a following camera, not the frozen shot")
-			-- Closing the flow glides back and hands back the same way.
+			-- Closing the flow hands back the same way.
 			cam.CameraType = Enum.CameraType.Scriptable
 			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
 			t.expect.equal(flow.previewArena(), "Arena_A")
 			m.ctl.closePlay()
-			task.wait(PlayFlow.RETURN_SECONDS + 0.3)
-			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "after the glide back too")
+			task.wait(PlayFlow.DIP_IN + PlayFlow.DIP_OUT + 0.1)
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom, "after closing too")
 			-- A normal lobby camera comes back as it was.
 			cam.CameraType = Enum.CameraType.Custom
 			press(m, key("lobby", "play"), Enum.KeyCode.Right, Enum.KeyCode.Return)
 			m.ctl.onTeleport({ reason = "Travel", arenaId = "Arena_A", delay = 0.2 })
 			t.expect.equal(cam.CameraType, Enum.CameraType.Custom)
 			t.expect.equal(PlayFlow.lobbyCameraType(Enum.CameraType.Follow), Enum.CameraType.Follow, "other types are kept")
+		end, true, extra)
+		world:Destroy()
+	end)
+
+	-- World's request (Contract D): the map picker shows each map on its own stage (StageController.previewArena: its
+	-- fight set and mood, the district hidden) with the camera on the arena's PreviewCam at its FieldOfView.
+	t.test("PLAY flow: each map is previewed on its own stage from its PreviewCam; leaving ends it, a fight takes it over", function()
+		local world = Instance.new("Folder")
+		local arenasFolder = Instance.new("Folder"); arenasFolder.Name = "Arenas"; arenasFolder.Parent = world
+		local function arena(id: string, shot: CFrame, fov: number?): Model
+			local model = Instance.new("Model"); model.Name = id; model:SetAttribute("StageId", id); model.Parent = arenasFolder
+			local origin = Instance.new("Part"); origin.Name = "FightOrigin"; origin.Anchored = true; origin.Position = shot.Position + shot.LookVector * 30; origin.Parent = model
+			local previewCam = Instance.new("Part"); previewCam.Name = "PreviewCam"; previewCam.Anchored = true; previewCam.CFrame = shot
+			if fov then previewCam:SetAttribute("FieldOfView", fov) end
+			previewCam.Parent = model
+			return model
+		end
+		local shotA = CFrame.lookAt(Vector3.new(0, 20, 20), Vector3.new(0, 0, 60))
+		local shotB = CFrame.lookAt(Vector3.new(80, 15, 0), Vector3.new(120, 0, 0))
+		local modelA, modelB = arena("Arena_A", shotA, 62), arena("Arena_B", shotB, nil)
+		local cam = Instance.new("Camera")
+		cam.Parent = world
+		local lobbyView = CFrame.lookAt(Vector3.new(0, 8, -20), Vector3.new(0, 4, 0))
+		local fakeStage: any = { calls = {} :: { any }, current = nil :: Instance? }
+		function fakeStage.previewArena(model: Instance?): boolean
+			table.insert(fakeStage.calls, model or "nil")
+			fakeStage.current = model
+			return model ~= nil
+		end
+		function fakeStage.previewing(): Instance? return fakeStage.current end
+		local extra = { camera = function() return cam end, world = function() return world end, modules = { Stage = fakeStage } }
+		withLobby({ DuelState = "Lobby", FighterId = "Kael" }, function(m)
+			station(m, "Arena_A", "Duel", 1)
+			station(m, "Arena_B", "Duel", 2)
+			local flow = m.ctl.playFlow()
+			cam.CameraType = Enum.CameraType.Custom
+			cam.CFrame = lobbyView
+			cam.FieldOfView = 70
+			press(m, key("lobby", "play"))
+			t.expect.equal(#fakeStage.calls, 0, "no stage on the first screen")
+			press(m, Enum.KeyCode.Right, Enum.KeyCode.Return)
+			t.expect.equal(fakeStage.current, modelA, "the focused map's stage is up")
+			t.expect.truthy((cam.CFrame.Position - shotA.Position).Magnitude < 1e-3 and cam.CFrame.LookVector:Dot(shotA.LookVector) > 0.9999, "on its PreviewCam")
+			t.expect.near(cam.FieldOfView, 62, 1e-3, "at its FieldOfView")
+			t.expect.equal(cam.CameraType, Enum.CameraType.Scriptable)
+			press(m, Enum.KeyCode.Right)
+			t.expect.equal(fakeStage.current, modelB, "the next map replaces it")
+			t.expect.truthy((cam.CFrame.Position - shotB.Position).Magnitude < 1e-3)
+			t.expect.near(cam.FieldOfView, 70, 1e-3, "no attribute: the lobby field of view")
+			-- Back to the first screen: the district and the lobby view come back.
+			press(m, Enum.KeyCode.Backspace)
+			t.expect.equal(flow.screen(), "Who")
+			t.expect.equal(fakeStage.calls[#fakeStage.calls], "nil", "previewArena(nil) ends the preview")
+			t.expect.equal(fakeStage.current, nil)
+			t.expect.equal(cam.CFrame, lobbyView, "the lobby view")
+			t.expect.equal(cam.CameraType, Enum.CameraType.Custom)
+			-- READY keeps the chosen map's stage; FIGHT! hands it to the fight (its setArena replaces the preview).
+			press(m, Enum.KeyCode.Return, Enum.KeyCode.Return)
+			t.expect.equal(flow.screen(), "Ready")
+			t.expect.equal(fakeStage.current, modelA)
+			press(m, Enum.KeyCode.Return)
+			local calls = #fakeStage.calls
+			m.ctl.onTeleport({ reason = "Cpu", arenaId = "Arena_A", delay = 0.2 })
+			t.expect.falsy(m.ctl.isPlayOpen())
+			t.expect.equal(#fakeStage.calls, calls, "the stage stays up for the fight")
+			t.expect.equal(fakeStage.current, modelA)
+			t.expect.truthy((cam.CFrame.Position - shotA.Position).Magnitude < 1e-3, "the fight camera starts from the shot")
+			-- The CHANGE FIGHTER detour ends the preview before the select takes the camera.
+			fakeStage.current = nil
+			cam.CameraType = Enum.CameraType.Custom
+			cam.CFrame = lobbyView
+			m.ctl.openPlay(nil)
+			press(m, Enum.KeyCode.Right, Enum.KeyCode.Return, Enum.KeyCode.Return)
+			t.expect.equal(fakeStage.current, modelA)
+			t.expect.truthy(m.ctl.playSelect("fighter"))
+			t.expect.equal(fakeStage.current, nil, "no stage behind the fighter select")
+			t.expect.equal(cam.CFrame, lobbyView)
+			m.ctl.fighterSelect().close()
+			task.wait()
+			t.expect.equal(flow.screen(), "Ready", "back on READY")
+			t.expect.equal(fakeStage.current, modelA, "with the stage again")
+			m.ctl.closePlay()
+			t.expect.equal(fakeStage.current, nil)
 		end, true, extra)
 		world:Destroy()
 	end)

@@ -1070,6 +1070,7 @@ function LobbyUI.mount(env: Env): Controller
 		parent = env.parent, player = player, live = live, touchOnly = touchOnly, device = function() return S.device end,
 		stations = stationsFolder, world = worldFolder, serverNow = serverNow, clock = clock, send = sendPlay, sound = sound,
 		camera = if env.camera then env.camera elseif live then function(): Camera? return workspace.CurrentCamera end else nil,
+		stage = function() return modules().Stage end,
 		onChanged = function() if controller then controller.refresh() end end,
 		difficulty = function() return S.practiceDifficulty end, setDifficulty = function(level: string) S.practiceDifficulty = level end,
 	})
