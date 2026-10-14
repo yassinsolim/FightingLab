@@ -2,6 +2,7 @@
 -- World.Props: reusable, textured set dressing built from primitives (lamps, trees, benches, planters, banners,
 -- string lights, crates...). All decoration is anchored; only things people stand on collide.
 local Kit = require(script.Parent.Kit)
+local AssetKit = require(script.Parent.AssetKit)
 
 local Props = {}
 
@@ -58,85 +59,55 @@ function Props.poleLight(parent: Instance, pos: Vector3, aim: Vector3, color: Co
 	return m
 end
 
--- Broadleaf tree: trunk with a slight lean and three to five foliage blobs.
+-- Trees, palms, pines and bushes (round 7) are credited Creator Store meshes (World.AssetKit) in place of the old
+-- primitive blobs: fewer parts and real bark and foliage. An invisible wooden collider stands in each trunk, so people
+-- still bump into trees and the walk planner still goes round them.
+local function trunkCollider(m: Model, pos: Vector3, height: number, diameter: number)
+	Kit.rod(m, pos - Vector3.new(0, 0.5, 0), pos + Vector3.new(0, height, 0), diameter, M.Wood, P.bark, {
+		Name = "TrunkCollider",
+		Transparency = 1,
+		CastShadow = false,
+	})
+end
+
+local function yawed(pos: Vector3, rng: Random): CFrame
+	return CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+end
+
+-- Broadleaf tree about 13.5 * scale tall: a blossom palette (pink) makes it a cherry, otherwise a green jungle tree.
 function Props.tree(parent: Instance, pos: Vector3, scale: number, rng: Random, leaf: { Color3 }?): Model
-	local m = Kit.model(parent, "Tree")
-	local s = scale
-	local lean = Vector3.new(rng:NextNumber(-0.6, 0.6), 0, rng:NextNumber(-0.6, 0.6)) * s
-	local top = pos + Vector3.new(0, 9 * s, 0) + lean
-	Kit.rod(m, pos - Vector3.new(0, 0.5, 0), top, 1.3 * s, M.Wood, P.bark, { CanCollide = true })
-	Kit.rod(m, pos + Vector3.new(0, 6 * s, 0) + lean * 0.6, pos + Vector3.new(2.4 * s, 9.5 * s, 0.6 * s), 0.6 * s, M.Wood, P.bark, { CanCollide = false })
-	local colors = leaf or { P.leafA, P.leafB, P.leafC }
-	local n = rng:NextInteger(3, 5)
-	for i = 1, n do
-		local off = Vector3.new(rng:NextNumber(-2.8, 2.8), rng:NextNumber(-0.8, 2.6), rng:NextNumber(-2.8, 2.8)) * s
-		local size = Vector3.new(rng:NextNumber(5.5, 8), rng:NextNumber(4.2, 6), rng:NextNumber(5.5, 8)) * s
-		local cf = CFrame.new(top + off) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0)
-		Kit.blob(m, cf, size, M.LeafyGrass, colors[(i - 1) % #colors + 1], { CastShadow = true })
-	end
+	local pink = leaf ~= nil and leaf[1].R > leaf[1].G
+	local s = scale * rng:NextNumber(0.92, 1.08)
+	local m = if pink
+		then AssetKit.place(parent, "CherryTree", yawed(pos, rng), s * 0.3, { name = "Tree", shadows = true, skip = { Petals = true } })
+		else AssetKit.place(parent, "JungleTree", yawed(pos, rng), s * 0.34, { name = "Tree", shadows = true })
+	trunkCollider(m, pos, 7 * s, 1.1 * s)
 	return m
 end
 
--- Palm: curved segmented trunk and drooping fronds.
+-- Palm about 14 * scale tall.
 function Props.palm(parent: Instance, pos: Vector3, scale: number, rng: Random): Model
-	local m = Kit.model(parent, "Palm")
-	local s = scale
-	local bend = Vector3.new(rng:NextNumber(-1, 1), 0, rng:NextNumber(-1, 1)).Unit * 2.6 * s
-	local prev = pos - Vector3.new(0, 0.5, 0)
-	local segments = 5
-	for i = 1, segments do
-		local t = i / segments
-		local nextPos = pos + Vector3.new(0, 13 * s * t, 0) + bend * (t * t)
-		Kit.rod(m, prev, nextPos, (1.25 - 0.35 * t) * s, M.Wood, if i % 2 == 0 then P.bark else P.barkDark, { CanCollide = i == 1 })
-		prev = nextPos
-	end
-	local crown = prev
-	Kit.ball(m, crown, 1.4 * s, M.Wood, P.barkDark, { CanCollide = false })
-	for i = 1, 7 do
-		local a = i / 7 * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
-		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
-		local tip = crown + dir * 6.5 * s + Vector3.new(0, -2.4 * s, 0)
-		local mid = crown + dir * 3.4 * s + Vector3.new(0, 0.6 * s, 0)
-		Kit.strut(m, crown, mid, 1.6 * s, 0.12, M.LeafyGrass, P.leafB, { CanCollide = false, CanQuery = false, CanTouch = false })
-		Kit.strut(m, mid, tip, 1.3 * s, 0.1, M.LeafyGrass, P.leafA, { CanCollide = false, CanQuery = false, CanTouch = false })
-	end
+	local s = scale * rng:NextNumber(0.92, 1.08)
+	local m = AssetKit.place(parent, "Palm", yawed(pos, rng), s * 0.34, { name = "Palm", shadows = true })
+	trunkCollider(m, pos, 5 * s, 0.8 * s)
 	return m
 end
 
--- Pine from stacked square pyramids (four corner wedges each); optional snow on the upper tiers.
+-- Fir about 15 * scale tall; snowy firs carry snow on their boughs.
 function Props.pine(parent: Instance, pos: Vector3, scale: number, rng: Random, snowy: boolean?): Model
-	local m = Kit.model(parent, "Pine")
 	local s = scale * rng:NextNumber(0.85, 1.15)
-	local trunkH = 2.6 * s
-	Kit.cylinder(m, pos + Vector3.new(0, trunkH / 2 - 0.4, 0), trunkH + 0.8, 1 * s, M.Wood, P.barkDark)
-	-- four narrowing tiers of corner-wedge pyramids give a slim fir silhouette; snowy firs get a white crown
-	local tiers = { { 8.4, 5 }, { 6.8, 4.6 }, { 5.0, 4.2 }, { 3.2, 3.8 } }
-	local y = trunkH
-	local yaw = rng:NextNumber(0, math.pi / 2)
-	local green = Color3.fromRGB(40, 76, 52):Lerp(Color3.fromRGB(58, 96, 60), rng:NextNumber())
-	for i, tier in tiers do
-		local w, h = tier[1] * s, tier[2] * s
-		local centre = pos + Vector3.new(0, y + h / 2, 0)
-		local snowTier = snowy and i == #tiers
-		for q = 0, 3 do
-			local rot = CFrame.Angles(0, yaw + q * math.pi / 2, 0)
-			local cf = CFrame.new(centre) * rot * CFrame.new(w / 4, 0, w / 4) * CFrame.Angles(0, math.pi, 0)
-			Kit.cornerWedge(m, cf, Vector3.new(w / 2, h, w / 2), if snowTier then M.Snow else M.Grass, if snowTier then Color3.fromRGB(214, 226, 238) else Kit.shade(green, 1 + (i - 1) * 0.06), {
-				CanCollide = false,
-				CanQuery = false,
-				CanTouch = false,
-			})
-		end
-		y += h * 0.55
-	end
+	local m = AssetKit.place(parent, "SnowPine", yawed(pos, rng), s * 0.26, { name = "Pine", shadows = true, skip = if snowy then nil else { Snow = true } })
+	trunkCollider(m, pos, 3 * s, 0.9 * s)
 	return m
 end
 
+-- Leafy bush filling about `size` (centred on `pos`), as one mesh.
 function Props.bush(parent: Instance, pos: Vector3, size: Vector3, color: Color3?, rng: Random?): Part
-	local yaw = if rng then rng:NextNumber(0, math.pi) else 0
-	return Kit.blob(parent, CFrame.new(pos) * CFrame.Angles(0, yaw, 0), size, M.LeafyGrass, color or P.leafC, { CastShadow = true })
+	local yaw = if rng then rng:NextNumber(0, math.pi * 2) else 0
+	local foot = CFrame.new(pos - Vector3.new(0, size.Y / 2, 0)) * CFrame.Angles(0, yaw, 0)
+	local m = AssetKit.place(parent, "Bush", foot, (size.X + size.Z) / 2 / 6.4, { name = "Bush" })
+	return m:FindFirstChildWhichIsA("BasePart") :: Part
 end
-
 function Props.flowers(parent: Instance, centre: Vector3, radius: number, count: number, rng: Random, colors: { Color3 }?)
 	local palette = colors or { Color3.fromRGB(255, 120, 96), Color3.fromRGB(255, 210, 90), Color3.fromRGB(240, 120, 200), Color3.fromRGB(255, 250, 240) }
 	for _ = 1, count do
@@ -290,6 +261,7 @@ export type WindowOpts = {
 	glass: Color3?, -- unlit window tint (nil = leave the body showing)
 	glassTransparency: number?,
 	skipBottom: number?, -- studs at the bottom left without windows (shopfront)
+	lightInfluence: number?, -- how much the scene light shades the windows (default 0: they glow evenly)
 }
 
 function Props.windows(part: BasePart, face: Enum.NormalId, rng: Random, o: WindowOpts?): SurfaceGui
@@ -309,8 +281,8 @@ function Props.windows(part: BasePart, face: Enum.NormalId, rng: Random, o: Wind
 	g.Face = face
 	g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	g.PixelsPerStud = pps
-	g.LightInfluence = 0
-	g.Brightness = 1.3
+	g.LightInfluence = opts.lightInfluence or 0
+	g.Brightness = if opts.lightInfluence then 1 else 1.3
 	g.MaxDistance = 1500
 	g.ResetOnSpawn = false
 	g.ClipsDescendants = true
@@ -390,6 +362,7 @@ export type TowerOpts = {
 	crown: boolean?,
 	mast: boolean?,
 	glass: Color3?,
+	windowLight: number?, -- WindowOpts.lightInfluence (daylight skylines; nil keeps the windows glowing at night)
 }
 
 -- Skyline tower: one body part with window SurfaceGuis, a cornice, a neon crown outline and optional mast/penthouse.
@@ -398,7 +371,7 @@ function Props.tower(parent: Instance, base: Vector3, w: number, d: number, h: n
 	local t = Kit.model(parent, "Tower")
 	local body = Kit.block(t, CFrame.new(base + Vector3.new(0, h / 2, 0)), Vector3.new(w, h, d), opts.material or M.Concrete, opts.color or Color3.fromRGB(70, 76, 92), { Name = "Body", CanCollide = false })
 	for _, face in opts.faces or { Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right } do
-		Props.windows(body, face, rng, { lit = opts.lit or 0.32, band = Kit.shade(opts.color or Color3.fromRGB(70, 76, 92), 1.35), glass = opts.glass, glassTransparency = 0.05, skipBottom = 0 })
+		Props.windows(body, face, rng, { lit = opts.lit or 0.32, band = Kit.shade(opts.color or Color3.fromRGB(70, 76, 92), 1.35), glass = opts.glass, glassTransparency = 0.05, skipBottom = 0, lightInfluence = opts.windowLight })
 	end
 	local top = base + Vector3.new(0, h, 0)
 	Kit.deco(t, CFrame.new(top + Vector3.new(0, 0.3, 0)), Vector3.new(w + 0.6, 0.6, d + 0.6), M.Concrete, Kit.shade(opts.color or Color3.fromRGB(70, 76, 92), 0.8), { Name = "Cornice" })

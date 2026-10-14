@@ -9,6 +9,7 @@
 local Kit = require(script.Parent.Kit)
 local Props = require(script.Parent.Props)
 local Layout = require(script.Parent.Layout)
+local AssetKit = require(script.Parent.AssetKit)
 
 local Lobby = {}
 
@@ -395,10 +396,23 @@ local function buildLeaderboard(m: Model)
 	end
 end
 
+-- Low greenery (round 7): credited fern and bush meshes (World.AssetKit), quiet decoration no taller than 1.5 studs, so
+-- nothing new rises into a fight camera's view or stands in anyone's way.
+local function greenery(parent: Instance, pos: Vector3, out: Vector3, rng: Random)
+	local side = Vector3.new(-out.Z, 0, out.X)
+	for _, s in { -1, 1 } do
+		local p = pos + side * s * rng:NextNumber(1.3, 1.7) + out * rng:NextNumber(-0.2, 0.2)
+		AssetKit.place(parent, "Fern", CFrame.new(p) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0), rng:NextNumber(0.36, 0.42))
+	end
+	AssetKit.place(parent, "Bush", CFrame.new(pos + out * 0.5) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0), rng:NextNumber(0.3, 0.34))
+end
+
 -- Street lamps on the plaza rim in the gaps between neighbouring stages (outside every fight camera's orbit), benches
 -- round the beacon basin, and festoons from the beacon tower to the kiosk and the hall.
 local function buildDressing(m: Model)
 	local dress = Kit.model(m, "Dressing")
+	local green = Kit.model(dress, "Greenery")
+	local rng = Kit.rng(71)
 	local byBearing = table.clone(Layout.ARENAS)
 	table.sort(byBearing, function(a, b) return a.bearing < b.bearing end)
 	for i = 1, #byBearing - 1 do
@@ -406,15 +420,24 @@ local function buildDressing(m: Model)
 		if b.bearing - a.bearing <= Layout.ARENA_SPACING + 1 then
 			local lampPos = polar((a.bearing + b.bearing) / 2, 32.5)
 			Props.streetLamp(dress, lampPos, -lampPos.Unit, nil, 11)
+			greenery(green, Vector3.new(lampPos.X, 0, lampPos.Z), lampPos.Unit, rng)
 		end
 	end
-	-- benches on the beacon court, facing the fountain from the plaza side
+	-- benches on the beacon court, facing the fountain from the plaza side, with greenery between them
 	local back = -Layout.bearingDir(Lobby.HEAD_BEARING)
+	local function turned(deg: number): Vector3
+		local r = math.rad(deg)
+		return Vector3.new(back.X * math.cos(r) - back.Z * math.sin(r), 0, back.X * math.sin(r) + back.Z * math.cos(r))
+	end
 	for _, turn in { -62, 0, 62 } do
-		local r = math.rad(turn)
-		local d = Vector3.new(back.X * math.cos(r) - back.Z * math.sin(r), 0, back.X * math.sin(r) + back.Z * math.cos(r))
+		local d = turned(turn)
 		local pos = Lobby.BEACON_CENTRE + d * (Lobby.BEACON_BASIN_RADIUS + 3.6)
 		Props.bench(dress, Kit.facing(pos, -d))
+	end
+	for _, turn in { -31, 31 } do
+		local d = turned(turn)
+		local pos = Lobby.BEACON_CENTRE + d * (Lobby.BEACON_BASIN_RADIUS + 2.4)
+		greenery(green, Vector3.new(pos.X, 0, pos.Z), d, rng)
 	end
 	-- festoons from the beacon tower to the kiosk canopy and the hall's header
 	local hub = Lobby.BEACON_CENTRE + Vector3.new(0, 18, 0)
